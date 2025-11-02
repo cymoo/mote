@@ -4,7 +4,7 @@ server {
     listen [::]:80;
     server_name ${SERVER_NAME};
 
-    # For certificate renewal without stopping nginx (optional)
+    # For certificate renewal without stopping nginx
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
@@ -84,6 +84,8 @@ server {
 
         # Enable gzip for static files
         gzip_static on;
+
+        try_files $uri $uri/ @backend;
     }
 
     # Protected uploads (requires authentication)

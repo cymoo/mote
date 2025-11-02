@@ -65,7 +65,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-check_root
+check_not_root
 
 HEALTH_STATUS=0
 
