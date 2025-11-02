@@ -1,5 +1,6 @@
 #!/bin/bash
-# 配置systemd服务
+
+# Script to config systemd service
 
 set -e
 
@@ -9,16 +10,16 @@ source "${SCRIPT_DIR}/config.env"
 BACKEND_LANG="$1"
 
 if [ -z "$BACKEND_LANG" ]; then
-    log_error "请指定后端语言"
+    log_error "Usage: bash setup-systemd.sh <lang>"
     exit 1
 fi
 
 SERVICE_FILE="$DEPLOY_ROOT/config/systemd/${APP_NAME}.service"
 SYSTEMD_PATH="/etc/systemd/system/${APP_NAME}.service"
 
-log_info "生成systemd服务文件..."
+log_info "Generating systemd service file..."
 
-# 根据语言生成不同的ExecStart
+# Get ExecStart and WorkingDirectory based on backend language
 case "$BACKEND_LANG" in
     rust|rs|go)
         EXEC_START="$DEPLOY_ROOT/api/current/mote"
@@ -33,12 +34,12 @@ case "$BACKEND_LANG" in
         WORKING_DIR="$DEPLOY_ROOT/api/current"
         ;;
     *)
-        log_error "不支持的语言: $BACKEND_LANG"
+        log_error "Supported languages: rust, go, python, kotlin"
         exit 1
         ;;
 esac
 
-# 生成服务文件
+# Create service file
 sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description="$(capitalize "$APP_NAME") Application ($(capitalize "$BACKEND_LANG") backend)"
@@ -58,7 +59,7 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=${APP_NAME}
 
-# 安全设置
+# Security settings
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -69,15 +70,11 @@ ReadWritePaths=$DEPLOY_ROOT/data $DEPLOY_ROOT/uploads
 WantedBy=multi-user.target
 EOF
 
-# 创建软链接
-log_info "创建systemd软链接..."
+# Create symlink in systemd directory
+log_info "Creating systemd symlink..."
 sudo ln -sf "$SERVICE_FILE" "$SYSTEMD_PATH"
 
-log_success "Systemd服务配置完成!"
-log_info "服务文件: $SERVICE_FILE"
-log_info "软链接: $SYSTEMD_PATH"
-
-log_info "启动服务..."
+log_info "Reloading systemd daemon..."
 sudo systemctl daemon-reload
 sudo systemctl enable ${APP_NAME}
 sudo systemctl start ${APP_NAME}
