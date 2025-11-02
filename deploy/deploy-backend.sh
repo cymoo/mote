@@ -171,13 +171,13 @@ deploy_files() {
 
             # Create Python virtual environment
             log_info "Creating Python virtual environment..."
-            sudo -u "$APP_USER" python3 -m venv "$DEST_DIR/.venv"
+            sudo -u "$APP_USER" HOME="$DEST_DIR" python3 -m venv "$DEST_DIR/.venv"
 
             # Install dependencies
             log_info "Installing Python dependencies..."
-            sudo -u "$APP_USER" "$DEST_DIR/.venv/bin/pip" install --upgrade pip
-            sudo -u "$APP_USER" "$DEST_DIR/.venv/bin/pip" install -r "$DEST_DIR/requirements.txt"
-            sudo -u "$APP_USER" "$DEST_DIR/.venv/bin/pip" install gunicorn
+            sudo -u "$APP_USER" HOME="$DEST_DIR" "$DEST_DIR/.venv/bin/pip" install --upgrade pip
+            sudo -u "$APP_USER" HOME="$DEST_DIR" "$DEST_DIR/.venv/bin/pip" install -r "$DEST_DIR/requirements.txt"
+            sudo -u "$APP_USER" HOME="$DEST_DIR" "$DEST_DIR/.venv/bin/pip" install gunicorn
             log_success "Python environment configured"
             ;;
 

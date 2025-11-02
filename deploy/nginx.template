@@ -107,7 +107,7 @@ server {
     # Internal auth endpoint
     location = /api/auth {
         internal;
-        proxy_pass http://${BACKEND_ADDR}:${API_PORT};
+        proxy_pass http://${API_ADDR}:${API_PORT};
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
         proxy_set_header X-Original-URI $request_uri;
@@ -127,7 +127,7 @@ server {
 
     # Backend proxy
     location @backend {
-        proxy_pass http://${BACKEND_ADDR}:${API_PORT};
+        proxy_pass http://${API_ADDR}:${API_PORT};
 
         # Standard proxy headers
         proxy_set_header Host $host;
@@ -170,8 +170,8 @@ server {
     ssl_prefer_server_ciphers off;
 
     # OCSP stapling
-    ssl_stapling on;
-    ssl_stapling_verify on;
+    # ssl_stapling on;
+    # ssl_stapling_verify on;
 
     # DNS resolver for OCSP (use your preferred DNS)
     resolver 8.8.8.8 8.8.4.4 valid=300s;
