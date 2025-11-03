@@ -174,9 +174,9 @@ reload_service() {
 
     # Check if service is already running
     if sudo systemctl is-active --quiet "${APP_NAME}"; then
-        log_info "Service is already running, reloading configuration..."
-        sudo systemctl reload "${APP_NAME}"
-        action="reloaded"
+        log_info "Service is already running, restarting..."
+        sudo systemctl restart "${APP_NAME}"
+        action="restarted"
     else
         log_info "Service is not running, enabling and starting..."
         sudo systemctl enable "${APP_NAME}"
@@ -212,9 +212,6 @@ main() {
     generate_service_file
     install_service
     reload_service
-
-    # Success summary
-    log_success "Systemd service configured successfully!"
 }
 
 main "$@"

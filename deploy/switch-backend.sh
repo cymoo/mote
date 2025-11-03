@@ -140,7 +140,7 @@ update_symlink() {
     log_info "Updating backend symlink..."
 
     # Create new symlink
-    sudo ln -sf "$backend_dir" "$DEPLOY_ROOT/api/current"
+    sudo ln -sfn "$backend_dir" "$DEPLOY_ROOT/api/current"
 
     log_success "Symlink updated: current -> $BACKEND_LANG"
 }
@@ -195,11 +195,6 @@ main() {
     # Success summary
     echo ""
     log_success "Successfully switched to $BACKEND_LANG backend!"
-
-    local current=$(get_current_backend)
-    log_info "Current backend: $current"
-    log_info "Backend directory: $DEPLOY_ROOT/api/$current"
-    log_info "Service name: ${APP_NAME}"
 }
 
 main "$@"

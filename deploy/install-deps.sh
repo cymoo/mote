@@ -8,50 +8,46 @@ source "${SCRIPT_DIR}/config.env"
 # Display usage information
 usage() {
     cat <<EOF
-Usage: $0 [COMPONENTS...] [OPTIONS]
+Usage: $0 <COMPONENT> [COMPONENT...] [OPTIONS]
 
-Components:
+Components (at least one required):
     sys, system         System dependencies (curl, wget, git, nginx, sqlite3, etc.)
     node, nodejs        Node.js and npm
     rust                Rust toolchain
     go, golang          Go language
     python, py          Python3 and pip
-    kotlin, kt, java    Java/Kotlin and Maven
-    all                 Install all components (default if no components specified)
+    jdk, java           Java and Maven
+    redis               Redis server
 
 Options:
     -h, --help          Show this help message
     --china-mirror      Use China mirrors for faster downloads
 
 Examples:
-    $0                      # Install all components
-    $0 sys                  # Install only system dependencies
-    $0 python               # Install system deps + Python
-    $0 python rust          # Install system deps + Python + Rust
-    $0 node go --china-mirror   # Install Node.js and Go with China mirrors
-    $0 all --china-mirror   # Install everything with China mirrors
+    $0 sys                      # Install only system dependencies
+    $0 python                   # Install only Python
+    $0 python rust              # Install Python and Rust
+    $0 node go redis            # Install Node.js, Go, and Redis
+    $0 sys python --china-mirror   # Install with China mirrors
 
 Description:
     This script installs development dependencies for the project.
-    System dependencies are always installed first as they are required.
+    You must specify at least one component to install.
 
-    If no components are specified, all components will be installed.
+    Each component is installed independently - no automatic dependencies.
 EOF
     exit 0
 }
 
 # Parse command line arguments
-INSTALL_SYSTEM=false
-INSTALL_NODEJS=false
-INSTALL_RUST=false
-INSTALL_GO=false
-INSTALL_PYTHON=false
-INSTALL_KOTLIN=false
+declare -a COMPONENTS_TO_INSTALL
 CHINA_MIRROR=false
-INSTALL_ALL=true
 
-# Check if any components are specified
-has_components=false
+if [[ $# -eq 0 ]]; then
+    log_error "No components specified"
+    echo ""
+    usage
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -63,43 +59,31 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         sys|system)
-            INSTALL_SYSTEM=true
-            INSTALL_ALL=false
-            has_components=true
+            COMPONENTS_TO_INSTALL+=("system")
             shift
             ;;
         node|nodejs)
-            INSTALL_NODEJS=true
-            INSTALL_ALL=false
-            has_components=true
+            COMPONENTS_TO_INSTALL+=("nodejs")
             shift
             ;;
         rust)
-            INSTALL_RUST=true
-            INSTALL_ALL=false
-            has_components=true
+            COMPONENTS_TO_INSTALL+=("rust")
             shift
             ;;
         go|golang)
-            INSTALL_GO=true
-            INSTALL_ALL=false
-            has_components=true
+            COMPONENTS_TO_INSTALL+=("go")
             shift
             ;;
         python|py)
-            INSTALL_PYTHON=true
-            INSTALL_ALL=false
-            has_components=true
+            COMPONENTS_TO_INSTALL+=("python")
             shift
             ;;
-        kotlin|kt|java)
-            INSTALL_KOTLIN=true
-            INSTALL_ALL=false
-            has_components=true
+        jdk|java)
+            COMPONENTS_TO_INSTALL+=("jdk")
             shift
             ;;
-        all)
-            INSTALL_ALL=true
+        redis)
+            COMPONENTS_TO_INSTALL+=("redis")
             shift
             ;;
         *)
@@ -111,26 +95,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# If installing all or any language component, include system deps
-if [[ "$INSTALL_ALL" == true ]] || [[ "$has_components" == true ]]; then
-    INSTALL_SYSTEM=true
+# Validate at least one component
+if [[ ${#COMPONENTS_TO_INSTALL[@]} -eq 0 ]]; then
+    log_error "No components specified"
+    echo ""
+    usage
 fi
 
-# If installing all, enable everything
-if [[ "$INSTALL_ALL" == true ]]; then
-    INSTALL_NODEJS=true
-    INSTALL_RUST=true
-    INSTALL_GO=true
-    INSTALL_PYTHON=true
-    INSTALL_KOTLIN=true
-fi
-
-# Install system dependencies (nginx, sqlite3, build tools, etc.)
+# Install system dependencies
 install_system_deps() {
-    if [[ "$INSTALL_SYSTEM" == false ]]; then
-        return 0
-    fi
-
     log_info "Installing system dependencies..."
 
     sudo apt-get update -qq
@@ -140,6 +113,8 @@ install_system_deps() {
         git \
         build-essential \
         pkg-config \
+        gpg \
+        openssl \
         libssl-dev \
         ca-certificates \
         gnupg \
@@ -150,18 +125,14 @@ install_system_deps() {
         libsqlite3-dev \
         > /dev/null
 
-    # Enable Nginx but don't start it yet
     sudo systemctl enable nginx
+    sudo systemctl start nginx
 
     log_success "System dependencies installed"
 }
 
 # Install Node.js
 install_nodejs() {
-    if [[ "$INSTALL_NODEJS" == false ]]; then
-        return 0
-    fi
-
     # Check if already installed with correct version
     if command -v node &> /dev/null; then
         local installed_version=$(node --version)
@@ -184,7 +155,7 @@ install_nodejs() {
     wget -q --show-progress "$download_url" -O /tmp/node.tar.xz
     sudo tar -xJf /tmp/node.tar.xz -C /usr/local/
     sudo rm -f /usr/local/node
-    sudo ln -sf "/usr/local/node-${NODE_VERSION}-linux-x64 /usr/local/node"
+    sudo ln -sf "/usr/local/node-${NODE_VERSION}-linux-x64" /usr/local/node
 
     # Create symlinks
     sudo ln -sf /usr/local/node/bin/node /usr/bin/node
@@ -205,10 +176,6 @@ install_nodejs() {
 
 # Install Rust
 install_rust() {
-    if [[ "$INSTALL_RUST" == false ]]; then
-        return 0
-    fi
-
     # Check if already installed
     if [[ -f "$HOME/.cargo/bin/rustc" ]]; then
         local rust_version=$("$HOME/.cargo/bin/rustc" --version | awk '{print $2}')
@@ -258,10 +225,6 @@ EOF
 
 # Install Go
 install_go() {
-    if [[ "$INSTALL_GO" == false ]]; then
-        return 0
-    fi
-
     # Check if already installed with correct version
     if [[ -f /usr/local/go/bin/go ]]; then
         local installed_version=$(/usr/local/go/bin/go version | awk '{print $3}' | sed 's/go//')
@@ -285,13 +248,9 @@ install_go() {
     sudo rm -rf /usr/local/go
     sudo tar -C /usr/local -xzf /tmp/go.tar.gz
 
-    # Add to PATH (for current session)
-    export PATH=$PATH:/usr/local/go/bin
-
-    # Add to profile if not already there
-    if ! grep -q "/usr/local/go/bin" /etc/profile; then
-        echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee -a /etc/profile > /dev/null
-    fi
+    # Create symlinks
+    sudo ln -sf /usr/local/go/bin/go /usr/bin/go
+    sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 
     # Configure GOPROXY for China
     if [[ "$CHINA_MIRROR" == true ]]; then
@@ -308,10 +267,6 @@ install_go() {
 
 # Install Python
 install_python() {
-    if [[ "$INSTALL_PYTHON" == false ]]; then
-        return 0
-    fi
-
     log_info "Installing Python3 and pip..."
 
     sudo apt-get install -y -qq \
@@ -333,18 +288,11 @@ EOF
         log_info "Configured pip to use China mirror"
     fi
 
-    # Upgrade pip
-    python3 -m pip install --upgrade pip -q
-
     log_success "Python $(python3 --version | awk '{print $2}') installed"
 }
 
-# Install Java and Kotlin
-install_kotlin() {
-    if [[ "$INSTALL_KOTLIN" == false ]]; then
-        return 0
-    fi
-
+# Install Java and Maven
+install_jdk() {
     log_info "Installing Java and Maven..."
 
     # Install OpenJDK and Maven
@@ -377,74 +325,116 @@ EOF
     log_success "Java $(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}') installed"
 }
 
-# Verify installations
+# Install Redis
+install_redis() {
+    # Check if already installed
+    if command -v redis-server &> /dev/null; then
+        local redis_version=$(redis-server --version | awk '{print $3}' | cut -d'=' -f2)
+        log_info "Redis $redis_version already installed"
+        return 0
+    fi
+
+    log_info "Installing Redis..."
+
+    # Add Redis repository
+    curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+    sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | \
+        sudo tee /etc/apt/sources.list.d/redis.list > /dev/null
+
+    # Install Redis
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq redis > /dev/null
+
+    # Enable and start Redis
+    sudo systemctl enable redis-server
+    sudo systemctl start redis-server
+
+    log_success "Redis $(redis-server --version | awk '{print $3}' | cut -d'=' -f2) installed"
+}
+
+# Verify a single component installation
+verify_component() {
+    local component="$1"
+
+    case "$component" in
+        system)
+            local verified=true
+            for cmd in curl wget git nginx sqlite3; do
+                if ! command -v "$cmd" &> /dev/null; then
+                    echo "  ✗ $cmd (missing)"
+                    verified=false
+                fi
+            done
+            if [[ "$verified" == true ]]; then
+                echo "  ✓ System dependencies"
+            fi
+            ;;
+        nodejs)
+            if command -v node &> /dev/null; then
+                echo "  ✓ node ($(node --version))"
+            else
+                echo "  ✗ node (missing)"
+                return 1
+            fi
+            ;;
+        rust)
+            if [[ -f "$HOME/.cargo/bin/rustc" ]]; then
+                echo "  ✓ rust ($("$HOME/.cargo/bin/rustc" --version | awk '{print $2}'))"
+            else
+                echo "  ✗ rust (missing)"
+                return 1
+            fi
+            ;;
+        go)
+            if command -v go &> /dev/null; then
+                echo "  ✓ go ($(go version | awk '{print $3}'))"
+            else
+                echo "  ✗ go (missing)"
+                return 1
+            fi
+            ;;
+        python)
+            if command -v python3 &> /dev/null; then
+                echo "  ✓ python3 ($(python3 --version | awk '{print $2}'))"
+            else
+                echo "  ✗ python3 (missing)"
+                return 1
+            fi
+            ;;
+        jdk)
+            if command -v java &> /dev/null; then
+                echo "  ✓ java ($(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}'))"
+            else
+                echo "  ✗ java (missing)"
+                return 1
+            fi
+            ;;
+        redis)
+            if command -v redis-server &> /dev/null; then
+                echo "  ✓ redis ($(redis-server --version | awk '{print $3}' | cut -d'=' -f2))"
+            else
+                echo "  ✗ redis (missing)"
+                return 1
+            fi
+            ;;
+    esac
+
+    return 0
+}
+
+# Verify all installed components
 verify_installations() {
     log_info "Verifying installations..."
     echo ""
 
     local all_ok=true
 
-    # Check system tools
-    if [[ "$INSTALL_SYSTEM" == true ]]; then
-        for cmd in curl wget git nginx sqlite3; do
-            if command -v "$cmd" &> /dev/null; then
-                echo "  ✓ $cmd"
-            else
-                echo "  ✗ $cmd (missing)"
-                all_ok=false
-            fi
-        done
-    fi
-
-    # Check Node.js
-    if [[ "$INSTALL_NODEJS" == true ]]; then
-        if command -v node &> /dev/null; then
-            echo "  ✓ node ($(node --version))"
-        else
-            echo "  ✗ node (missing)"
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        if ! verify_component "$component"; then
             all_ok=false
         fi
-    fi
-
-    # Check Rust
-    if [[ "$INSTALL_RUST" == true ]]; then
-        if [[ -f "$HOME/.cargo/bin/rustc" ]]; then
-            echo "  ✓ rust ($("$HOME/.cargo/bin/rustc" --version | awk '{print $2}'))"
-        else
-            echo "  ✗ rust (missing)"
-            all_ok=false
-        fi
-    fi
-
-    # Check Go
-    if [[ "$INSTALL_GO" == true ]]; then
-        if command -v go &> /dev/null; then
-            echo "  ✓ go ($(go version | awk '{print $3}'))"
-        else
-            echo "  ✗ go (missing)"
-            all_ok=false
-        fi
-    fi
-
-    # Check Python
-    if [[ "$INSTALL_PYTHON" == true ]]; then
-        if command -v python3 &> /dev/null; then
-            echo "  ✓ python3 ($(python3 --version | awk '{print $2}'))"
-        else
-            echo "  ✗ python3 (missing)"
-            all_ok=false
-        fi
-    fi
-
-    # Check Java
-    if [[ "$INSTALL_KOTLIN" == true ]]; then
-        if command -v java &> /dev/null; then
-            echo "  ✓ java ($(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}'))"
-        else
-            echo "  ✗ java (missing)"
-            all_ok=false
-        fi
-    fi
+    done
 
     echo ""
 
@@ -460,9 +450,12 @@ verify_installations() {
 print_notes() {
     local needs_notes=false
 
-    if [[ "$INSTALL_RUST" == true ]] || [[ "$INSTALL_GO" == true ]]; then
-        needs_notes=true
-    fi
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        if [[ "$component" == "rust" ]] || [[ "$component" == "go" ]]; then
+            needs_notes=true
+            break
+        fi
+    done
 
     if [[ "$needs_notes" == false ]]; then
         return 0
@@ -472,13 +465,16 @@ print_notes() {
     log_info "Post-installation notes:"
     echo ""
 
-    if [[ "$INSTALL_RUST" == true ]]; then
-        echo "  Rust: Run 'source \$HOME/.cargo/env' to use Rust in current shell"
-    fi
-
-    if [[ "$INSTALL_GO" == true ]]; then
-        echo "  Go: Run 'source /etc/profile' or logout/login to update PATH"
-    fi
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        case "$component" in
+            rust)
+                echo "  Rust: Run 'source \$HOME/.cargo/env' to use Rust in current shell"
+                ;;
+            go)
+                echo "  Go: Run 'source /etc/profile' or logout/login to update PATH"
+                ;;
+        esac
+    done
 
     echo ""
     log_info "You may need to restart your shell or logout/login for all changes to take effect."
@@ -487,20 +483,19 @@ print_notes() {
 # Print installation summary
 print_summary() {
     echo ""
-    log_info "Installation summary:"
+    log_info "Components to install:"
     echo ""
 
-    local installed=()
-
-    [[ "$INSTALL_SYSTEM" == true ]] && installed+=("System dependencies")
-    [[ "$INSTALL_NODEJS" == true ]] && installed+=("Node.js")
-    [[ "$INSTALL_RUST" == true ]] && installed+=("Rust")
-    [[ "$INSTALL_GO" == true ]] && installed+=("Go")
-    [[ "$INSTALL_PYTHON" == true ]] && installed+=("Python")
-    [[ "$INSTALL_KOTLIN" == true ]] && installed+=("Java/Kotlin")
-
-    for component in "${installed[@]}"; do
-        echo "  • $component"
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        case "$component" in
+            system) echo "  • System dependencies" ;;
+            nodejs) echo "  • Node.js" ;;
+            rust) echo "  • Rust" ;;
+            go) echo "  • Go" ;;
+            python) echo "  • Python" ;;
+            jdk) echo "  • Java/Maven" ;;
+            redis) echo "  • Redis" ;;
+        esac
     done
 }
 
@@ -512,13 +507,18 @@ main() {
     print_summary
     echo ""
 
-    # Install components
-    install_system_deps
-    install_nodejs
-    install_rust
-    install_go
-    install_python
-    install_kotlin
+    # Install each component
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        case "$component" in
+            system) install_system_deps ;;
+            nodejs) install_nodejs ;;
+            rust) install_rust ;;
+            go) install_go ;;
+            python) install_python ;;
+            jdk) install_jdk ;;
+            redis) install_redis ;;
+        esac
+    done
 
     # Verify
     verify_installations

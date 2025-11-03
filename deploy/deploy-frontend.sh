@@ -3,9 +3,9 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FRONTEND_SRC="${PROJECT_ROOT}/frontend"
-
 source "${SCRIPT_DIR}/config.env"
+
+FRONTEND_SRC="${PROJECT_ROOT}/frontend"
 
 # Display usage information
 usage() {

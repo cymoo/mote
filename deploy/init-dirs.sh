@@ -17,7 +17,6 @@ log_info "创建子目录..."
 sudo mkdir -p "$DEPLOY_ROOT"/{api,web,data,uploads,config/{nginx,systemd},backups}
 
 # 生成随机密码并保存
-# PASSWORD_FILE="$DEPLOY_ROOT/config/.password"
 if [ ! -f "$SECRET_FILE" ]; then
     log_info "生成随机密码..."
     RANDOM_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-24)

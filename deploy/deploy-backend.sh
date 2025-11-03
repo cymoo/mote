@@ -179,7 +179,7 @@ deploy_files() {
             sudo -u "$APP_USER" HOME="$DEST_DIR" "$DEST_DIR/.venv/bin/pip" install --upgrade pip
             sudo -u "$APP_USER" HOME="$DEST_DIR" "$DEST_DIR/.venv/bin/pip" install -r "$DEST_DIR/requirements.txt"
             sudo -u "$APP_USER" HOME="$DEST_DIR" "$DEST_DIR/.venv/bin/pip" install gunicorn
-            log_success "Python environment configured"
+            log_success "Python dependencies installed"
             ;;
 
         kotlin|kt)
@@ -286,13 +286,10 @@ main() {
     update_symlink
 
     # Start service
-    log_info "Configuring systemd service..."
     bash "${SCRIPT_DIR}/setup-systemd.sh" "$BACKEND_LANG"
 
     # Success summary
     log_success "Successfully deployed $BACKEND_LANG backend!"
-    log_info "Deployment directory: $DEST_DIR"
-    log_info "Service name: ${APP_NAME}"
 }
 
 main "$@"
