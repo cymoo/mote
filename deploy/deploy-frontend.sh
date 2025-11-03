@@ -3,6 +3,8 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRONTEND_SRC="${PROJECT_ROOT}/frontend"
+
 source "${SCRIPT_DIR}/config.env"
 
 # Display usage information
@@ -24,7 +26,7 @@ Examples:
 Description:
     This script builds and deploys the frontend application.
     It will:
-    - Install Node.js dependencies (via yarn)
+    - Install dependencies (via yarn)
     - Build the frontend using Vite
     - Deploy built files to the web directory
     - Set proper permissions
@@ -65,9 +67,6 @@ done
 
 check_not_root
 
-FRONTEND_SRC="${PROJECT_ROOT}/frontend"
-FRONTEND_DEST="${DEPLOY_ROOT}/web"
-
 # Validate source directory
 validate_source() {
     if [[ ! -d "$FRONTEND_SRC" ]]; then
@@ -86,6 +85,7 @@ validate_source() {
 # Check if required commands are available
 check_dependencies() {
     if ! check_command npx; then
+        # TODO: install npx if not present
         log_error "npx is not installed. Please install Node.js first."
         exit 1
     fi
@@ -154,20 +154,20 @@ build_frontend() {
 
 # Deploy built files
 deploy_files() {
-    log_info "Deploying build files to: $FRONTEND_DEST"
+    log_info "Deploying build files to: $WEB_DIR"
 
     # Create destination directory
-    sudo mkdir -p "$FRONTEND_DEST/build"
+    sudo mkdir -p "$WEB_DIR/build"
 
     # Backup existing build if it exists
-    if [[ -d "$FRONTEND_DEST/build" ]] && [[ -n "$(ls -A "$FRONTEND_DEST/build")" ]]; then
+    if [[ -d "$WEB_DIR/build" ]] && [[ -n "$(ls -A "$WEB_DIR/build")" ]]; then
         log_info "Backing up existing build..."
-        sudo mv "$FRONTEND_DEST/build" "$FRONTEND_DEST/build.backup.$(date +%Y%m%d_%H%M%S)"
-        sudo mkdir -p "$FRONTEND_DEST/build"
+        sudo mv "$WEB_DIR/build" "$WEB_DIR/build.backup.$(date +%Y%m%d_%H%M%S)"
+        sudo mkdir -p "$WEB_DIR/build"
     fi
 
     # Copy new build files
-    sudo cp -r dist/* "$FRONTEND_DEST/build/"
+    sudo cp -r dist/* "$WEB_DIR/build/"
 
     log_success "Files deployed successfully"
 }
@@ -177,19 +177,19 @@ set_permissions() {
     log_info "Setting permissions..."
 
     ensure_user_exists "$APP_USER"
-    sudo chown -R "$APP_USER:$APP_USER" "$FRONTEND_DEST"
-    sudo chmod -R 755 "$FRONTEND_DEST"
+    sudo chown -R "$APP_USER:$APP_USER" "$WEB_DIR"
+    sudo chmod -R 755 "$WEB_DIR"
 
     log_success "Permissions configured"
 }
 
 # Clean up old backups (keep last 3)
 cleanup_backups() {
-    local backup_count=$(sudo find "$FRONTEND_DEST" -maxdepth 1 -name "build.backup.*" -type d | wc -l)
+    local backup_count=$(sudo find "$WEB_DIR" -maxdepth 1 -name "build.backup.*" -type d | wc -l)
 
     if [[ $backup_count -gt 3 ]]; then
         log_info "Cleaning up old backups (keeping last 3)..."
-        sudo find "$FRONTEND_DEST" -maxdepth 1 -name "build.backup.*" -type d |
+        sudo find "$WEB_DIR" -maxdepth 1 -name "build.backup.*" -type d |
             sort | head -n -3 | xargs -r sudo rm -rf
         log_success "Old backups cleaned up"
     fi
@@ -246,12 +246,12 @@ main() {
 
     # Success summary
     log_success "Frontend deployed successfully!"
-    log_info "Frontend files location: $FRONTEND_DEST/build"
+    log_info "Frontend files location: $WEB_DIR/build"
 
     # Show deployment info
-    if [[ -d "$FRONTEND_DEST/build" ]]; then
-        local file_count=$(find "$FRONTEND_DEST/build" -type f | wc -l)
-        local dir_size=$(du -sh "$FRONTEND_DEST/build" | cut -f1)
+    if [[ -d "$WEB_DIR/build" ]]; then
+        local file_count=$(find "$WEB_DIR/build" -type f | wc -l)
+        local dir_size=$(du -sh "$WEB_DIR/build" | cut -f1)
         log_info "Deployed files: $file_count files ($dir_size)"
     fi
 }

@@ -8,11 +8,11 @@ source "${SCRIPT_DIR}/config.env"
 # Display usage information
 usage() {
     cat <<EOF
-Usage: $0 <BACKEND_LANG>
+Usage: $0 <LANG>
 
 Arguments:
-    BACKEND_LANG    Backend language for service configuration (required)
-                    Supported values: rust|rs, go, python|py, kotlin|kt
+    LANG    Backend language for service configuration (required)
+            Supported values: rust|rs, go, python|py, kotlin|kt
 
 Examples:
     $0 rust
@@ -168,22 +168,32 @@ install_service() {
 }
 
 # Enable and start service
-start_service() {
-    log_info "Enabling and starting service..."
+# Reload service if running, otherwise start it
+reload_service() {
+    log_info "Checking service status..."
 
-    sudo systemctl enable "${APP_NAME}"
-    sudo systemctl start "${APP_NAME}"
+    # Check if service is already running
+    if sudo systemctl is-active --quiet "${APP_NAME}"; then
+        log_info "Service is already running, reloading configuration..."
+        sudo systemctl reload "${APP_NAME}"
+        action="reloaded"
+    else
+        log_info "Service is not running, enabling and starting..."
+        sudo systemctl enable "${APP_NAME}"
+        sudo systemctl start "${APP_NAME}"
+        action="started"
+    fi
 
-    # Wait for service to start
+    # Wait for service to be ready
     sleep 2
 
     # Verify service is running
     if sudo systemctl is-active --quiet "${APP_NAME}"; then
-        log_success "Service started successfully"
+        log_success "Service ${action} successfully"
         log_info "Service status:"
         sudo systemctl status "${APP_NAME}" --no-pager | head -n 10
     else
-        log_error "Failed to start service"
+        log_error "Failed to ${action} service"
         log_info "Service logs:"
         sudo journalctl -u "${APP_NAME}" -n 20 --no-pager
         exit 1
@@ -201,18 +211,10 @@ main() {
     # Generate and install
     generate_service_file
     install_service
-    start_service
+    reload_service
 
     # Success summary
     log_success "Systemd service configured successfully!"
-    log_info "Service name: ${APP_NAME}"
-    log_info "Backend: ${DESCRIPTION}"
-    log_info "Control commands:"
-    log_info "  Start:   sudo systemctl start ${APP_NAME}"
-    log_info "  Stop:    sudo systemctl stop ${APP_NAME}"
-    log_info "  Restart: sudo systemctl restart ${APP_NAME}"
-    log_info "  Status:  sudo systemctl status ${APP_NAME}"
-    log_info "  Logs:    sudo journalctl -u ${APP_NAME} -f"
 }
 
 main "$@"

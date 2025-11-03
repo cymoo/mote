@@ -199,7 +199,7 @@ create_backup() {
     local has_data=false
 
     # Check if there's anything to backup
-    if sudo test -f "$DB_PATH"; then
+    if sudo test -f "$DB_FILE"; then
         has_data=true
     fi
 
@@ -219,8 +219,8 @@ create_backup() {
     sudo mkdir -p "$backup_path"
 
     # Backup database
-    if sudo test -f "$DB_PATH"; then
-        sudo cp "$DB_PATH" "$backup_path/"
+    if sudo test -f "$DB_FILE"; then
+        sudo cp "$DB_FILE" "$backup_path/"
         log_info "Database backed up"
     fi
 

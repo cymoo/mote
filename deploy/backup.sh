@@ -15,12 +15,12 @@ log_info "开始备份..."
 sudo mkdir -p "$BACKUP_PATH"
 
 # 备份数据库
-if [ -f "$DB_PATH" ]; then
+if [ -f "$DB_FILE" ]; then
     log_info "备份数据库..."
-    sudo sqlite3 "$DB_PATH" ".backup '$BACKUP_PATH/app.db'"
+    sudo sqlite3 "$DB_FILE" ".backup '$BACKUP_PATH/app.db'"
     log_success "数据库已备份"
 else
-    log_warn "数据库文件不存在: $DB_PATH"
+    log_warn "数据库文件不存在: $DB_FILE"
 fi
 
 # 备份上传文件

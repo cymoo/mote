@@ -196,12 +196,12 @@ check_database() {
     log_info "Checking database..."
 
     # Use sudo to check if file exists (works regardless of permissions)
-    if sudo test -f "$DB_PATH"; then
-        log_success "Database exists: $DB_PATH"
+    if sudo test -f "$DB_FILE"; then
+        log_success "Database exists: $DB_FILE"
         record_check "pass" "Database file"
 
         # Check database permissions as app user
-        if sudo -u "$APP_USER" test -r "$DB_PATH"; then
+        if sudo -u "$APP_USER" test -r "$DB_FILE"; then
             log_success "Database is readable by $APP_USER"
             record_check "pass" "Database permissions"
         else
@@ -211,11 +211,11 @@ check_database() {
 
         # Check database size if verbose
         if [[ "$VERBOSE" == true ]]; then
-            local db_size=$(sudo du -h "$DB_PATH" | cut -f1)
+            local db_size=$(sudo du -h "$DB_FILE" | cut -f1)
             log_info "Database size: $db_size"
         fi
     else
-        log_warn "Database file not found: $DB_PATH (normal for first deployment)"
+        log_warn "Database file not found: $DB_FILE (normal for first deployment)"
         record_check "warn" "Database file (not created yet)"
     fi
 }

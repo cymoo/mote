@@ -8,10 +8,10 @@ source "${SCRIPT_DIR}/config.env"
 # Display usage information
 usage() {
     cat <<EOF
-Usage: $0 <BACKEND_LANG> [OPTIONS]
+Usage: $0 <LANG> [OPTIONS]
 
 Arguments:
-    BACKEND_LANG    Backend language to switch to (required)
+    LANG            Backend language to switch to (required)
                     Supported values: rust, go, python, kotlin
 
 Options:
@@ -69,8 +69,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-check_root
-
 # Validate backend language
 validate_backend() {
     if [[ -z "$BACKEND_LANG" ]]; then
@@ -96,7 +94,7 @@ check_backend_exists() {
     if [[ ! -d "$backend_dir" ]]; then
         log_error "Backend not found: $backend_dir"
         log_error "Please deploy the backend first:"
-        log_error "  make deploy-backend LANG=$BACKEND_LANG"
+        log_error "  make deploy-backend $BACKEND_LANG"
         exit 1
     fi
 
@@ -161,13 +159,8 @@ update_symlink() {
 
     log_info "Updating backend symlink..."
 
-    # Remove existing symlink
-    if [[ -L "$DEPLOY_ROOT/api/current" ]]; then
-        sudo rm -f "$DEPLOY_ROOT/api/current"
-    fi
-
     # Create new symlink
-    sudo ln -s "$backend_dir" "$DEPLOY_ROOT/api/current"
+    sudo ln -sf "$backend_dir" "$DEPLOY_ROOT/api/current"
 
     log_success "Symlink updated: current -> $BACKEND_LANG"
 }

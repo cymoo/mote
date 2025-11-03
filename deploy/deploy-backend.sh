@@ -8,10 +8,10 @@ source "${SCRIPT_DIR}/config.env"
 # Display usage information
 usage() {
     cat <<EOF
-Usage: $0 <BACKEND_LANG>
+Usage: $0 <LANG>
 
 Arguments:
-    BACKEND_LANG    Backend language to deploy (required)
+    LANG    Backend language to deploy (required)
                     Supported values: rust|rs, go, python|py, kotlin|kt
 
 Examples:
@@ -88,6 +88,7 @@ build_backend() {
         rust|rs)
             # Rust build
             if [[ ! -f "$HOME/.cargo/env" ]]; then
+                # TODO: install if not present
                 log_error "Rust is not installed. Please run 'make install' first."
                 exit 1
             fi
@@ -103,8 +104,8 @@ build_backend() {
                 exit 1
             fi
             export PATH=$PATH:/usr/local/go/bin
-            go build -o mote ./cmd/server
-            BINARY_PATH="mote"
+            go build -o bin/mote ./cmd/server
+            BINARY_PATH="bin/mote"
             ;;
 
         python|py)
@@ -187,11 +188,6 @@ deploy_files() {
             JAR_FILE=$(ls target/mote-*.jar | head -n 1)
             sudo cp "$JAR_FILE" "$DEST_DIR/mote.jar"
 
-            # Copy resource files if exist
-            if [[ -d "src/main/resources" ]]; then
-                log_info "Copying resource files..."
-                sudo cp -r src/main/resources "$DEST_DIR/"
-            fi
             log_success "Kotlin application deployed"
             ;;
     esac
@@ -199,10 +195,10 @@ deploy_files() {
 
 # Set permissions for static files
 set_static_permissions() {
-    if [[ -d "$FRONTEND_DEST/static" ]]; then
+    if [[ -d "$WEB_DIR/static" ]]; then
         log_info "Setting permissions for static files..."
-        sudo chown -R "$APP_USER:$APP_USER" "$FRONTEND_DEST/static"
-        sudo chmod -R 755 "$FRONTEND_DEST/static"
+        sudo chown -R "$APP_USER:$APP_USER" "$WEB_DIR/static"
+        sudo chmod -R 755 "$WEB_DIR/static"
     fi
 }
 
@@ -220,19 +216,19 @@ LOG_REQUESTS=false"
     case "$BACKEND_LANG" in
         rust|rs)
             language_env="RUST_LOG=info
-DATABASE_URL=sqlite://${DB_PATH}"
+DATABASE_URL=sqlite://${DB_FILE}"
             ;;
         go)
             language_env="APP_ENV=prod
-DATABASE_URL=${DB_PATH}"
+DATABASE_URL=${DB_FILE}"
             ;;
         python|py)
             language_env="FLASK_ENV=production
-DATABASE_URL=sqlite:///${DB_PATH}"
+DATABASE_URL=sqlite:///${DB_FILE}"
             ;;
         kotlin|kt)
             language_env="SPRING_PROFILES_ACTIVE=prod
-DATABASE_URL=sqlite:${DB_PATH}"
+DATABASE_URL=sqlite:${DB_FILE}"
             ;;
     esac
 
@@ -270,33 +266,12 @@ update_symlink() {
     log_success "Symlink updated"
 }
 
-# Configure and start systemd service
-setup_service() {
-    log_info "Configuring systemd service..."
-    bash "${SCRIPT_DIR}/setup-systemd.sh" "$BACKEND_LANG"
-
-    # Wait for service to start
-    log_info "Waiting for service to start..."
-    sleep 2
-
-    # Check service status
-    if sudo systemctl is-active --quiet ${APP_NAME}; then
-        log_success "Service started successfully!"
-        log_info "Service status:"
-        sudo systemctl status ${APP_NAME} --no-pager | head -n 10
-    else
-        log_error "Failed to start service!"
-        log_info "Service logs:"
-        sudo systemctl status ${APP_NAME} --no-pager
-        exit 1
-    fi
-}
-
 # Main deployment process
 main() {
     log_info "Starting $BACKEND_LANG backend deployment..."
 
     # Setup and validate
+    # TODO: no need to setup directories every time
     setup_directories
 
     # Build
@@ -311,7 +286,8 @@ main() {
     update_symlink
 
     # Start service
-    setup_service
+    log_info "Configuring systemd service..."
+    bash "${SCRIPT_DIR}/setup-systemd.sh" "$BACKEND_LANG"
 
     # Success summary
     log_success "Successfully deployed $BACKEND_LANG backend!"
