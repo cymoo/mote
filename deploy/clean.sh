@@ -220,7 +220,7 @@ create_backup() {
 
     # Backup database
     if sudo test -f "$DB_FILE"; then
-        sudo cp "$DB_FILE" "$backup_path/"
+        sudo cp "$DB_FILE"* "$backup_path/"
         log_info "Database backed up"
     fi
 
