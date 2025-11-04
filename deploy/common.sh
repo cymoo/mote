@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Common deployment configuration file
-# This file is sourced by all deployment scripts
+# common.sh - Common deployment configuration file, which is sourced by all deployment scripts.
 
 export PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
