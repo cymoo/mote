@@ -85,9 +85,8 @@ validate_source() {
 # Check if required commands are available
 check_dependencies() {
     if ! check_command npx; then
-        # TODO: install npx if not present
-        log_error "npx is not installed. Please install Node.js first."
-        exit 1
+        log_info "npx not found. Attempting to install Node.js..."
+        bash "${SCRIPT_DIR}/install-deps.sh" nodejs
     fi
 }
 

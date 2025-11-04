@@ -87,10 +87,9 @@ build_backend() {
     case "$BACKEND_LANG" in
         rust|rs)
             # Rust build
-            if [[ ! -f "$HOME/.cargo/env" ]]; then
-                # TODO: install if not present
-                log_error "Rust is not installed. Please run 'make install' first."
-                exit 1
+            if ! check_command cargo; then
+                log_info "Rust not found. Attempting to install Rust..."
+                bash "${SCRIPT_DIR}/install-deps.sh" rust
             fi
             source "$HOME/.cargo/env"
             cargo build --release
@@ -100,8 +99,8 @@ build_backend() {
         go)
             # Go build
             if ! check_command go; then
-                log_error "Go is not installed. Please run 'make install' first."
-                exit 1
+                log_info "Go not found. Attempting to install Go..."
+                bash "${SCRIPT_DIR}/install-deps.sh" go
             fi
             export PATH=$PATH:/usr/local/go/bin
             go build -o bin/mote ./cmd/server
@@ -111,8 +110,8 @@ build_backend() {
         python|py)
             # Python - verify Python is available
             if ! check_command python3; then
-                log_error "Python3 is not installed. Please run 'make install' first."
-                exit 1
+                log_info "Python3 not found. Attempting to install Python3..."
+                bash "${SCRIPT_DIR}/install-deps.sh" python
             fi
             log_info "Preparing Python environment..."
             BINARY_PATH=""
@@ -121,8 +120,8 @@ build_backend() {
         kotlin|kt)
             # Kotlin build
             if ! check_command mvn; then
-                log_error "Maven is not installed. Please run 'make install' first."
-                exit 1
+                log_info "Maven not found. Attempting to install Maven..."
+                bash "${SCRIPT_DIR}/install-deps.sh" java
             fi
             mvn clean package -DskipTests
             BINARY_PATH="target/mote-*.jar"
@@ -271,7 +270,6 @@ main() {
     log_info "Starting $BACKEND_LANG backend deployment..."
 
     # Setup and validate
-    # TODO: no need to setup directories every time
     setup_directories
 
     # Build

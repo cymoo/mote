@@ -21,7 +21,6 @@ Components (at least one required):
 
 Options:
     -h, --help          Show this help message
-    --china-mirror      Use China mirrors for faster downloads
 
 Examples:
     $0 sys                      # Install only system dependencies
@@ -41,7 +40,6 @@ EOF
 
 # Parse command line arguments
 declare -a COMPONENTS_TO_INSTALL
-CHINA_MIRROR=false
 
 if [[ $# -eq 0 ]]; then
     log_error "No components specified"
@@ -53,10 +51,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)
             usage
-            ;;
-        --china-mirror)
-            CHINA_MIRROR=true
-            shift
             ;;
         sys|system)
             COMPONENTS_TO_INSTALL+=("system")

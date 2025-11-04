@@ -12,38 +12,38 @@ Usage: $0 [OPTIONS]
 
 Options:
     -h, --help              Show this help message
-    --all                   Complete cleanup including data and uploads
-    --keep-backups          Keep existing backups during cleanup
-    --no-backup             Skip backup creation when using --all
+    --data                  Also remove db file and uploads
+    --backups               Also remove backup files
     --force                 Skip confirmation prompts
 
 Examples:
-    $0                      # Clean deployment files, keep data
-    $0 --all                # Complete cleanup with backup
-    $0 --all --no-backup    # Complete cleanup without backup
-    $0 --all --force        # Complete cleanup without prompts
+    $0                      # Clean deployment files only
+    $0 --data               # Clean deployment files and data
+    $0 --data --backups     # Clean everything including backups
+    $0 --data --force       # Clean data without confirmation
 
 Description:
-    This script cleans up deployment files and optionally data.
+    This script cleans up deployment files.
 
     Default behavior:
     - Stop and remove services
     - Remove Nginx configuration
     - Clean backend and frontend files
-    - Keep data, uploads, and passwords
+    - Keep data, uploads, passwords, and backups
 
-    With --all flag:
+    With --data flag:
     - Additionally removes data and uploads
-    - Creates backup by default
-    - Optionally removes entire deployment directory
+    - Still keeps backups unless --backups is specified
+
+    With --backups flag:
+    - Removes backup directory (requires confirmation unless --force)
 EOF
     exit 0
 }
 
 # Parse command line options
-CLEAN_ALL=false
-KEEP_BACKUPS=false
-NO_BACKUP=false
+CLEAN_DATA=false
+CLEAN_BACKUPS=false
 FORCE=false
 
 while [[ $# -gt 0 ]]; do
@@ -51,19 +51,15 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             usage
             ;;
-        --all)
-            CLEAN_ALL=true
+        --data)
+            CLEAN_DATA=true
             shift
             ;;
-        --keep-backups)
-            KEEP_BACKUPS=true
+        --backups)
+            CLEAN_BACKUPS=true
             shift
             ;;
-        --no-backup)
-            NO_BACKUP=true
-            shift
-            ;;
-        --force)
+        --force|-f)
             FORCE=true
             shift
             ;;
@@ -150,7 +146,7 @@ clean_frontend() {
     log_info "Cleaning frontend files..."
 
     local cleaned=0
-    local dirs=("$DEPLOY_ROOT/web/build" "$DEPLOY_ROOT/web/static")
+    local dirs=("${WEB_DIR}/build" "${WEB_DIR}/static")
 
     for dir in "${dirs[@]}"; do
         if [[ -d "$dir" ]]; then
@@ -171,7 +167,7 @@ clean_configs() {
     log_info "Cleaning configuration files..."
 
     local cleaned=0
-    local dirs=("$DEPLOY_ROOT/config/nginx" "$DEPLOY_ROOT/config/systemd")
+    local dirs=("${CONFIG_DIR}/nginx" "${CONFIG_DIR}/systemd")
 
     for dir in "${dirs[@]}"; do
         if [[ -d "$dir" ]]; then
@@ -187,25 +183,27 @@ clean_configs() {
     fi
 }
 
-# Create backup of data and uploads
-create_backup() {
-    if [[ "$NO_BACKUP" == true ]]; then
-        log_info "Skipping backup (--no-backup)"
-        return 0
-    fi
-
-    bash "${SCRIPT_DIR}/backup.sh"
-}
-
 # Clean data files
 clean_data() {
+    if [[ "$FORCE" == false ]]; then
+        echo ""
+        log_warn "This will permanently delete data, uploads, and passwords"
+        read -rp "Are you sure you want to delete all data? [y/N] " reply
+        echo
+
+        if [[ ! $reply =~ ^[Yy]$ ]]; then
+            log_info "Skipping data cleanup"
+            return 0
+        fi
+    fi
+
     log_info "Cleaning data files..."
 
     local cleaned=0
     local items=(
-        "$DEPLOY_ROOT/data"
-        "$DEPLOY_ROOT/uploads"
-        "$DEPLOY_ROOT/config/.password"
+        "${DATA_DIR}"
+        "${UPLOADS_DIR}"
+        "${SECRET_FILE}"
     )
 
     for item in "${items[@]}"; do
@@ -222,31 +220,41 @@ clean_data() {
     fi
 }
 
-# Remove entire deployment directory
-remove_deploy_root() {
+# Clean backup files
+clean_backups() {
+    if [[ ! -d "${BACKUP_DIR}" ]]; then
+        log_info "No backup directory found"
+        return 0
+    fi
+
+    if [[ "$FORCE" == false ]]; then
+        echo ""
+        log_warn "This will permanently delete all backups in: ${BACKUP_DIR}"
+        read -rp "Are you sure you want to delete all backups? [y/N] " reply
+        echo
+
+        if [[ ! $reply =~ ^[Yy]$ ]]; then
+            log_info "Keeping backups"
+            return 0
+        fi
+    fi
+
+    log_info "Removing backup directory..."
+    sudo rm -rf "${BACKUP_DIR}"
+    log_success "Backups removed"
+}
+
+# Remove empty deployment directory if everything is cleaned
+cleanup_empty_directory() {
     if [[ ! -d "$DEPLOY_ROOT" ]]; then
-        log_info "Deployment directory not found"
         return 0
     fi
 
-    if [[ "$FORCE" == true ]]; then
-        log_warn "Force mode: removing deployment directory..."
+    # Check if directory is empty or only contains empty subdirectories
+    if [[ -z "$(find "$DEPLOY_ROOT" -type f 2>/dev/null)" ]]; then
+        log_info "Removing empty deployment directory..."
         sudo rm -rf "$DEPLOY_ROOT"
         log_success "Deployment directory removed"
-        return 0
-    fi
-
-    echo ""
-    log_warn "This will permanently delete: $DEPLOY_ROOT"
-    read -rp "Are you sure you want to delete the entire deployment directory? [y/N] " reply
-    echo
-
-    if [[ $reply =~ ^[Yy]$ ]]; then
-        log_info "Removing deployment directory..."
-        sudo rm -rf "$DEPLOY_ROOT"
-        log_success "Deployment directory removed"
-    else
-        log_info "Keeping deployment directory"
     fi
 }
 
@@ -263,23 +271,23 @@ main() {
     clean_frontend
     clean_configs
 
-    # Full cleanup (with --all flag)
-    if [[ "$CLEAN_ALL" == true ]]; then
-        log_warn "Performing complete cleanup (including data and uploads)..."
-        echo ""
-
-        create_backup
+    # Optional data cleanup
+    if [[ "$CLEAN_DATA" == true ]]; then
         clean_data
-
-        # Optionally remove entire deployment directory
-        if [[ "$KEEP_BACKUPS" == false ]]; then
-            remove_deploy_root
-        else
-            log_info "Keeping deployment directory and backups (--keep-backups)"
-        fi
     else
-        log_info "Keeping data, uploads, and passwords"
-        log_info "For complete cleanup, use: $0 --all"
+        log_info "Keeping data, uploads, and passwords (use --data to remove)"
+    fi
+
+    # Optional backup cleanup
+    if [[ "$CLEAN_BACKUPS" == true ]]; then
+        clean_backups
+    else
+        log_info "Keeping backups (use --backups to remove)"
+    fi
+
+    # Remove deployment directory if empty
+    if [[ "$CLEAN_DATA" == true ]] && [[ "$CLEAN_BACKUPS" == true ]]; then
+        cleanup_empty_directory
     fi
 
     echo ""
