@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to switch backend language
+# switch-backend.sh - Script to switch backend language and reconfigure systemd service
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

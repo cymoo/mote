@@ -1,4 +1,5 @@
 #!/bin/bash
+# setup-https.sh - Script to setup HTTPS using Let's Encrypt SSL certificates
 set -eo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)

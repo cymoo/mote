@@ -1,5 +1,5 @@
 #!/bin/bash
-# Health check script for application deployment
+# check-health.sh - Health check script for application deployment
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

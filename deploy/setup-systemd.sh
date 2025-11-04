@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to configure systemd service
+# setup-systemd.sh - Script to setup systemd service for backend application
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

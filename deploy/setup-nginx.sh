@@ -1,7 +1,5 @@
 #!/bin/bash
-
-# Script to setup Nginx configuration
-
+# setup-nginx.sh - Script to setup and configure Nginx web server
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

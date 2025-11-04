@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to deploy backend application
+# deploy-backend.sh - Script to deploy backend application
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

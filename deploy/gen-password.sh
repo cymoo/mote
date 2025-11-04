@@ -1,4 +1,5 @@
 #!/bin/bash
+# gen-password.sh - Script to generate and manage application password
 set -eo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)

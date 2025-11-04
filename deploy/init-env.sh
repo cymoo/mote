@@ -1,4 +1,5 @@
 #!/bin/bash
+# init-env.sh - Script to initialize deployment environment (directories, users, permissions, dependencies)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

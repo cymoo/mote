@@ -1,5 +1,5 @@
 #!/bin/bash
-# Script to install system dependencies
+# install-deps.sh - Script to install dependencies (system, nodejs, rust, go, python, jdk, redis)
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
