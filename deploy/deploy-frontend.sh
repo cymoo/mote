@@ -3,7 +3,7 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.env"
+source "${SCRIPT_DIR}/common.sh"
 
 FRONTEND_SRC="${PROJECT_ROOT}/frontend"
 
@@ -156,15 +156,11 @@ build_frontend() {
 deploy_files() {
     log_info "Deploying build files to: $WEB_DIR"
 
+    # Remove existing build directory
+    sudo rm -rf "$WEB_DIR/build"
+
     # Create destination directory
     sudo mkdir -p "$WEB_DIR/build"
-
-    # Backup existing build if it exists
-    if [[ -d "$WEB_DIR/build" ]] && [[ -n "$(ls -A "$WEB_DIR/build")" ]]; then
-        log_info "Backing up existing build..."
-        sudo mv "$WEB_DIR/build" "$WEB_DIR/build.backup.$(date +%Y%m%d_%H%M%S)"
-        sudo mkdir -p "$WEB_DIR/build"
-    fi
 
     # Copy new build files
     sudo cp -r dist/* "$WEB_DIR/build/"
@@ -181,18 +177,6 @@ set_permissions() {
     sudo chmod -R 755 "$WEB_DIR"
 
     log_success "Permissions configured"
-}
-
-# Clean up old backups (keep last 3)
-cleanup_backups() {
-    local backup_count=$(sudo find "$WEB_DIR" -maxdepth 1 -name "build.backup.*" -type d | wc -l)
-
-    if [[ $backup_count -gt 3 ]]; then
-        log_info "Cleaning up old backups (keeping last 3)..."
-        sudo find "$WEB_DIR" -maxdepth 1 -name "build.backup.*" -type d |
-            sort | head -n -3 | xargs -r sudo rm -rf
-        log_success "Old backups cleaned up"
-    fi
 }
 
 # Reload Nginx configuration
@@ -239,7 +223,6 @@ main() {
     # Deploy
     deploy_files
     set_permissions
-    cleanup_backups
 
     # Finalize
     reload_nginx

@@ -3,7 +3,7 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.env"
+source "${SCRIPT_DIR}/common.sh"
 
 # Display usage information
 usage() {
@@ -284,6 +284,9 @@ main() {
     generate_env_config
     set_permissions
     update_symlink
+
+    # Generate password file
+    bash "${SCRIPT_DIR}/gen-password.sh"
 
     # Start service
     bash "${SCRIPT_DIR}/setup-systemd.sh" "$BACKEND_LANG"

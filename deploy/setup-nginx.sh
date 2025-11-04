@@ -5,7 +5,7 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.env"
+source "${SCRIPT_DIR}/common.sh"
 
 # Display usage information
 usage() {

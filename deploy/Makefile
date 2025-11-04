@@ -5,7 +5,7 @@
 .DEFAULT_GOAL := help
 
 # 包含共享配置
-include config.env
+include common.sh
 
 init: ## 初始化部署脚本(设置权限)
 	@bash setup.sh

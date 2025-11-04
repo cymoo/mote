@@ -1,9 +1,9 @@
 #!/bin/bash
 # Script to clean up deployment files
-set -eo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.env"
+source "${SCRIPT_DIR}/common.sh"
 
 # Display usage information
 usage() {
@@ -96,7 +96,7 @@ remove_systemd() {
         sudo systemctl daemon-reload
         log_success "Systemd service removed"
     else
-        log_info "Systemd service not found"
+        log_info "Systemd service file not found"
     fi
 }
 
@@ -111,7 +111,7 @@ remove_nginx() {
 
         # Reload Nginx if running
         if sudo systemctl is-active --quiet nginx; then
-            sudo systemctl reload nginx 2>/dev/null || true
+            sudo systemctl restart nginx 2>/dev/null || true
         fi
 
         log_success "Nginx configuration removed"
@@ -125,10 +125,12 @@ clean_backend() {
     log_info "Cleaning backend files..."
 
     local cleaned=0
-    for lang in rust go python kotlin; do
+    local langs=(rust go python kotlin)
+
+    for lang in "${langs[@]}"; do
         if [[ -d "$DEPLOY_ROOT/api/$lang" ]]; then
             sudo rm -rf "$DEPLOY_ROOT/api/$lang"
-            ((cleaned++))
+            cleaned=$((cleaned + 1))
         fi
     done
 
@@ -148,16 +150,14 @@ clean_frontend() {
     log_info "Cleaning frontend files..."
 
     local cleaned=0
+    local dirs=("$DEPLOY_ROOT/web/build" "$DEPLOY_ROOT/web/static")
 
-    if [[ -d "$DEPLOY_ROOT/web/build" ]]; then
-        sudo rm -rf "$DEPLOY_ROOT/web/build"
-        ((cleaned++))
-    fi
-
-    if [[ -d "$DEPLOY_ROOT/web/static" ]]; then
-        sudo rm -rf "$DEPLOY_ROOT/web/static"
-        ((cleaned++))
-    fi
+    for dir in "${dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            sudo rm -rf "$dir"
+            cleaned=$((cleaned + 1))
+        fi
+    done
 
     if [[ $cleaned -gt 0 ]]; then
         log_success "Frontend files cleaned"
@@ -171,16 +171,14 @@ clean_configs() {
     log_info "Cleaning configuration files..."
 
     local cleaned=0
+    local dirs=("$DEPLOY_ROOT/config/nginx" "$DEPLOY_ROOT/config/systemd")
 
-    if [[ -d "$DEPLOY_ROOT/config/nginx" ]]; then
-        sudo rm -rf "$DEPLOY_ROOT/config/nginx"
-        ((cleaned++))
-    fi
-
-    if [[ -d "$DEPLOY_ROOT/config/systemd" ]]; then
-        sudo rm -rf "$DEPLOY_ROOT/config/systemd"
-        ((cleaned++))
-    fi
+    for dir in "${dirs[@]}"; do
+        if [[ -d "$dir" ]]; then
+            sudo rm -rf "$dir"
+            cleaned=$((cleaned + 1))
+        fi
+    done
 
     if [[ $cleaned -gt 0 ]]; then
         log_success "Configuration files cleaned"
@@ -196,41 +194,7 @@ create_backup() {
         return 0
     fi
 
-    local has_data=false
-
-    # Check if there's anything to backup
-    if sudo test -f "$DB_FILE"; then
-        has_data=true
-    fi
-
-    if [[ -d "$UPLOADS_DIR" ]] && [[ -n "$(sudo ls -A "$UPLOADS_DIR" 2>/dev/null)" ]]; then
-        has_data=true
-    fi
-
-    if [[ "$has_data" == false ]]; then
-        log_info "No data to backup"
-        return 0
-    fi
-
-    local backup_name="full-backup-$(date +%Y%m%d-%H%M%S)"
-    local backup_path="$DEPLOY_ROOT/backups/$backup_name"
-
-    log_info "Creating backup: $backup_name"
-    sudo mkdir -p "$backup_path"
-
-    # Backup database
-    if sudo test -f "$DB_FILE"; then
-        sudo cp "$DB_FILE"* "$backup_path/"
-        log_info "Database backed up"
-    fi
-
-    # Backup uploads
-    if [[ -d "$UPLOADS_DIR" ]] && [[ -n "$(sudo ls -A "$UPLOADS_DIR" 2>/dev/null)" ]]; then
-        sudo cp -r "$UPLOADS_DIR" "$backup_path/"
-        log_info "Uploads backed up"
-    fi
-
-    log_success "Backup created: $backup_path"
+    bash "${SCRIPT_DIR}/backup.sh"
 }
 
 # Clean data files
@@ -238,21 +202,18 @@ clean_data() {
     log_info "Cleaning data files..."
 
     local cleaned=0
+    local items=(
+        "$DEPLOY_ROOT/data"
+        "$DEPLOY_ROOT/uploads"
+        "$DEPLOY_ROOT/config/.password"
+    )
 
-    if [[ -d "$DEPLOY_ROOT/data" ]]; then
-        sudo rm -rf "$DEPLOY_ROOT/data"
-        ((cleaned++))
-    fi
-
-    if [[ -d "$DEPLOY_ROOT/uploads" ]]; then
-        sudo rm -rf "$DEPLOY_ROOT/uploads"
-        ((cleaned++))
-    fi
-
-    if [[ -f "$DEPLOY_ROOT/config/.password" ]]; then
-        sudo rm -f "$DEPLOY_ROOT/config/.password"
-        ((cleaned++))
-    fi
+    for item in "${items[@]}"; do
+        if [[ -e "$item" ]]; then
+            sudo rm -rf "$item"
+            cleaned=$((cleaned + 1))
+        fi
+    done
 
     if [[ $cleaned -gt 0 ]]; then
         log_success "Data files cleaned"
@@ -277,33 +238,15 @@ remove_deploy_root() {
 
     echo ""
     log_warn "This will permanently delete: $DEPLOY_ROOT"
-    read -p "Are you sure you want to delete the entire deployment directory? [y/N] " -r
+    read -rp "Are you sure you want to delete the entire deployment directory? [y/N] " reply
     echo
 
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    if [[ $reply =~ ^[Yy]$ ]]; then
         log_info "Removing deployment directory..."
         sudo rm -rf "$DEPLOY_ROOT"
         log_success "Deployment directory removed"
     else
         log_info "Keeping deployment directory"
-    fi
-}
-
-# Show backup information
-show_backup_info() {
-    if [[ -d "$DEPLOY_ROOT/backups" ]]; then
-        local backup_count=$(sudo ls -1 "$DEPLOY_ROOT/backups" 2>/dev/null | wc -l)
-
-        if [[ $backup_count -gt 0 ]]; then
-            log_info "Existing backups: $backup_count"
-            log_info "Backup location: $DEPLOY_ROOT/backups"
-
-            # Show most recent backup
-            local latest=$(sudo ls -1t "$DEPLOY_ROOT/backups" 2>/dev/null | head -n 1)
-            if [[ -n "$latest" ]]; then
-                log_info "Latest backup: $latest"
-            fi
-        fi
     fi
 }
 
@@ -341,9 +284,6 @@ main() {
 
     echo ""
     log_success "Cleanup completed!"
-
-    # Show backup info if directory still exists
-    show_backup_info
 }
 
 main "$@"

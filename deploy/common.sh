@@ -20,6 +20,7 @@ export UPLOADS_DIR="${DEPLOY_ROOT}/uploads"
 export DATA_DIR="${DEPLOY_ROOT}/data"
 
 export BACKUP_DIR="${DEPLOY_ROOT}/backups"
+export MAX_BACKUPS=5
 
 export DB_FILE="${DATA_DIR}/app.db"
 export SECRET_FILE="${CONFIG_DIR}/.secret"
@@ -67,24 +68,6 @@ log_warn() {
 
 log_error() {
     echo -e "${COLOR_RED}[ERROR]${COLOR_RESET} $1"
-}
-
-# Create necessary directories for deployment
-create_directories() {
-    log_info "Creating project directory structure..."
-
-    mkdir -p ${DEPLOY_ROOT}
-    mkdir -p ${API_DIR}
-    mkdir -p ${WEB_DIR}
-    mkdir -p ${DATA_DIR}
-    mkdir -p ${UPLOADS_DIR}
-    mkdir -p ${CONFIG_DIR}/nginx
-    mkdir -p ${CONFIG_DIR}/systemd
-
-    # Set permissions
-    chown -R "${APP_USER}:${APP_USER} ${DEPLOY_ROOT}"
-    chmod 755 "${DEPLOY_ROOT}"
-    chmod 750 "${CONFIG_DIR}"
 }
 
 # Ensure the current user is not root (for scenarios where privileged execution should be avoided)
