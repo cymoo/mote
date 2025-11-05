@@ -2,7 +2,7 @@
 # gen-password.sh - Script to generate and manage application password
 set -eo pipefail
 
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 FORCE_REGENERATE=false
@@ -78,6 +78,7 @@ manage_password() {
         if [[ "$FORCE_REGENERATE" == true ]]; then
             log_info "Password file exists but force regeneration is enabled"
             generate_password
+            sudo systemctl restart "${APP_NAME}"
         else
             log_info "Password file already exists: $SECRET_FILE"
 

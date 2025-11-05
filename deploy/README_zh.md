@@ -131,11 +131,7 @@ bash setup-nginx.sh example.com
 #### 部署前端
 
 ```bash
-# 完整部署（安装依赖 + 构建）
 make deploy-frontend
-
-# 快速部署（跳过依赖安装）
-make deploy-frontend-quick
 ```
 
 #### 部署后端
@@ -170,14 +166,8 @@ make status
 # 运行健康检查
 make health-check
 
-# 详细健康检查
-make health-check-verbose
-
 # 查看配置信息
 make info
-
-# 检查目录
-make check-dirs
 ```
 
 ## 日常维护
@@ -455,18 +445,6 @@ CHINA_MIRROR=true  # 使用国内镜像加速下载
 3. **数据库**: 定期清理和优化数据库
 4. **Nginx**: 启用 gzip 压缩和浏览器缓存
 5. **监控**: 使用 `make disk-usage` 监控磁盘空间
-
-## 许可证
-
-本项目的部署脚本遵循项目主许可证。
-
-## 支持
-
-如有问题或建议，请：
-1. 查看故障排查部分
-2. 运行 `make health-check-verbose` 获取详细诊断
-3. 查看日志文件
-4. 提交 Issue
 
 ---
 

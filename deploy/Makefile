@@ -31,12 +31,36 @@ help: ## Show this help message
 	@echo "  BACKEND_LANG  Backend language: rust|go|python|kotlin (default: $(BACKEND_LANG))"
 	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
+	@echo ""
+	@echo "  # Full deployment with Go backend and HTTPS:"
 	@echo "  make deploy DOMAIN=mysite.com EMAIL=admin@mysite.com BACKEND_LANG=go"
+
+	@echo ""
+	@echo "  # Deploy only the frontend (initial or after code changes):"
 	@echo "  make deploy-frontend"
+
+	@echo ""
+	@echo "  # Deploy rust backend (initial or after code changes):"
 	@echo "  make deploy-rust"
-	@echo "  make switch-to-go"
+
+	@echo ""
+	@echo "  # View password:"
+	@echo "  make view-password"
+
+	@echo ""
+	@echo "  # Switch to Rust backend:"
+	@echo "  make switch-to-rust"
+
+	@echo ""
+	@echo "  # Check application health status:"
 	@echo "  make health-check"
+
+	@echo ""
+	@echo "  # Backup database and uploads:"
 	@echo "  make backup"
+
+	@echo ""
+	@echo "  # View logs of backend service:"
 	@echo "  make logs"
 
 # ============================================================================
@@ -168,6 +192,10 @@ gen-password: ## Generate application password
 .PHONY: gen-password-force
 gen-password-force: ## Force regenerate application password
 	@bash $(SCRIPT_DIR)/gen-password.sh --force
+
+.PHONY: view-password
+view-password: ## View application password
+	@bash $(SCRIPT_DIR)/get-password.sh
 
 .PHONY: backup
 backup: ## Backup database and uploads

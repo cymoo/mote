@@ -131,7 +131,6 @@ bash setup-nginx.sh example.com
 #### Deploy Frontend
 
 ```bash
-# Full deployment (install dependencies + build)
 make deploy-frontend
 ```
 
@@ -167,14 +166,8 @@ make status
 # Run health check
 make health-check
 
-# Verbose health check
-make health-check-verbose
-
 # View configuration info
 make info
-
-# Check directories
-make check-dirs
 ```
 
 ## Daily Maintenance
@@ -452,18 +445,6 @@ CHINA_MIRROR=true  # Use China mirrors for faster downloads
 3. **Database**: Regularly clean and optimize database
 4. **Nginx**: Enable gzip compression and browser caching
 5. **Monitoring**: Use `make disk-usage` to monitor disk space
-
-## License
-
-The deployment scripts for this project follow the project's main license.
-
-## Support
-
-If you have questions or suggestions:
-1. Check the troubleshooting section
-2. Run `make health-check-verbose` for detailed diagnostics
-3. Review log files
-4. Submit an issue
 
 ---
 
