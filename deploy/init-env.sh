@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
+log_info "Initializing deployment environment..."
+
 # Create user for running the web application
 ensure_user_exists "$APP_USER"
 
@@ -28,3 +30,5 @@ sudo chown -R "${APP_USER}:${APP_USER}" "${DEPLOY_ROOT}"
 
 # Install system dependencies
 bash "${SCRIPT_DIR}/install-deps.sh" system redis
+
+log_success "Deployment environment initialized successfully."

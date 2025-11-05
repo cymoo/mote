@@ -2,7 +2,7 @@
 # This Makefile provides convenient targets for deploying and managing the web application
 
 # Default values - can be overridden via command line
-DOMAIN ?= example.com
+DOMAIN ?= daydream.site
 EMAIL ?=
 BACKEND_LANG ?= go
 
@@ -11,9 +11,7 @@ SCRIPT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 # Source common.sh to get configuration variables
 APP_NAME := mote-test
-APP_USER := mote
 DEPLOY_ROOT := /opt/$(APP_NAME)
-SERVICE_NAME := mote-test
 
 # Color output
 GREEN := \033[0;32m
@@ -33,10 +31,10 @@ help: ## Show this help message
 	@echo "  BACKEND_LANG  Backend language: rust|go|python|kotlin (default: $(BACKEND_LANG))"
 	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
-	@echo "  make deploy DOMAIN=mysite.com EMAIL=admin@mysite.com BACKEND_LANG=rust"
+	@echo "  make deploy DOMAIN=mysite.com EMAIL=admin@mysite.com BACKEND_LANG=go"
 	@echo "  make deploy-frontend"
-	@echo "  make deploy-go"
-	@echo "  make switch-to-rust"
+	@echo "  make deploy-rust"
+	@echo "  make switch-to-go"
 	@echo "  make health-check"
 	@echo "  make backup"
 	@echo "  make logs"
@@ -55,9 +53,7 @@ deploy: init-env setup-https setup-nginx deploy-frontend deploy-backend ## Full 
 
 .PHONY: init-env
 init-env: ## Initialize deployment environment (directories, users, permissions)
-	@echo "$(YELLOW)Initializing deployment environment...$(NC)"
 	@bash $(SCRIPT_DIR)/init-env.sh
-	@echo "$(GREEN)✓ Environment initialized$(NC)"
 
 .PHONY: setup-https
 setup-https: ## Setup HTTPS with Let's Encrypt (requires DOMAIN and optional EMAIL)
@@ -66,13 +62,11 @@ setup-https: ## Setup HTTPS with Let's Encrypt (requires DOMAIN and optional EMA
 		echo "Usage: make setup-https DOMAIN=example.com [EMAIL=admin@example.com]"; \
 		exit 1; \
 	fi
-	@echo "$(YELLOW)Setting up HTTPS for $(DOMAIN)...$(NC)"
 	@if [ -n "$(EMAIL)" ]; then \
 		bash $(SCRIPT_DIR)/setup-https.sh $(DOMAIN) $(EMAIL); \
 	else \
 		bash $(SCRIPT_DIR)/setup-https.sh $(DOMAIN); \
 	fi
-	@echo "$(GREEN)✓ HTTPS setup completed$(NC)"
 
 .PHONY: setup-nginx
 setup-nginx: ## Setup and configure Nginx (requires DOMAIN)
@@ -81,9 +75,7 @@ setup-nginx: ## Setup and configure Nginx (requires DOMAIN)
 		echo "Usage: make setup-nginx DOMAIN=example.com"; \
 		exit 1; \
 	fi
-	@echo "$(YELLOW)Setting up Nginx for $(DOMAIN)...$(NC)"
 	@bash $(SCRIPT_DIR)/setup-nginx.sh $(DOMAIN)
-	@echo "$(GREEN)✓ Nginx setup completed$(NC)"
 
 # ============================================================================
 # Dependency Installation
@@ -123,41 +115,31 @@ install-redis: ## Install Redis server
 
 .PHONY: deploy-frontend
 deploy-frontend: ## Deploy frontend application
-	@echo "$(YELLOW)Deploying frontend...$(NC)"
 	@bash $(SCRIPT_DIR)/deploy-frontend.sh
-	@echo "$(GREEN)✓ Frontend deployed$(NC)"
 
 .PHONY: deploy-backend
 deploy-backend: ## Deploy backend application (requires BACKEND_LANG)
-	@echo "$(YELLOW)Deploying backend ($(BACKEND_LANG))...$(NC)"
 	@bash $(SCRIPT_DIR)/deploy-backend.sh $(BACKEND_LANG)
-	@echo "$(GREEN)✓ Backend deployed$(NC)"
 
-.PHONY: deploy-backend-rust
+.PHONY: deploy-rust
 deploy-rust: ## Deploy Rust backend
 	@bash $(SCRIPT_DIR)/deploy-backend.sh rust
 
-.PHONY: deploy-backend-go
+.PHONY: deploy-go
 deploy-go: ## Deploy Go backend
 	@bash $(SCRIPT_DIR)/deploy-backend.sh go
 
-.PHONY: deploy-backend-python
+.PHONY: deploy-python
 deploy-python: ## Deploy Python backend
 	@bash $(SCRIPT_DIR)/deploy-backend.sh python
 
-.PHONY: deploy-backend-kotlin
+.PHONY: deploy-kotlin
 deploy-kotlin: ## Deploy Kotlin backend
 	@bash $(SCRIPT_DIR)/deploy-backend.sh kotlin
 
 # ============================================================================
 # Backend Management
 # ============================================================================
-
-.PHONY: switch-backend
-switch-backend: ## Switch active backend (requires BACKEND_LANG)
-	@echo "$(YELLOW)Switching backend to $(BACKEND_LANG)...$(NC)"
-	@bash $(SCRIPT_DIR)/switch-backend.sh $(BACKEND_LANG)
-	@echo "$(GREEN)✓ Backend switched$(NC)"
 
 .PHONY: switch-to-rust
 switch-to-rust: ## Switch to Rust backend
@@ -189,17 +171,11 @@ gen-password-force: ## Force regenerate application password
 
 .PHONY: backup
 backup: ## Backup database and uploads
-	@echo "$(YELLOW)Creating backup...$(NC)"
 	@bash $(SCRIPT_DIR)/backup.sh
-	@echo "$(GREEN)✓ Backup completed$(NC)"
 
 .PHONY: health-check
 health-check: ## Run health check on deployed application
 	@bash $(SCRIPT_DIR)/check-health.sh
-
-.PHONY: health-check-verbose
-health-check-verbose: ## Run verbose health check
-	@bash $(SCRIPT_DIR)/check-health.sh --verbose
 
 # ============================================================================
 # Cleanup Targets
@@ -209,16 +185,12 @@ health-check-verbose: ## Run verbose health check
 clean: ## Clean deployment files (keeps data and backups)
 	@bash $(SCRIPT_DIR)/clean.sh
 
-.PHONY: clean-all
-clean-all: ## Clean everything including data (keeps backups)
+.PHONY: clean-data
+clean-data: ## Clean everything including data (keeps backups)
 	@bash $(SCRIPT_DIR)/clean.sh --data
 
-.PHONY: clean-force
-clean-force: ## Force clean everything including data without confirmation
-	@bash $(SCRIPT_DIR)/clean.sh --data --force
-
-.PHONY: clean-with-backups
-clean-with-backups: ## Clean everything including backups
+.PHONY: clean-full
+clean-full: ## Clean everything including backups
 	@bash $(SCRIPT_DIR)/clean.sh --data --backups
 
 # ============================================================================
@@ -228,19 +200,19 @@ clean-with-backups: ## Clean everything including backups
 .PHONY: restart-backend
 restart-backend: ## Restart backend service
 	@echo "$(YELLOW)Restarting backend service...$(NC)"
-	@sudo systemctl restart $(SERVICE_NAME)
+	@sudo systemctl restart $(APP_NAME)
 	@echo "$(GREEN)✓ Backend restarted$(NC)"
 
 .PHONY: stop-backend
 stop-backend: ## Stop backend service
 	@echo "$(YELLOW)Stopping backend service...$(NC)"
-	@sudo systemctl stop $(SERVICE_NAME)
+	@sudo systemctl stop $(APP_NAME)
 	@echo "$(GREEN)✓ Backend stopped$(NC)"
 
 .PHONY: start-backend
 start-backend: ## Start backend service
 	@echo "$(YELLOW)Starting backend service...$(NC)"
-	@sudo systemctl start $(SERVICE_NAME)
+	@sudo systemctl start $(APP_NAME)
 	@echo "$(GREEN)✓ Backend started$(NC)"
 
 .PHONY: restart-nginx
@@ -251,27 +223,27 @@ restart-nginx: ## Restart Nginx service
 
 .PHONY: status
 status: ## Show service status
-	@echo "$(YELLOW)Backend Service ($(SERVICE_NAME)):$(NC)"
-	@sudo systemctl status $(SERVICE_NAME) --no-pager || true
+	@echo "$(YELLOW)Backend Service ($(APP_NAME)):$(NC)"
+	@sudo systemctl status $(APP_NAME) --no-pager || true
 	@echo ""
 	@echo "$(YELLOW)Nginx Service:$(NC)"
 	@sudo systemctl status nginx --no-pager || true
 
 .PHONY: logs
 logs: ## Show backend service logs
-	@sudo journalctl -u $(SERVICE_NAME) -n 50 --no-pager
+	@sudo journalctl -u $(APP_NAME) -n 50 --no-pager
 
 .PHONY: logs-follow
 logs-follow: ## Follow backend service logs
-	@sudo journalctl -u $(SERVICE_NAME) -f
+	@sudo journalctl -u $(APP_NAME) -f
 
 .PHONY: logs-nginx
 logs-nginx: ## Show Nginx access and error logs
 	@echo "$(YELLOW)Nginx Access Log (last 20 lines):$(NC)"
-	@sudo tail -n 20 /var/log/nginx/access.log || true
+	@sudo tail -n 20 /var/log/nginx/${DOMAIN}_access.log || true
 	@echo ""
 	@echo "$(YELLOW)Nginx Error Log (last 20 lines):$(NC)"
-	@sudo tail -n 20 /var/log/nginx/error.log || true
+	@sudo tail -n 20 /var/log/nginx/${DOMAIN}_error.log || true
 
 # ============================================================================
 # Information & Inspection
@@ -281,9 +253,7 @@ logs-nginx: ## Show Nginx access and error logs
 info: ## Show deployment configuration
 	@echo "$(GREEN)Deployment Configuration:$(NC)"
 	@echo "  App Name:       $(APP_NAME)"
-	@echo "  App User:       $(APP_USER)"
 	@echo "  Deploy Root:    $(DEPLOY_ROOT)"
-	@echo "  Service Name:   $(SERVICE_NAME)"
 	@echo "  Domain:         $(DOMAIN)"
 	@echo "  Backend Lang:   $(BACKEND_LANG)"
 	@echo ""

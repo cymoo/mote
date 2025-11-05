@@ -66,6 +66,8 @@ main() {
 
     local has_data=false
 
+    log_info "Starting backup..."
+
     # Create backup directory with sudo
     if ! sudo mkdir -p "$backup_path"; then
         log_error "Failed to create backup directory"
