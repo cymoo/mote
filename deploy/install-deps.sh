@@ -285,18 +285,65 @@ EOF
     log_success "Python $(python3 --version | awk '{print $2}') installed"
 }
 
-# Install Java and Maven
-install_jdk() {
-    log_info "Installing Java and Maven..."
+# Install Adoptium Temurin JDK
+install_temurin_jdk() {
+    log_info "Installing Adoptium Temurin JDK ${JDK_VERSION}..."
 
-    # Install OpenJDK and Maven
-    sudo apt-get install -y -qq openjdk-21-jdk maven > /dev/null
+    # Add Adoptium repository
+    wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | sudo gpg --dearmor -o /usr/share/keyrings/adoptium.gpg
+    echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | sudo tee /etc/apt/sources.list.d/adoptium.list > /dev/null
 
-    # Configure Maven mirror for China
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq "temurin-${JDK_VERSION}-jdk" > /dev/null
+
+    log_success "JDK $(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}') installed"
+}
+
+# Install Maven from binary distribution
+install_maven_binary() {
+    log_info "Installing Maven ${MAVEN_VERSION}..."
+
+    MAVEN_INSTALL_DIR="/usr/local/maven-${MAVEN_VERSION}"
+
+    local maven_url="https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+    local temp_dir=$(mktemp -d)
+
+    # If China mirror is enabled, use Aliyun mirror
+    # TODO: aliyun mirror seems down now
+    # if [[ "$CHINA_MIRROR" == true ]]; then
+    #     maven_url="https://mirrors.aliyun.com/apache/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+    #     log_info "Using China mirror for Maven download"
+    # fi
+
+    # Download Maven
+    if ! wget -q --show-progress "$maven_url" -O "$temp_dir/maven.tar.gz"; then
+        log_error "Failed to download Maven: $maven_url"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+
+    # Decompress to installation directory
+    sudo mkdir -p "$MAVEN_INSTALL_DIR"
+    sudo tar -xzf "$temp_dir/maven.tar.gz" -C "$MAVEN_INSTALL_DIR" --strip-components=1
+
+    rm -rf "$temp_dir"
+
+    # Create symlinks to /usr/bin (consistent with JDK)
+    sudo ln -sf "$MAVEN_INSTALL_DIR" /usr/local/maven
+    sudo ln -sf /usr/local/maven/bin/mvn /usr/bin/mvn
+    sudo ln -sf /usr/local/maven/bin/mvnDebug /usr/bin/mvnDebug
+
+    configure_maven_mirror
+
+    log_success "Maven $(mvn -version | head -n 1 | awk '{print $3}') installed"
+}
+
+# Configure Maven to use China mirror if enabled
+configure_maven_mirror() {
+    local maven_settings="$HOME/.m2/settings.xml"
+    mkdir -p "$HOME/.m2"
+
     if [[ "$CHINA_MIRROR" == true ]]; then
-        local maven_settings="$HOME/.m2/settings.xml"
-        mkdir -p "$HOME/.m2"
-
         cat > "$maven_settings" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
@@ -310,13 +357,40 @@ install_jdk() {
             <name>Aliyun Maven</name>
             <url>https://maven.aliyun.com/repository/public</url>
         </mirror>
+        <mirror>
+            <id>aliyun-maven-spring</id>
+            <mirrorOf>spring</mirrorOf>
+            <name>Aliyun Maven Spring</name>
+            <url>https://maven.aliyun.com/repository/spring</url>
+        </mirror>
     </mirrors>
 </settings>
 EOF
         log_info "Configured Maven to use China mirror"
+    else
+        # Create default settings.xml (if not exist)
+        if [ ! -f "$maven_settings" ]; then
+            cat > "$maven_settings" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              http://maven.apache.org/xsd/settings-1.0.0.xsd">
+</settings>
+EOF
+        fi
     fi
+}
 
-    log_success "Java $(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}') installed"
+# Install Java and Maven
+install_jdk() {
+    log_info "Installing Java and Maven..."
+
+    install_temurin_jdk
+
+    install_maven_binary
+
+    log_success "Java and Maven installation completed"
 }
 
 # Install Redis
