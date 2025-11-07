@@ -125,7 +125,7 @@ install_system_deps() {
     log_success "System dependencies installed"
 }
 
-# Install Node.js
+# Install Node.js to /usr/local/node and link to /usr/bin/node
 install_nodejs() {
     # Check if already installed with correct version
     if command -v node &> /dev/null; then
@@ -168,7 +168,7 @@ install_nodejs() {
     log_success "Node.js $(node --version) installed"
 }
 
-# Install Rust
+# Install Rust to $HOME/.cargo
 install_rust() {
     # Check if already installed
     if [[ -f "$HOME/.cargo/bin/rustc" ]]; then
@@ -217,7 +217,7 @@ EOF
     log_success "Rust $(rustc --version | awk '{print $2}') installed"
 }
 
-# Install Go
+# Install Go to /usr/local/go and link to /usr/bin/go
 install_go() {
     # Check if already installed with correct version
     if [[ -f /usr/local/go/bin/go ]]; then
@@ -239,10 +239,12 @@ install_go() {
 
     # Download and install
     wget -q --show-progress "$download_url" -O /tmp/go.tar.gz
-    sudo rm -rf /usr/local/go
-    sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+    # sudo rm -rf /usr/local/go
+    sudo tar -C /tmp -xzf /tmp/go.tar.gz
+    sudo mv /tmp/go "/usr/local/go-${GOLANG_VERSION}"
 
     # Create symlinks
+    sudo ln -sf "/usr/local/go-${GOLANG_VERSION}" /usr/local/go
     sudo ln -sf /usr/local/go/bin/go /usr/bin/go
     sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
 
@@ -259,7 +261,7 @@ install_go() {
     log_success "Go $(/usr/local/go/bin/go version | awk '{print $3}') installed"
 }
 
-# Install Python
+# Install Python using apt and configure pip
 install_python() {
     log_info "Installing Python3 and pip..."
 
@@ -285,7 +287,7 @@ EOF
     log_success "Python $(python3 --version | awk '{print $2}') installed"
 }
 
-# Install Adoptium Temurin JDK
+# Install Adoptium Temurin JDK with apt
 install_temurin_jdk() {
     log_info "Installing Adoptium Temurin JDK ${JDK_VERSION}..."
 
@@ -299,7 +301,7 @@ install_temurin_jdk() {
     log_success "JDK $(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}') installed"
 }
 
-# Install Maven from binary distribution
+# Install Maven from binary distribution to /usr/local/maven and link to /usr/bin/mvn
 install_maven_binary() {
     log_info "Installing Maven ${MAVEN_VERSION}..."
 
@@ -309,7 +311,7 @@ install_maven_binary() {
     local temp_dir=$(mktemp -d)
 
     # If China mirror is enabled, use Aliyun mirror
-    # TODO: aliyun mirror seems down now
+    # NOTE: aliyun mirror seems down now
     # if [[ "$CHINA_MIRROR" == true ]]; then
     #     maven_url="https://mirrors.aliyun.com/apache/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
     #     log_info "Using China mirror for Maven download"
@@ -393,7 +395,7 @@ install_jdk() {
     log_success "Java and Maven installation completed"
 }
 
-# Install Redis
+# Install Redis with apt
 install_redis() {
     # Check if already installed
     if command -v redis-server &> /dev/null; then
@@ -514,40 +516,6 @@ verify_installations() {
     fi
 }
 
-# Print post-installation notes
-print_notes() {
-    local needs_notes=false
-
-    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
-        if [[ "$component" == "rust" ]] || [[ "$component" == "go" ]]; then
-            needs_notes=true
-            break
-        fi
-    done
-
-    if [[ "$needs_notes" == false ]]; then
-        return 0
-    fi
-
-    echo ""
-    log_info "Post-installation notes:"
-    echo ""
-
-    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
-        case "$component" in
-            rust)
-                echo "  Rust: Run 'source \$HOME/.cargo/env' to use Rust in current shell"
-                ;;
-            go)
-                echo "  Go: Run 'source /etc/profile' or logout/login to update PATH"
-                ;;
-        esac
-    done
-
-    echo ""
-    log_info "You may need to restart your shell or logout/login for all changes to take effect."
-}
-
 # Print installation summary
 print_summary() {
     echo ""
@@ -590,9 +558,6 @@ main() {
 
     # Verify
     verify_installations
-
-    # Notes
-    print_notes
 
     echo ""
     log_success "Installation completed successfully!"

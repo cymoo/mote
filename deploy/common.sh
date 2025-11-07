@@ -35,7 +35,7 @@ export LOG_LEVEL=info
 
 # Language runtime versions
 export NODE_VERSION="v24.11.0"
-export GOLANG_VERSION="1.25.3"
+export GOLANG_VERSION="1.25.4"
 export RUST_VERSION="1.91.0"
 export PYTHON_VERSION="3.12.3"
 export JDK_VERSION="21"
