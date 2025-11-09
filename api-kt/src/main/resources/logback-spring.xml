@@ -74,8 +74,8 @@
   <springProfile name="prod">
     <root level="WARN">
       <appender-ref ref="CONSOLE"/>
-      <appender-ref ref="ASYNC"/>
-      <appender-ref ref="ERROR_FILE"/>
+      <!-- <appender-ref ref="ASYNC"/> -->
+      <!-- <appender-ref ref="ERROR_FILE"/> -->
     </root>
     <logger name="site.daydream.mote" level="INFO"/>
     <!-- Set log level for third-party libraries -->

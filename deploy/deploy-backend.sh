@@ -208,6 +208,7 @@ generate_env_config() {
     local base_env="UPLOAD_PATH=${UPLOADS_DIR}
 HTTP_PORT=${API_PORT}
 HTTP_IP=${API_ADDR}
+LOG_LEVEL=${LOG_LEVEL}
 LOG_REQUESTS=false"
 
     # Add language-specific environment variables

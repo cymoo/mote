@@ -233,7 +233,7 @@
           <logging>WARN</logging>
           <jdbc>
             <driver>org.sqlite.JDBC</driver>
-            <url>jdbc:sqlite:../data/app-dev.db</url>
+            <url>jdbc:sqlite:${project.basedir}/../data/app-dev.db</url>
           </jdbc>
           <generator>
             <database>

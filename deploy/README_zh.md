@@ -1,6 +1,6 @@
 # 部署文档
 
-本文档介绍如何部署和管理 mote-test Web 应用程序。
+本文档介绍如何部署和管理 Mote Web 应用程序。
 
 ## 目录
 
@@ -68,7 +68,7 @@ bash init-env.sh
 
 这将创建以下目录结构：
 ```
-/opt/mote-test/
+/opt/mote/
 ├── api/          # 后端应用
 ├── web/          # 前端静态文件
 ├── config/       # 配置文件
@@ -264,7 +264,7 @@ make logs-nginx
 make backup
 ```
 
-备份文件将保存在 `/opt/mote-test/backups/` 目录，自动保留最近 5 个备份。
+备份文件将保存在 `/opt/mote/backups/` 目录，自动保留最近 5 个备份。
 
 ### 密码管理
 
@@ -276,7 +276,7 @@ make gen-password
 make gen-password-force
 ```
 
-密码将保存在 `/opt/mote-test/config/.secret` 文件中。
+密码将保存在 `/opt/mote/config/.secret` 文件中。
 
 ## 故障排查
 
@@ -322,7 +322,7 @@ make logs-nginx
 sudo nginx -t
 
 # 检查文件权限
-ls -la /opt/mote-test/web/
+ls -la /opt/mote/web/
 ```
 
 #### 3. HTTPS 证书问题
@@ -411,9 +411,9 @@ make deploy DOMAIN=example.com BACKEND_LANG=go
 
 ```bash
 # 应用配置
-APP_NAME=mote-test
+APP_NAME=mote
 APP_USER=mote
-DEPLOY_ROOT=/opt/mote-test
+DEPLOY_ROOT=/opt/mote
 
 # API 配置
 API_ADDR=127.0.0.1
@@ -434,7 +434,7 @@ CHINA_MIRROR=true  # 使用国内镜像加速下载
 
 1. **定期更新**: 保持系统和依赖的最新版本
 2. **备份策略**: 使用 `make backup` 定期备份数据
-3. **密码管理**: 妥善保管 `/opt/mote-test/config/.secret` 文件
+3. **密码管理**: 妥善保管 `/opt/mote/config/.secret` 文件
 4. **防火墙**: 只开放必要的端口（80, 443）
 5. **监控**: 定期运行 `make health-check` 检查系统状态
 6. **日志审查**: 定期查看日志以发现异常

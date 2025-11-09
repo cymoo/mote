@@ -5,7 +5,7 @@
 export PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Name of systemd service, nginx config file, deployment root
-export APP_NAME=mote-test
+export APP_NAME=mote
 
 export APP_USER=mote
 
@@ -31,7 +31,7 @@ export BLOG_URL="/shared"
 # Used in backend service config
 export API_ADDR=127.0.0.1
 export API_PORT=8001
-export LOG_LEVEL=info
+export LOG_LEVEL=INFO
 
 # Language runtime versions
 export NODE_VERSION="v24.11.0"

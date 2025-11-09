@@ -1,6 +1,6 @@
 # Deployment Documentation
 
-This document describes how to deploy and manage the mote-test web application.
+This document describes how to deploy and manage the Mote web application.
 
 ## Table of Contents
 
@@ -67,7 +67,7 @@ bash init-env.sh
 
 This creates the following directory structure:
 ```
-/opt/mote-test/
+/opt/mote/
 ├── api/          # Backend application
 ├── web/          # Frontend static files
 ├── config/       # Configuration files
@@ -263,7 +263,7 @@ Regularly backup database and uploaded files:
 make backup
 ```
 
-Backup files will be saved in `/opt/mote-test/backups/` directory, automatically keeping the last 5 backups.
+Backup files will be saved in `/opt/mote/backups/` directory, automatically keeping the last 5 backups.
 
 ### Password Management
 
@@ -275,7 +275,7 @@ make gen-password
 make gen-password-force
 ```
 
-Password will be saved in `/opt/mote-test/config/.secret` file.
+Password will be saved in `/opt/mote/config/.secret` file.
 
 ## Troubleshooting
 
@@ -321,7 +321,7 @@ make logs-nginx
 sudo nginx -t
 
 # Check file permissions
-ls -la /opt/mote-test/web/
+ls -la /opt/mote/web/
 ```
 
 #### 3. HTTPS Certificate Issues
@@ -410,9 +410,9 @@ Main configuration is defined in `common.sh`:
 
 ```bash
 # Application configuration
-APP_NAME=mote-test
+APP_NAME=mote
 APP_USER=mote
-DEPLOY_ROOT=/opt/mote-test
+DEPLOY_ROOT=/opt/mote
 
 # API configuration
 API_ADDR=127.0.0.1
@@ -433,7 +433,7 @@ CHINA_MIRROR=true  # Use China mirrors for faster downloads
 
 1. **Regular Updates**: Keep system and dependencies up to date
 2. **Backup Strategy**: Use `make backup` to regularly backup data
-3. **Password Management**: Securely store `/opt/mote-test/config/.secret` file
+3. **Password Management**: Securely store `/opt/mote/config/.secret` file
 4. **Firewall**: Only open necessary ports (80, 443)
 5. **Monitoring**: Regularly run `make health-check` to check system status
 6. **Log Review**: Regularly review logs to detect anomalies
