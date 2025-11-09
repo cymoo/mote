@@ -3,9 +3,6 @@
   <!-- Include Spring Boot's default logging configuration -->
   <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-  <!-- Define the storage location for log files -->
-  <property name="LOG_HOME" value="./logs"/>
-
   <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
 
   <!-- Console output -->
@@ -14,52 +11,6 @@
       <pattern>${CONSOLE_LOG_PATTERN}</pattern>
       <charset>utf8</charset>
     </encoder>
-  </appender>
-
-  <!-- File output -->
-  <!-- Generate log files based on daily and file size -->
-  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>${LOG_HOME}/app.log</file>
-    <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-      <!-- Log file output name -->
-      <fileNamePattern>${LOG_HOME}/app.log.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
-      <maxFileSize>10MB</maxFileSize>
-      <!-- Log file retention days -->
-      <maxHistory>30</maxHistory>
-      <!-- Total size cap for logs -->
-      <totalSizeCap>3GB</totalSizeCap>
-    </rollingPolicy>
-    <encoder>
-      <pattern>${FILE_LOG_PATTERN}</pattern>
-      <charset>utf8</charset>
-    </encoder>
-  </appender>
-
-  <!-- File output -->
-  <!-- Error logs are recorded separately -->
-  <!-- Generate log files daily -->
-  <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <file>${LOG_HOME}/error.log</file>
-    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>ERROR</level>
-    </filter>
-    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-      <!-- Log file output name -->
-      <fileNamePattern>${LOG_HOME}/error.log.%d{yyyy-MM-dd}.gz</fileNamePattern>
-      <!-- Log file retention days -->
-      <maxHistory>30</maxHistory>
-    </rollingPolicy>
-    <encoder>
-      <pattern>${FILE_LOG_PATTERN}</pattern>
-      <charset>utf8</charset>
-    </encoder>
-  </appender>
-
-  <!-- Asynchronous file writing -->
-  <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
-    <discardingThreshold>0</discardingThreshold>
-    <queueSize>512</queueSize>
-    <appender-ref ref="FILE"/>
   </appender>
 
   <!-- Development environment -->
@@ -74,12 +25,7 @@
   <springProfile name="prod">
     <root level="WARN">
       <appender-ref ref="CONSOLE"/>
-      <!-- <appender-ref ref="ASYNC"/> -->
-      <!-- <appender-ref ref="ERROR_FILE"/> -->
     </root>
     <logger name="site.daydream.mote" level="INFO"/>
-    <!-- Set log level for third-party libraries -->
-    <logger name="org.springframework" level="WARN"/>
-    <logger name="org.hibernate" level="WARN"/>
   </springProfile>
 </configuration>
