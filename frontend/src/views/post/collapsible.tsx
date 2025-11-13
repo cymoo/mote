@@ -55,6 +55,34 @@ export function CollapsibleContent({
     setCollapsed(nextCollapsed)
   }
 
+  useLayoutEffect(() => {
+    if (!ref.current) return
+
+    ref.current.querySelectorAll('pre > code').forEach((code) => {
+      const pre = code.parentElement!
+      if (pre.classList.contains('enhanced')) return
+
+      const text = code.textContent || ''
+      const lines = text.split('\n')
+
+      code.innerHTML = lines.map(line => `<span>${line || ' '}</span>`).join('\n')
+      pre.className = 'code-block enhanced'
+
+      const id = Math.random().toString(36).substr(2, 9)
+      code.id = id
+
+      const btn = document.createElement('button')
+      btn.className = 'code-copy-btn'
+      btn.textContent = '复制'
+      btn.onclick = () => {
+        navigator.clipboard.writeText(text)
+        btn.textContent = '已复制'
+        setTimeout(() => btn.textContent = '复制', 2000)
+      }
+      pre.insertBefore(btn, code)
+    })
+  })
+
   return (
     <>
       <div
