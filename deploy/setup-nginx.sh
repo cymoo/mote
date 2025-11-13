@@ -1,113 +1,154 @@
 #!/bin/bash
-
+# setup-nginx.sh - Script to setup and configure Nginx web server
 set -eo pipefail
 
-DOMAIN="${DOMAIN:?The DOMAIN environment variable must be set}"
-EMAIL="${EMAIL:?The EMAIL environment variable must be set}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/common.sh"
 
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-NGINX_TEMPLATE="${SCRIPT_DIR}/nginx.template"
+# Display usage information
+usage() {
+    cat <<EOF
+Usage: $0 <SERVER_NAME>
 
-export WWW_ROOT=/var/www/mote
-export SERVER_NAME="$DOMAIN"
-export API_PORT=8000
-export MEMO_URL="/memo"
-export BLOG_URL="/shared"
+Arguments:
+    SERVER_NAME    Domain name for Nginx configuration (required)
 
-# Check for root privileges
-if [[ $EUID -ne 0 ]]; then
-    echo "Error: This script must be run as root" >&2
+Example:
+    $0 example.com
+
+Description:
+    This script generates and installs Nginx configuration for the specified domain.
+    It will:
+    - Generate configuration from template
+    - Create symlink in sites-enabled
+    - Remove default Nginx configuration
+    - Test and reload Nginx
+EOF
     exit 1
-fi
-
-# Install dependencies
-install_dependencies() {
-    echo "Installing system dependencies..."
-    apt-get update -q
-    apt-get install -q -y nginx certbot python3-certbot-nginx openssl > /dev/null || {
-        echo "Failed to install dependencies" >&2
-        exit 1
-  }
 }
 
-# Generate DH parameters
-generate_dhparam() {
-    local dh_file="/etc/nginx/ssl/dhparam.pem"
-    mkdir -p /etc/nginx/ssl
+# Parse command line arguments
+if [[ $# -ne 1 ]]; then
+    usage
+fi
 
-    if [[ ! -f "$dh_file" ]]; then
-        echo "Generating Diffie-Hellman parameters (this may take 1-3 minutes)..."
-        openssl dhparam -out "$dh_file" 2048
-        chmod 600 "$dh_file"
-        echo "DH parameters generated: $dh_file"
-    else
-        echo "Existing DH parameter file detected, skipping generation"
+SERVER_NAME="$1"
+
+# Validate SERVER_NAME
+if [[ -z "$SERVER_NAME" ]]; then
+    log_error "SERVER_NAME cannot be empty"
+    usage
+fi
+
+NGINX_TEMPLATE="${SCRIPT_DIR}/nginx.template"
+NGINX_CONFIG="${CONFIG_DIR}/nginx/${APP_NAME}.conf"
+NGINX_ENABLED="/etc/nginx/sites-enabled/${APP_NAME}.conf"
+
+# Validate template file exists
+validate_template() {
+    if [[ ! -f "$NGINX_TEMPLATE" ]]; then
+        log_error "Nginx template file not found: $NGINX_TEMPLATE"
+        exit 1
     fi
 }
 
-# Configure automatic cert renewal
-setup_renewal() {
-    local cron_time="0 3 * * *"
-    local cron_cmd="/usr/bin/certbot renew --quiet --post-hook 'systemctl reload nginx'"
+# Generate Nginx configuration
+generate_config() {
+    log_info "Generating Nginx configuration for: $SERVER_NAME"
 
-    if ! crontab -l | grep -qF "certbot renew"; then
-        (crontab -l 2>/dev/null; echo "${cron_time} ${cron_cmd}") | crontab -
-        echo "Configured daily automatic renewal task at 3 AM"
+    # Export SERVER_NAME for envsubst
+    export SERVER_NAME
+
+    # Ensure config directory exists
+    sudo mkdir -p "$(dirname "$NGINX_CONFIG")"
+
+    # Generate configuration from template
+    envsubst '$WEB_DIR $UPLOADS_DIR $SERVER_NAME $API_ADDR $API_PORT $MEMO_URL $BLOG_URL' \
+        < "$NGINX_TEMPLATE" | sudo tee "$NGINX_CONFIG" > /dev/null
+
+    log_success "Configuration generated: $NGINX_CONFIG"
+}
+
+# Create symlink in sites-enabled
+setup_symlink() {
+    log_info "Setting up symlink in sites-enabled..."
+
+    # Remove existing symlink if present
+    if [[ -L "$NGINX_ENABLED" ]]; then
+        log_info "Removing existing symlink..."
+        sudo rm "$NGINX_ENABLED"
+    fi
+
+    # Create new symlink
+    sudo ln -s "$NGINX_CONFIG" "$NGINX_ENABLED"
+    log_success "Symlink created: $NGINX_ENABLED"
+}
+
+# Remove default Nginx configuration
+remove_default_config() {
+    local default_config="/etc/nginx/sites-enabled/default"
+
+    if [[ -f "$default_config" ]]; then
+        log_info "Removing Nginx default configuration..."
+        sudo rm -f "$default_config"
+        log_success "Default configuration removed"
+    else
+        log_info "No default configuration found, skipping removal"
+    fi
+}
+
+# Test Nginx configuration
+test_nginx_config() {
+    log_info "Testing Nginx configuration..."
+
+    if sudo nginx -t 2>&1; then
+        log_success "Nginx configuration is valid"
+        return 0
+    else
+        log_error "Nginx configuration test failed!"
+        return 1
+    fi
+}
+
+# Reload or start Nginx service
+reload_nginx() {
+    if sudo systemctl is-active --quiet nginx; then
+        log_info "Reloading Nginx..."
+        sudo systemctl reload nginx
+        log_success "Nginx reloaded successfully"
+    else
+        log_info "Starting Nginx..."
+        sudo systemctl enable nginx
+        sudo systemctl start nginx
+        log_success "Nginx started successfully"
     fi
 }
 
 # Main process
 main() {
-    install_dependencies
-    generate_dhparam
+    log_info "Starting Nginx setup for: $SERVER_NAME"
 
-    # Create certificate validation directory
-    mkdir -p /var/www/certbot
-    chmod -R 755 /var/www/certbot
+    # Validate prerequisites
+    validate_template
 
-    # Generate temporary configuration
-    echo "Configuring temporary Nginx server..."
-    cat > /etc/nginx/conf.d/"${DOMAIN}"-temp.conf <<EOF
-server {
-    listen 80;
-    listen [::]:80;
-    server_name $DOMAIN;
+    # Generate and install configuration
+    generate_config
+    setup_symlink
+    remove_default_config
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
+    # Test and apply configuration
+    if test_nginx_config; then
+        reload_nginx
 
-    location / {
-        return 444;
-    }
-}
-EOF
-
-    nginx -t && systemctl reload nginx
-
-    # Request certificate
-    echo "Requesting SSL certificate..."
-    certbot certonly --webroot -w /var/www/certbot \
-        -d "$DOMAIN" \
-        --email "$EMAIL" \
-        --agree-tos \
-        --non-interactive \
-        --keep-until-expiring
-
-    # Generate final configuration
-    echo "Generating Nginx configuration..."
-    # shellcheck disable=SC2016
-    envsubst '$WWW_ROOT $SERVER_NAME $API_PORT $MEMO_URL $BLOG_URL' < "$NGINX_TEMPLATE" > /etc/nginx/conf.d/"${DOMAIN}".conf
-
-    # Clean up and reload
-    rm -f /etc/nginx/conf.d/"${DOMAIN}"-temp.conf
-    nginx -t && systemctl reload nginx
-
-    # Configure automatic renewal
-    setup_renewal
-
-    echo -e "\n=== HTTPS configuration completed successfully ==="
-    echo "Visit: https://${DOMAIN}"
+        # Summary
+        log_success "Nginx setup completed successfully!"
+        log_info "Configuration file: $NGINX_CONFIG"
+        log_info "Symlink: $NGINX_ENABLED"
+        log_info "Server name: $SERVER_NAME"
+    else
+        log_error "Setup failed due to invalid Nginx configuration"
+        exit 1
+    fi
 }
 
 main "$@"

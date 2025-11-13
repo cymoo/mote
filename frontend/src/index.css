@@ -63,8 +63,8 @@
   }
 
   [data-theme='light'] {
-    --neutral: 214 20% 21%;
-    --neutral-foreground: 212 19% 87%;
+    --neutral: 220 14% 96%;
+    --neutral-foreground: 220 13% 20%;
 
     /* Theme generator: https://ui.jln.dev */
     --background: 0 0% 100%;

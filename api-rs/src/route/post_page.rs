@@ -8,8 +8,10 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::{Extension, Router};
 use chrono::{Local, TimeZone};
+#[cfg(not(debug_assertions))]
+use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
-use minijinja::{context, path_loader, Environment};
+use minijinja::{context, Environment};
 use regex::Regex;
 use serde::Serialize;
 use tracing::error;
@@ -18,7 +20,7 @@ type HtmlResult = Result<Html<String>, HtmlError>;
 
 pub fn create_routes() -> Router<AppState> {
     let mut env = Environment::new();
-    env.set_loader(path_loader("templates"));
+    load_templates(&mut env);
 
     Router::new()
         .route("/", get(post_list))
@@ -154,6 +156,31 @@ impl IntoResponse for HtmlError {
 
 static PAGE_404: &str = include_str!("../../templates/404.html");
 static PAGE_500: &str = include_str!("../../templates/500.html");
+
+#[cfg(not(debug_assertions))]
+static TEMPLATES_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/templates");
+
+#[cfg(debug_assertions)]
+fn load_templates(env: &mut Environment) {
+    use minijinja::path_loader;
+    // In development mode, use the file system to load templates in real-time
+    env.set_loader(path_loader("templates"));
+}
+
+#[cfg(not(debug_assertions))]
+fn load_templates(env: &mut Environment<'_>) {
+    // In production mode, load templates from the embedded files using include_dir
+    for file in TEMPLATES_DIR.files() {
+        // file.path() is the path relative to templates/, e.g., "index.html" or "posts/list.html"
+        if let Some(name) = file.path().to_str() {
+            // If you want to remove subdirectory prefixes, you can handle it here (e.g., keep only the filename)
+            let content =
+                std::str::from_utf8(file.contents()).expect("Template is not valid utf-8");
+            env.add_template(name, content)
+                .unwrap_or_else(|e| panic!("Failed to add template {}: {}", name, e));
+        }
+    }
+}
 
 lazy_static! {
     static ref HEADER_BOLD_PARAGRAPH_PATTERN: Regex =

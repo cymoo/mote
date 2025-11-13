@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# common.sh - Common deployment configuration file, which is sourced by all deployment scripts.
+
+export PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Name of systemd service, nginx config file, deployment root
+export APP_NAME=mote
+
+export APP_USER=mote
+
+export DEPLOY_ROOT=/opt/${APP_NAME}
+
+export API_DIR="${DEPLOY_ROOT}/api"
+export WEB_DIR="${DEPLOY_ROOT}/web"
+
+export CONFIG_DIR="${DEPLOY_ROOT}/config"
+export UPLOADS_DIR="${DEPLOY_ROOT}/uploads"
+export DATA_DIR="${DEPLOY_ROOT}/data"
+
+export BACKUP_DIR="${DEPLOY_ROOT}/backups"
+export MAX_BACKUPS=5
+
+export DB_FILE="${DATA_DIR}/app.db"
+export SECRET_FILE="${CONFIG_DIR}/.secret"
+
+# Used in frontend and nginx config
+export MEMO_URL="/memo"
+export BLOG_URL="/shared"
+
+# Used in backend service config
+export API_ADDR=127.0.0.1
+export API_PORT=8001
+export LOG_LEVEL=INFO
+
+# Language runtime versions
+export NODE_VERSION="v24.11.0"
+export GOLANG_VERSION="1.25.4"
+export RUST_VERSION="1.91.0"
+export PYTHON_VERSION="3.12.3"
+export JDK_VERSION="21"
+export MAVEN_VERSION="3.9.9"
+
+export NGINX_VERSION="1.24.0"
+export REDIS_VERSION="8.2.3"
+
+# If true, use mirrors to download dependencies for Python, Node.Js, Go, Rust, Maven, etc.
+export CHINA_MIRROR=true
+
+# Colors for logging
+export COLOR_RESET='\033[0m'
+export COLOR_RED='\033[0;31m'
+export COLOR_GREEN='\033[0;32m'
+export COLOR_YELLOW='\033[0;33m'
+export COLOR_BLUE='\033[0;34m'
+
+log_info() {
+    echo -e "${COLOR_BLUE}[INFO]${COLOR_RESET} $1"
+}
+
+log_success() {
+    echo -e "${COLOR_GREEN}[SUCCESS]${COLOR_RESET} $1"
+}
+
+log_warn() {
+    echo -e "${COLOR_YELLOW}[WARN]${COLOR_RESET} $1"
+}
+
+log_error() {
+    echo -e "${COLOR_RED}[ERROR]${COLOR_RESET} $1"
+}
+
+# Ensure the current user is not root (for scenarios where privileged execution should be avoided)
+check_not_root() {
+    if [ "$EUID" -eq 0 ]; then
+        log_error "This script should not be run as root"
+        exit 1
+    fi
+}
+
+# Ensure the current user is root (for scenarios where privileged execution is required)
+check_must_root() {
+    if [ "$EUID" -ne 0 ]; then
+        log_error "This script must be run with root privileges"
+        exit 1
+    fi
+}
+
+# Ensure system user exists, create if not
+ensure_user_exists() {
+  if [ $# -eq 0 ]; then
+    log_error "Username is required" >&2
+    exit 1
+  fi
+
+  local username="$1"
+
+  if ! id -u "$username" &>/dev/null; then
+    log_info "Creating system user '$username'..."
+    sudo useradd --system --shell /usr/sbin/nologin "$username"
+  fi
+}
+
+# Check if a command exists
+check_command() {
+    if ! command -v "$1" &> /dev/null; then
+        return 1
+    fi
+    return 0
+}

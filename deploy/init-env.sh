@@ -1,52 +1,34 @@
 #!/bin/bash
-
+# init-env.sh - Script to initialize deployment environment (directories, users, permissions, dependencies)
 set -euo pipefail
 
-NODE_VERSION=v22.14.0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/common.sh"
 
-sudo apt-get update -q
-sudo apt-get install -q -y lsb-release curl gpg libssl-dev pkg-config nginx
+log_info "Initializing deployment environment..."
 
-# ==================== Install Rust ====================
-echo "Installing Rust..."
-export RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
-export RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# Create user for running the web application
+ensure_user_exists "$APP_USER"
 
-. "$HOME/.cargo/env"
+# Create directories
+sudo mkdir -p \
+  "${API_DIR}" \
+  "${WEB_DIR}"/{build,static} \
+  "${DATA_DIR}" \
+  "${UPLOADS_DIR}" \
+  "${CONFIG_DIR}"/{nginx,systemd} \
+  "${BACKUP_DIR}" \
+  /etc/nginx/sites-{available,enabled}
 
-CONFIG_CONTENT='[source.crates-io]
-replace-with = "ustc"
+# Set permissions
+sudo chmod 755 "${DEPLOY_ROOT}" "${API_DIR}" "${WEB_DIR}" "${WEB_DIR}"/{build,static} "${UPLOADS_DIR}" "${BACKUP_DIR}"
+sudo chmod 700 "${DATA_DIR}"
+sudo chmod 755 "${CONFIG_DIR}" "${CONFIG_DIR}"/{nginx,systemd}
 
-[source.ustc]
-registry = "https://mirrors.ustc.edu.cn/crates.io-index"'
+# Set ownership
+sudo chown -R "${APP_USER}:${APP_USER}" "${DEPLOY_ROOT}"
 
-mkdir -p ~/.cargo
+# Install system dependencies
+bash "${SCRIPT_DIR}/install-deps.sh" system redis
 
-if [[ ! -f ~/.cargo/config.toml ]]; then
-    echo "$CONFIG_CONTENT" > ~/.cargo/config.toml
-    echo "Registry configuration written to ~/.cargo/config.toml"
-else
-    echo "${HOME}/.cargo/config.toml already exists. Skipping."
-fi
-
-# ==================== Install Redis ====================
-echo "Installing Redis..."
-curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
-sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
-sudo apt-get update -q
-sudo apt-get install -q -y redis
-sudo systemctl enable redis-server
-sudo systemctl start redis-server
-
-# ==================== Install Node.js ====================
-echo "Installing Node.js..."
-wget https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz
-tar -xJf node-${NODE_VERSION}-linux-x64.tar.xz
-rm node-${NODE_VERSION}-linux-x64.tar.xz
-sudo mv node-${NODE_VERSION}-linux-x64 /usr/local/node-${NODE_VERSION}
-sudo ln -sfn /usr/local/node-${NODE_VERSION} /usr/local/node
-sudo ln -sf /usr/local/node/bin/node /usr/bin/node
-sudo ln -sf /usr/local/node/bin/npm /usr/bin/npm
-sudo ln -sf /usr/local/node/bin/npx /usr/bin/npx
+log_success "Deployment environment initialized successfully."

@@ -50,7 +50,7 @@ func (g *GseTokenizer) init(dictPaths ...string) {
 			g.seg.LoadDict(dictPaths...)
 		} else {
 			// Load default dictionaries
-			g.seg.LoadDict()
+			g.seg.LoadDictEmbed()
 		}
 	})
 }
