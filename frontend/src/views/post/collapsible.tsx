@@ -66,19 +66,20 @@ export function CollapsibleContent({
       const lines = text.split('\n')
 
       code.innerHTML = lines.map(line => `<span>${line || ' '}</span>`).join('\n')
-      pre.className = 'code-block enhanced'
-
-      const id = Math.random().toString(36).substr(2, 9)
-      code.id = id
+      pre.className = 'enhanced'
 
       const btn = document.createElement('button')
       btn.className = 'code-copy-btn'
-      btn.textContent = '复制'
-      btn.onclick = () => {
+      btn.title = 'Copy code'
+      btn.textContent = '📋'
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault()
         navigator.clipboard.writeText(text)
-        btn.textContent = '已复制'
-        setTimeout(() => btn.textContent = '复制', 2000)
-      }
+        btn.textContent = '✅'
+        setTimeout(() => btn.textContent = '📋', 2000)
+      })
+
       pre.insertBefore(btn, code)
     })
   })
