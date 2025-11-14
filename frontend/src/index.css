@@ -52,11 +52,12 @@
   --color-ring: hsl(var(--ring));
 }
 
-
 @layer base {
   :root {
     --vh: 1vh;
-    --font-family: -apple-system, BlinkMacSystemFont, Helvetica Neue, PingFang SC, Microsoft YaHei, Source Han Sans SC, Noto Sans CJK SC, WenQuanYi Micro Hei, sans-serif;
+    --font-family:
+      -apple-system, BlinkMacSystemFont, Helvetica Neue, PingFang SC, Microsoft YaHei,
+      Source Han Sans SC, Noto Sans CJK SC, WenQuanYi Micro Hei, sans-serif;
     --font-family-mono: Consolas, Menlo, Monaco, source-code-pro, Courier New, monospace;
     --sidebar-width: 270px; /* 240px width +  2 * 15px padding */
     --content-width: 610px; /* 580px width + 2 * 15px padding */
@@ -87,7 +88,6 @@
     --destructive-foreground: 210 40% 98%;
     --ring: 220.67 97.83% 36.08%;
     --radius: 0.5rem;
-
   }
 
   [data-theme='dark'] {
@@ -116,10 +116,11 @@
   }
 
   * {
-    border-color: hsl(var(--border))
+    border-color: hsl(var(--border));
   }
 
-  html, body {
+  html,
+  body {
     position: relative;
   }
   html {
@@ -157,37 +158,37 @@
   }
 
   /* https://stackoverflow.com/questions/9421551/how-do-i-remove-all-default-webkit-search-field-styling */
-  input[type="search"]::-webkit-search-decoration,
-  input[type="search"]::-webkit-search-cancel-button,
-  input[type="search"]::-webkit-search-results-button,
-  input[type="search"]::-webkit-search-results-decoration {
-    -webkit-appearance:none;
+  input[type='search']::-webkit-search-decoration,
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-results-button,
+  input[type='search']::-webkit-search-results-decoration {
+    -webkit-appearance: none;
   }
 
   button:not(:disabled),
-  [role="button"]:not(:disabled) {
+  [role='button']:not(:disabled) {
     cursor: pointer;
   }
 }
 
 /* This will always be included in the compiled CSS without using the @layer directive */
 .prose {
-  --tw-prose-body: hsl(var(--foreground)/0.83);
+  --tw-prose-body: hsl(var(--foreground) / 0.83);
   --tw-prose-headings: hsl(var(--foreground));
   --tw-prose-lead: hsl(var(--foreground));
   --tw-prose-links: hsl(var(--foreground));
   --tw-prose-bold: hsl(var(--foreground));
   --tw-prose-counters: hsl(var(--foreground));
-  --tw-prose-bullets: hsl(var(--foreground)/0.5);
-  --tw-prose-hr: hsl(var(--foreground)/0.2);
+  --tw-prose-bullets: hsl(var(--foreground) / 0.5);
+  --tw-prose-hr: hsl(var(--foreground) / 0.2);
   --tw-prose-quotes: hsl(var(--foreground));
-  --tw-prose-quote-borders:hsl(var(--foreground)/0.2);
-  --tw-prose-captions: hsl(var(--foreground)/0.65);
+  --tw-prose-quote-borders: hsl(var(--foreground) / 0.2);
+  --tw-prose-captions: hsl(var(--foreground) / 0.65);
   --tw-prose-code: hsl(var(--foreground));
   --tw-prose-pre-code: hsl(var(--neutral-foreground));
   --tw-prose-pre-bg: hsl(var(--neutral));
-  --tw-prose-th-borders: hsl(var(--foreground)/0.5);
-  --tw-prose-td-borders: hsl(var(--foreground)/0.2);
+  --tw-prose-th-borders: hsl(var(--foreground) / 0.5);
+  --tw-prose-td-borders: hsl(var(--foreground) / 0.2);
 
   max-width: 100%;
 
@@ -236,7 +237,7 @@
   pre.enhanced code > span::before {
     content: counter(line);
     padding-right: 0.75em;
-    color: hsl(var(--foreground)/0.5);
+    color: hsl(var(--foreground) / 0.5);
     font-size: 0.75em;
     user-select: none;
   }
@@ -248,7 +249,7 @@
     height: 1.5em;
     width: 2.5em;
     font-size: 1em;
-    text-align: right;
+    text-align: center;
     border: none;
     cursor: pointer;
     user-select: none;
@@ -256,23 +257,11 @@
 }
 
 .clamp-mask {
-  position: relative;
-  background-color: hsl(var(--card));
-
-  &::after {
-    position: absolute;
-    content: '';
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(hsl(var(--card)/0) 70%, hsl(var(--card)/0.95));
-    pointer-events: none;
-  }
+  mask-image: linear-gradient(rgba(0, 0, 0, 1) 70%, rgba(0, 0, 0, 0.1) 100%);
 }
 
 .hash-tag {
-  background-color: hsl(var(--accent)/0.85);
+  background-color: hsl(var(--accent) / 0.85);
   color: hsl(var(--accent-foreground));
   margin: 0 0.25em;
   padding: 0.25em;
@@ -315,7 +304,7 @@
 
     &:checked + label {
       background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22%2F%3E%3Cpath%20fill%3D%22%232eb88a%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22%2F%3E%3C%2Fsvg%3E');
-      color: hsl(var(--foreground)/0.55);
+      color: hsl(var(--foreground) / 0.55);
       text-decoration: line-through;
     }
   }
@@ -324,7 +313,7 @@
     display: block;
     padding: 0.5em 0.5em 0.5em 2.5em;
     max-width: 100%;
-    color: hsl(var(--foreground)/0.85);
+    color: hsl(var(--foreground) / 0.85);
     word-break: break-all;
     transition: color 250ms;
     cursor: text;

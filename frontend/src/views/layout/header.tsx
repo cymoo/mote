@@ -7,6 +7,8 @@ import { cx } from '@/utils/css.ts'
 import { Button } from '@/components/button.tsx'
 import { useStableNavigate } from '@/components/router.tsx'
 
+import { postActions } from '@/views/actions.ts'
+
 import { useIsSmallDevice, useMemoTitle } from './hooks.tsx'
 
 export function MainHeader({ className }: ComponentProps<'header'>) {
@@ -38,7 +40,14 @@ export function MainHeader({ className }: ComponentProps<'header'>) {
           <MenuIcon />
         </Button>
       )}
-      <span className="inline-flex items-center truncate text-foreground/80">{title}</span>
+      <span
+        className="inline-flex items-center truncate text-foreground/80"
+        onDoubleClick={() => {
+          postActions.refreshMainPosts()
+        }}
+      >
+        {title}
+      </span>
       <Button
         className="-mr-4 ml-auto"
         variant="ghost"

@@ -65,19 +65,19 @@ export function CollapsibleContent({
       const text = code.textContent || ''
       const lines = text.split('\n')
 
-      code.innerHTML = lines.map(line => `<span>${line || ' '}</span>`).join('\n')
+      code.innerHTML = lines.map((line) => `<span>${line || ' '}</span>`).join('\n')
       pre.className = 'enhanced'
 
       const btn = document.createElement('button')
       btn.className = 'code-copy-btn'
       btn.title = 'Copy code'
-      btn.textContent = '📋'
+      btn.textContent = '📄'
 
       btn.addEventListener('click', (e) => {
         e.preventDefault()
         navigator.clipboard.writeText(text)
         btn.textContent = '✅'
-        setTimeout(() => btn.textContent = '📋', 2000)
+        setTimeout(() => (btn.textContent = '📄'), 2000)
       })
 
       pre.insertBefore(btn, code)
@@ -91,17 +91,8 @@ export function CollapsibleContent({
         className={cx({ 'clamp-mask overflow-hidden': collapsed }, 'outline-none', className)}
         style={{ maxHeight: collapsed ? maxHeight : undefined }}
         dangerouslySetInnerHTML={{ __html: post.content }}
-        tabIndex={-1}
-        onFocus={(event) => {
-          if (collapsed && event.target !== event.currentTarget) {
-            setCollapsed(false)
-            expandedItems.add(post.id)
-          }
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            toggleCollapsed()
-          }
+        onDoubleClick={() => {
+          toggleCollapsed()
         }}
         {...props}
       />
