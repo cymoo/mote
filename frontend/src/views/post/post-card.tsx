@@ -56,7 +56,17 @@ export const PostCard = memo(function PostItem({
               <span className="text-foreground/80 ml-1 text-xs">{post.children_count}</span>
             </span>
           )}
-          {post.shared && <Share2Icon className="text-primary size-3" aria-label="shared" />}
+          {post.shared && (
+            <Share2Icon
+              className="text-primary size-3 cursor-pointer"
+              aria-label="shared"
+              onClick={() => {
+                const baseUrl = window.location.origin + import.meta.env.VITE_BLOG_URL
+                const url = baseUrl.endsWith('/') ? baseUrl + post.id : baseUrl + '/' + post.id
+                navigator.clipboard.writeText(url)
+              }}
+            />
+          )}
           <PostMenu
             className="-mr-4 ml-auto h-8!"
             post={post}
