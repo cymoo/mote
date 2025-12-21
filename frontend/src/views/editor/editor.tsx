@@ -56,7 +56,7 @@ export function PostEditor({
   const [value, setValue] = useState(initialValue)
   const [images, setImages] = useState(initialImages)
 
-  const empty = isEmptyParagraph(value) && images.length === 0
+  const empty = isEditorEmpty(value) && images.length === 0
 
   const { data: tags } = useSWR<Tag[]>(GET_TAGS, { fallbackData: [] })
   const tagNames = useMemo(
@@ -137,7 +137,10 @@ export function PostEditor({
             disabled={submitting || empty}
             style={{ opacity: submitting || empty ? 0.65 : 1 }}
             onClick={() => {
-              void handleSubmit(toHtml({ children: value, type: '' }), images)
+              void handleSubmit(
+                toHtml({ children: trimTrailingEmptyParagraphs(value), type: '' }),
+                images,
+              )
             }}
           >
             <T name="submit" />
@@ -148,6 +151,7 @@ export function PostEditor({
   )
 }
 
+// Hook to handle post submission
 function useSubmitPost(
   post: Partial<Post>,
   mutator?: PostMutator | ListMutator,
@@ -182,9 +186,10 @@ function useSubmitPost(
   return [submitting, handleSubmit] as const
 }
 
+// Hook to save draft to localStorage before unload
 function useSaveDraft(draftKey: string, value: SlateElement[], images: Image[]) {
   const saveDraft = useEvent(() => {
-    if (images.length === 0 && (isEmptyParagraph(value) || isParagraphWithSingleTag(value))) {
+    if (images.length === 0 && (isEditorEmpty(value) || isParagraphWithSingleTag(value))) {
       localStorage.removeItem(draftKey)
     } else {
       localStorage.setItem(draftKey, JSON.stringify({ value, images }))
@@ -206,12 +211,14 @@ interface DraftState {
   images: Image[]
 }
 
+// Generate a unique key for storing drafts in localStorage
 function genDraftKey(id: number | undefined, parentId: number | undefined | null): string {
   let key = 'draft:' + (id ?? 0).toString()
   if (parentId) key += `:${parentId.toString()}`
   return key
 }
 
+// Get the initial state for the editor from draft or post content
 function getInitialState(key: string, post: Partial<Post>, tag?: string) {
   const draft = localStorage.getItem(key)
   if (draft) return JSON.parse(draft) as DraftState
@@ -245,6 +252,7 @@ function getInitialState(key: string, post: Partial<Post>, tag?: string) {
   }
 }
 
+// Check if the editor contains only a single paragraph with a single hash tag
 function isParagraphWithSingleTag(elements: SlateElement[]): boolean {
   if (elements.length !== 1) return false
   const [paragraph] = elements
@@ -261,10 +269,31 @@ function isParagraphWithSingleTag(elements: SlateElement[]): boolean {
   )
 }
 
-function isEmptyParagraph(elements: SlateElement[]): boolean {
+// Check if the editor content is empty (only one empty paragraph)
+function isEditorEmpty(elements: SlateElement[]): boolean {
   if (elements.length !== 1) return false
   const [paragraph] = elements
-  if (paragraph.type !== PARAGRAPH) return false
+  return isEmptyParagraph(paragraph)
+}
 
-  return paragraph.children.every((child) => SlateText.isText(child) && child.text.trim() === '')
+// Check if the element is an empty paragraph
+function isEmptyParagraph(element: SlateElement): boolean {
+  if (element.type !== PARAGRAPH) return false
+
+  return element.children.every((child) => SlateText.isText(child) && child.text.trim() === '')
+}
+
+// Trim trailing empty paragraphs from the editor content, ensuring at least one paragraph remains
+export function trimTrailingEmptyParagraphs(elements: SlateElement[]): SlateElement[] {
+  if (elements.length <= 1) return elements
+
+  let end = elements.length
+
+  while (end > 0 && isEmptyParagraph(elements[end - 1])) {
+    end--
+  }
+
+  if (end === 0) end = 1
+
+  return elements.slice(0, end)
 }

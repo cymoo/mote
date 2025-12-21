@@ -1,5 +1,6 @@
 import { ChevronDown as DownIcon, ChevronUp as UpIcon } from 'lucide-react'
 import { ComponentProps, useLayoutEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 
 import { cx } from '@/utils/css.ts'
 
@@ -19,6 +20,7 @@ interface CollapsibleProps extends ComponentProps<'div'> {
   scrollIntoView: () => void
 }
 
+// A collapsible content component that can expand/collapse long content
 export function CollapsibleContent({
   post,
   maxHeight,
@@ -42,6 +44,8 @@ export function CollapsibleContent({
     // NOTE: Re-run this effect when the content changes
   }, [maxHeight, post.content.length])
 
+  useCodeBlockEnhancer(ref)
+
   const toggleCollapsed = () => {
     const nextCollapsed = !collapsed
 
@@ -54,35 +58,6 @@ export function CollapsibleContent({
 
     setCollapsed(nextCollapsed)
   }
-
-  useLayoutEffect(() => {
-    if (!ref.current) return
-
-    ref.current.querySelectorAll('pre > code').forEach((code) => {
-      const pre = code.parentElement!
-      if (pre.classList.contains('enhanced')) return
-
-      const text = code.textContent || ''
-      const lines = text.split('\n')
-
-      code.innerHTML = lines.map((line) => `<span>${line || ' '}</span>`).join('\n')
-      pre.className = 'enhanced'
-
-      const btn = document.createElement('button')
-      btn.className = 'code-copy-btn'
-      btn.title = 'Copy code'
-      btn.textContent = '📄'
-
-      btn.addEventListener('click', (e) => {
-        e.preventDefault()
-        navigator.clipboard.writeText(text)
-        btn.textContent = '✅'
-        setTimeout(() => (btn.textContent = '📄'), 2000)
-      })
-
-      pre.insertBefore(btn, code)
-    })
-  })
 
   return (
     <>
@@ -124,4 +99,57 @@ function ToggleIcon({ collapsed }: { collapsed: boolean }) {
       <Icon className="ml-1 size-4" aria-hidden="true" />
     </>
   )
+}
+
+// Enhance code blocks with line spans and copy buttons
+function useCodeBlockEnhancer(ref: RefObject<HTMLElement>) {
+  useLayoutEffect(() => {
+    const container = ref.current
+    if (!container) return
+
+    container.querySelectorAll('pre > code').forEach((code) => {
+      const pre = code.parentElement!
+
+      if (pre.classList.contains('enhanced')) return
+
+      const text = code.textContent || ''
+      const lines = text.split('\n')
+
+      code.innerHTML = lines.map((line) => `<span>${line || ''}</span>`).join('\n')
+
+      const btn = document.createElement('button')
+      btn.className = 'code-copy-btn'
+      btn.title = 'Copy code'
+      btn.textContent = '📄'
+
+      pre.classList.add('enhanced')
+      pre.insertBefore(btn, code)
+    })
+  })
+}
+
+// Global listener for code copy buttons
+if (typeof document !== 'undefined') {
+  let listenerAdded = false
+
+  const ensureGlobalListener = () => {
+    if (listenerAdded) return
+
+    document.addEventListener('click', (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.classList.contains('code-copy-btn')) return
+
+      e.preventDefault()
+      const code = target.parentElement?.querySelector('code')
+      const text = code?.textContent || ''
+
+      navigator.clipboard.writeText(text)
+      target.textContent = '✅'
+      setTimeout(() => (target.textContent = '📄'), 2000)
+    })
+
+    listenerAdded = true
+  }
+
+  ensureGlobalListener()
 }
