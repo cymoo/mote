@@ -1,12 +1,15 @@
 :root {
   --vh: 1vh;
-  --font-family: -apple-system, BlinkMacSystemFont, Helvetica Neue, PingFang SC, Microsoft YaHei, Source Han Sans SC, Noto Sans CJK SC, WenQuanYi Micro Hei, sans-serif;
-  --font-family-mono: Consolas, Menlo, Monaco, source-code-pro, Courier New, monospace;
+  --font-family: -apple-system, BlinkMacSystemFont, Helvetica Neue, PingFang SC,
+    Microsoft YaHei, Source Han Sans SC, Noto Sans CJK SC, WenQuanYi Micro Hei,
+    sans-serif;
+  --font-family-mono: Consolas, Menlo, Monaco, source-code-pro, Courier New,
+    monospace;
 }
 
-[data-theme='light'] {
-  --neutral: 214 20% 21%;
-  --neutral-foreground: 212 19% 87%;
+[data-theme="light"] {
+  --neutral: 220 14% 92%;
+  --neutral-foreground: 220 13% 20%;
 
   /* Catppuccin Latte */
   --background: 220 23% 95%;
@@ -29,10 +32,9 @@
   --destructive-foreground: 3 87% 97%;
   --ring: 266 85% 58%;
   --radius: 0.5rem;
-
 }
 
-[data-theme='dark'] {
+[data-theme="dark"] {
   --neutral: 220 21% 14%;
   --neutral-foreground: 197 31% 77%;
 
@@ -59,10 +61,11 @@
 }
 
 * {
-  border-color: hsl(var(--border))
+  border-color: hsl(var(--border));
 }
 
-html, body {
+html,
+body {
   position: relative;
 }
 
@@ -85,22 +88,22 @@ body {
 }
 
 .prose {
-  --tw-prose-body: hsl(var(--foreground)/0.83);
+  --tw-prose-body: hsl(var(--foreground) / 0.83);
   --tw-prose-headings: hsl(var(--foreground));
   --tw-prose-lead: hsl(var(--foreground));
   --tw-prose-links: hsl(var(--foreground));
   --tw-prose-bold: hsl(var(--foreground));
   --tw-prose-counters: hsl(var(--foreground));
-  --tw-prose-bullets: hsl(var(--foreground)/0.5);
-  --tw-prose-hr: hsl(var(--foreground)/0.2);
+  --tw-prose-bullets: hsl(var(--foreground) / 0.5);
+  --tw-prose-hr: hsl(var(--foreground) / 0.2);
   --tw-prose-quotes: hsl(var(--foreground));
-  --tw-prose-quote-borders: hsl(var(--foreground)/0.2);
-  --tw-prose-captions: hsl(var(--foreground)/0.65);
+  --tw-prose-quote-borders: hsl(var(--foreground) / 0.2);
+  --tw-prose-captions: hsl(var(--foreground) / 0.65);
   --tw-prose-code: hsl(var(--foreground));
   --tw-prose-pre-code: hsl(var(--neutral-foreground));
   --tw-prose-pre-bg: hsl(var(--neutral));
-  --tw-prose-th-borders: hsl(var(--foreground)/0.5);
-  --tw-prose-td-borders: hsl(var(--foreground)/0.2);
+  --tw-prose-th-borders: hsl(var(--foreground) / 0.5);
+  --tw-prose-td-borders: hsl(var(--foreground) / 0.2);
 }
 
 .prose {
@@ -137,7 +140,7 @@ body {
 }
 
 .hash-tag {
-  background-color: hsl(var(--accent)/0.85);
+  background-color: hsl(var(--accent) / 0.85);
   color: hsl(var(--accent-foreground));
   margin: 0 0.25em;
   padding: 0.25em;
@@ -174,15 +177,15 @@ p > .hash-tag:nth-of-type(2) {
 }
 
 .check-list input + label {
-  background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23adb5bd%22%20stroke-width%3D%223%22%2F%3E%3C%2Fsvg%3E');
+  background-image: url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23adb5bd%22%20stroke-width%3D%223%22%2F%3E%3C%2Fsvg%3E");
   background-repeat: no-repeat;
   background-position: center left;
   background-size: 2em;
 }
 
 .check-list input:checked + label {
-  background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22%2F%3E%3Cpath%20fill%3D%22%232eb88a%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22%2F%3E%3C%2Fsvg%3E');
-  color: hsl(var(--foreground)/0.55);
+  background-image: url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22%2F%3E%3Cpath%20fill%3D%22%232eb88a%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22%2F%3E%3C%2Fsvg%3E");
+  color: hsl(var(--foreground) / 0.55);
   text-decoration: line-through;
 }
 
@@ -190,7 +193,7 @@ p > .hash-tag:nth-of-type(2) {
   display: block;
   padding: 0.5em 0.5em 0.5em 2.5em;
   max-width: 100%;
-  color: hsl(var(--foreground)/0.85);
+  color: hsl(var(--foreground) / 0.85);
   word-break: break-all;
   transition: color 250ms;
   cursor: text;
@@ -234,21 +237,35 @@ p > .hash-tag:nth-of-type(2) {
 }
 
 .theme-toggle--toggled:not(label).theme-toggle .theme-toggle__classic g path,
-.theme-toggle input[type=checkbox]:checked ~ .theme-toggle__classic g path {
+.theme-toggle input[type="checkbox"]:checked ~ .theme-toggle__classic g path {
   transform: scale(0.5) rotate(45deg);
   opacity: 0;
   transition-delay: 0s;
 }
 
-.theme-toggle--toggled:not(label).theme-toggle .theme-toggle__classic :first-child path,
-.theme-toggle input[type=checkbox]:checked ~ .theme-toggle__classic :first-child path {
+.theme-toggle--toggled:not(label).theme-toggle
+  .theme-toggle__classic
+  :first-child
+  path,
+.theme-toggle
+  input[type="checkbox"]:checked
+  ~ .theme-toggle__classic
+  :first-child
+  path {
   d: path("M-12 5h30a1 1 0 0 0 9 13v24h-39Z");
   transition-delay: calc(var(--theme-toggle__classic--duration) * 0.2);
 }
 
 @supports not (d: path("")) {
-  .theme-toggle--toggled:not(label).theme-toggle .theme-toggle__classic :first-child path,
-  .theme-toggle input[type=checkbox]:checked ~ .theme-toggle__classic :first-child path {
+  .theme-toggle--toggled:not(label).theme-toggle
+    .theme-toggle__classic
+    :first-child
+    path,
+  .theme-toggle
+    input[type="checkbox"]:checked
+    ~ .theme-toggle__classic
+    :first-child
+    path {
     transform: translate3d(-12px, 10px, 0);
   }
 }
@@ -259,7 +276,7 @@ p > .hash-tag:nth-of-type(2) {
   cursor: pointer;
 }
 
-.theme-toggle input[type=checkbox] {
+.theme-toggle input[type="checkbox"] {
   display: none;
 }
 
