@@ -41,6 +41,11 @@ export const PostCard = memo(function PostItem({
   const confirm = useConfirm()
   const { lang } = useLang()
 
+  const baseShareUrl = window.location.origin + import.meta.env.VITE_BLOG_URL
+  const shareUrl = baseShareUrl.endsWith('/')
+    ? baseShareUrl + post.id
+    : baseShareUrl + '/' + post.id
+
   return (
     <article {...props}>
       <div className="border-border/50 bg-card text-card-foreground relative rounded-lg border p-4 shadow-xs">
@@ -57,15 +62,9 @@ export const PostCard = memo(function PostItem({
             </span>
           )}
           {post.shared && (
-            <Share2Icon
-              className="text-primary size-3 cursor-pointer"
-              aria-label="shared"
-              onClick={() => {
-                const baseUrl = window.location.origin + import.meta.env.VITE_BLOG_URL
-                const url = baseUrl.endsWith('/') ? baseUrl + post.id : baseUrl + '/' + post.id
-                navigator.clipboard.writeText(url)
-              }}
-            />
+            <a href={shareUrl} target="_blank" rel="noopener noreferrer">
+              <Share2Icon className="text-primary size-3" aria-label="shared" />
+            </a>
           )}
           <PostMenu
             className="-mr-4 ml-auto h-8!"
