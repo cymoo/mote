@@ -9,6 +9,11 @@ import { T } from '@/components/translation.tsx'
 
 import { Post } from './post-list.tsx'
 
+// NOTE: Items outside the viewport are unmounted when using virtual list.
+// As a result, expanded items will collapse when they become visible again.
+// This variable is used to persist the expanded state of items.
+const expandedItems = new Set<number>()
+
 interface CollapsibleProps extends ComponentProps<'div'> {
   post: Post
   maxHeight: number
@@ -33,7 +38,9 @@ export function CollapsibleContent({
 
     const collapsable = el.scrollHeight > maxHeight
     setCollapsable(collapsable)
-    setCollapsed(collapsable)
+    if (!expandedItems.has(post.id)) {
+      setCollapsed(collapsable)
+    }
     // NOTE: Re-run this effect when the content changes
   }, [maxHeight, post.content.length])
 
@@ -41,12 +48,16 @@ export function CollapsibleContent({
 
   const toggleCollapsed = () => {
     const nextCollapsed = !collapsed
-
-    if (nextCollapsed) {
-      scrollIntoView()
-    }
-
     setCollapsed(nextCollapsed)
+
+    requestIdleCallback(() => {
+      if (nextCollapsed) {
+        scrollIntoView()
+        expandedItems.delete(post.id)
+      } else {
+        expandedItems.add(post.id)
+      }
+    })
   }
 
   return (
