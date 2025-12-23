@@ -10,7 +10,7 @@ BACKEND_LANG ?= go
 SCRIPT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 # Source common.sh to get configuration variables
-APP_NAME := mote-test
+APP_NAME := mote
 DEPLOY_ROOT := /opt/$(APP_NAME)
 
 # Color output
