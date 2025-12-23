@@ -31,7 +31,7 @@
   </scm>
   <properties>
     <kotlin.code.style>official</kotlin.code.style>
-    <java.version>17</java.version>
+    <java.version>21</java.version>
     <kotlin.version>2.0.20</kotlin.version>
     <exposed.version>0.56.0</exposed.version>
     <pebble-template.version>3.2.2</pebble-template.version>
