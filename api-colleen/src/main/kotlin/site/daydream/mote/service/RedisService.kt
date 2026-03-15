@@ -2,70 +2,60 @@ package site.daydream.mote.service
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.lettuce.core.LettuceFutures
-import io.lettuce.core.RedisClient
-import io.lettuce.core.RedisFuture
-import io.lettuce.core.ScanArgs
-import io.lettuce.core.ScanCursor
-import io.lettuce.core.api.StatefulRedisConnection
-import io.lettuce.core.api.async.RedisAsyncCommands
-import io.lettuce.core.api.sync.RedisCommands
-import io.lettuce.core.support.ConnectionPoolSupport
-import org.apache.commons.pool2.impl.GenericObjectPool
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig
+import redis.clients.jedis.*
+import redis.clients.jedis.params.ScanParams
 import site.daydream.mote.config.RedisConfig
 import java.time.Duration
 
 class RedisService(config: RedisConfig, val objectMapper: ObjectMapper) {
-    private val client: RedisClient = RedisClient.create(config.url)
-    private val pool: GenericObjectPool<StatefulRedisConnection<String, String>>
+    private val jedis: JedisPooled
 
     init {
-        val poolConfig = GenericObjectPoolConfig<StatefulRedisConnection<String, String>>().apply {
+        val poolConfig = ConnectionPoolConfig().apply {
             maxTotal = config.maxTotal
             maxIdle = config.maxIdle
+            minIdle = 0
+            testOnBorrow = true
+            testWhileIdle = true
+            testOnReturn = false
+            blockWhenExhausted = true
+            setMaxWait(Duration.ofMillis(3000))
         }
-        pool = ConnectionPoolSupport.createGenericObjectPool({ client.connect() }, poolConfig)
+
+        val uri = java.net.URI.create(config.url)
+        jedis = JedisPooled(poolConfig, uri)
     }
 
-    fun set(key: String, value: String): String = executeSync { it.set(key, value) }
+    fun set(key: String, value: String): String = jedis.set(key, value)
 
-    fun get(key: String): String? = executeSync { it.get(key) }
+    fun get(key: String): String? = jedis.get(key)
 
-    fun del(vararg keys: String): Long = executeSync { it.del(*keys) }
+    fun del(vararg keys: String): Long = jedis.del(*keys)
 
-    fun incr(key: String): Long = executeSync { it.incr(key) }
+    fun incr(key: String): Long = jedis.incr(key)
 
-    fun decr(key: String): Long = executeSync { it.decr(key) }
+    fun decr(key: String): Long = jedis.decr(key)
 
-    fun sadd(key: String, vararg members: String): Long = executeSync { it.sadd(key, *members) }
+    fun sadd(key: String, vararg members: String): Long = jedis.sadd(key, *members)
 
-    fun smembers(key: String): Set<String> = executeSync { it.smembers(key) }
+    fun smembers(key: String): Set<String> = jedis.smembers(key)
 
-    fun srem(key: String, vararg members: String): Long = executeSync { it.srem(key, *members) }
+    fun srem(key: String, vararg members: String): Long = jedis.srem(key, *members)
 
-    fun scard(key: String): Long = executeSync { it.scard(key) }
+    fun scard(key: String): Long = jedis.scard(key)
 
-    fun exists(key: String): Boolean = executeSync { it.exists(key) != 0L }
+    fun exists(key: String): Boolean = jedis.exists(key)
 
     fun mget(keys: List<String>): List<String?> {
-        val conn = pool.borrowObject()
-        return try {
-            conn.sync().mget(*keys.toTypedArray()).map { if (it.hasValue()) it.value else null }
-        } finally {
-            pool.returnObject(conn)
-        }
+        if (keys.isEmpty()) return emptyList()
+        return jedis.mget(*keys.toTypedArray())
     }
 
     fun <T : Any> mgetObject(keys: List<String>, typeReference: TypeReference<T>): List<T?> {
-        val conn = pool.borrowObject()
-        return try {
-            conn.sync().mget(*keys.toTypedArray()).map {
-                if (it.hasValue()) objectMapper.readValue(it.value, typeReference)
-                else null
-            }
-        } finally {
-            pool.returnObject(conn)
+        if (keys.isEmpty()) return emptyList()
+        return jedis.mget(*keys.toTypedArray()).map {
+            if (it != null) objectMapper.readValue(it, typeReference)
+            else null
         }
     }
 
@@ -73,81 +63,49 @@ class RedisService(config: RedisConfig, val objectMapper: ObjectMapper) {
         return get(key)?.let { objectMapper.readValue(it, typeReference) }
     }
 
-    fun deleteByPrefix(prefix: String, batchSize: Long = 100): Long {
-        return executeSync {
-            var deletedCount = 0L
-            var cursor = ScanCursor.INITIAL
-            val scanArgs = ScanArgs.Builder.matches("$prefix*").limit(batchSize)
+    fun deleteByPrefix(prefix: String, batchSize: Int = 100): Long {
+        var deletedCount = 0L
+        var cursor = ScanParams.SCAN_POINTER_START
+        val scanParams = ScanParams().match("$prefix*").count(batchSize)
 
-            do {
-                val scanResult = it.scan(cursor, scanArgs)
-                val keys = scanResult.keys
+        do {
+            val scanResult = jedis.scan(cursor, scanParams)
+            val keys = scanResult.result
 
-                if (keys.isNotEmpty()) {
-                    val deleted = it.del(*keys.toTypedArray())
-                    deletedCount += deleted
-                }
+            if (keys.isNotEmpty()) {
+                val deleted = jedis.del(*keys.toTypedArray())
+                deletedCount += deleted
+            }
 
-                cursor = scanResult
-            } while (!cursor.isFinished)
+            cursor = scanResult.cursor
+        } while (cursor != ScanParams.SCAN_POINTER_START)
 
-            deletedCount
-        }
+        return deletedCount
     }
 
-    fun multi(callback: (RedisCommands<String, String>).() -> Any) {
-        val conn = pool.borrowObject()
-        try {
-            val commands = conn.sync()
+    fun multi(callback: (AbstractTransaction).() -> Any) {
+        jedis.multi().use { tx ->
             try {
-                commands.multi()
-                commands.callback()
-                commands.exec()
+                tx.callback()
+                tx.exec()
             } catch (e: Exception) {
-                commands.discard()
-                throw RuntimeException("Failed to execute Redis command", e)
+                tx.discard()
+                throw RuntimeException("Failed to execute Redis transaction", e)
             }
-        } finally {
-            pool.returnObject(conn)
         }
     }
 
-    fun <R> pipeline(
-        timeout: Duration = Duration.ofSeconds(5),
-        callback: RedisAsyncCommands<String, String>.() -> List<RedisFuture<R>>
-    ): List<R> {
-        val conn = pool.borrowObject()
-        return try {
-            conn.setAutoFlushCommands(false)
-            val futures = conn.async().callback()
-            conn.flushCommands()
-            val success = LettuceFutures.awaitAll(timeout, *futures.toTypedArray())
-            if (!success) {
-                throw RuntimeException("Pipeline execution timed out after ${timeout.seconds} seconds")
-            }
-            futures.map { it.get() }
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to execute Redis commands", e)
-        } finally {
-            conn.setAutoFlushCommands(true)
-            pool.returnObject(conn)
-        }
-    }
-
-    fun <R> executeSync(callback: (RedisCommands<String, String>) -> R): R {
-        val conn = pool.borrowObject()
-        return try {
-            conn.setAutoFlushCommands(true)
-            callback(conn.sync())
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to execute Redis command", e)
-        } finally {
-            pool.returnObject(conn)
+    fun <T> pipeline(
+        callback: (AbstractPipeline) -> T
+    ): T {
+        return jedis.pipelined().use { pipe ->
+            val result = callback(pipe)
+            pipe.sync()
+            result
         }
     }
 
     fun close() {
-        pool.close()
-        client.shutdown()
+        jedis.close()
     }
 }

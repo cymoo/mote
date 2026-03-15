@@ -143,11 +143,14 @@ class SearchService(
     }
 
     private fun findMatchingDocuments(tokens: List<String>, partial: Boolean): Set<Int> {
-        val results = redisService.pipeline {
-            tokens.map { token -> smembers(tokenDocsKey(token)) }
+        val results = redisService.pipeline { pipe ->
+            tokens.map { token ->
+                pipe.smembers(tokenDocsKey(token))
+            }
         }
 
-        return results.map { result -> result.map { it.toInt() }.toSet() }
+        return results
+            .map { response -> response.get().map { it.toInt() }.toSet() }
             .reduce { acc, ids ->
                 if (partial) acc.union(ids) else acc.intersect(ids)
             }
@@ -157,11 +160,16 @@ class SearchService(
         val totalDocs = getDocCount().toDouble()
 
         val tokenFrequencies = redisService.mgetObject(docIds.map { docTokensKey(it) }, MAP_TYPE_REF)
-        val docFrequencies = redisService.pipeline { tokens.map { scard(tokenDocsKey(it)) } }.map { it.toDouble() }
+
+        val docFrequencies = redisService.pipeline { pipe ->
+            tokens.map { pipe.scard(tokenDocsKey(it)) }
+        }
+
+        val dfValues = docFrequencies.map { it.get().toDouble() }
 
         return docIds.zip(tokenFrequencies).map { (id, tokenFreq) ->
             var matchingTerms = 0
-            var score = tokens.zip(docFrequencies).sumOf { (token, df) ->
+            var score = tokens.zip(dfValues).sumOf { (token, df) ->
                 val tf = tokenFreq?.get(token)?.toDouble() ?: 0.0
                 if (tf > 0) matchingTerms += 1
 

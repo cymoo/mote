@@ -44,6 +44,7 @@ fun main() {
 
     // Initialize services
     val db = DatabaseService(databaseConfig)
+    val dsl = db.dsl
     val authService = AuthService()
 
     val app = Colleen()
@@ -72,10 +73,10 @@ fun main() {
     // Initialize remaining services
     val redisService = RedisService(redisConfig, objectMapper)
     val searchService = SearchService(appConfig.searchKeyPrefix, redisService, objectMapper)
-    val tagService = TagService(db)
-    val postService = PostService(db, tagService, objectMapper)
+    val tagService = TagService(dsl)
+    val postService = PostService(dsl, tagService, objectMapper)
     val uploadService = UploadService(uploadConfig)
-    val taskService = TaskService(searchService, db)
+    val taskService = TaskService(searchService, dsl)
 
     // Register services for DI
     app.provide(appConfig)

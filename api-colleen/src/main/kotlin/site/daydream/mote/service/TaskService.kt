@@ -1,7 +1,9 @@
 package site.daydream.mote.service
 
 import io.github.cymoo.cleary.TaskScheduler
+import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
+import site.daydream.mote.generated.Tables.POSTS
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ExecutorService
@@ -9,7 +11,7 @@ import java.util.concurrent.Executors
 
 class TaskService(
     private val searchService: SearchService,
-    private val db: DatabaseService,
+    private val dsl: DSLContext,
 ) {
     private val logger = LoggerFactory.getLogger(TaskService::class.java)
     private val executor: ExecutorService = Executors.newFixedThreadPool(2)
@@ -45,10 +47,9 @@ class TaskService(
     private fun clearPosts() {
         val thirtyDaysAgo = Instant.now().minus(30, ChronoUnit.DAYS).toEpochMilli()
         logger.info("Clearing posts deleted before: ${Instant.ofEpochMilli(thirtyDaysAgo)}")
-        val deletedCount = db.executeUpdate(
-            "DELETE FROM posts WHERE deleted_at < ?",
-            thirtyDaysAgo
-        )
+        val deletedCount = dsl.deleteFrom(POSTS)
+            .where(POSTS.DELETED_AT.lessThan(thirtyDaysAgo))
+            .execute()
         if (deletedCount > 0) {
             logger.info("Successfully deleted $deletedCount posts.")
         }
@@ -88,10 +89,8 @@ class TaskService(
         executor.submit {
             try {
                 searchService.clearAllIndexes()
-                db.query("SELECT id, content FROM posts") { rs ->
-                    rs.getInt("id") to rs.getString("content")
-                }.forEach { (id, content) ->
-                    searchService.index(id, content)
+                dsl.select(POSTS.ID, POSTS.CONTENT).from(POSTS).fetch().forEach {
+                    searchService.index(it.value1(), it.value2())
                 }
                 logger.info("All indexes rebuilt successfully")
             } catch (e: Exception) {

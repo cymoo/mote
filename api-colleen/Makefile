@@ -1,4 +1,4 @@
-.PHONY: run build test clean help
+.PHONY: run build test clean jooq help
 
 JAVA_HOME ?= $(shell dirname $(shell dirname $(shell readlink -f $(shell which java))))
 
@@ -10,6 +10,9 @@ build: ## Build the fat JAR
 
 test: ## Run tests
 	mvn test
+
+jooq: ## Generate JOOQ code
+	mvn jooq-codegen:generate
 
 clean: ## Clean build artifacts
 	mvn clean

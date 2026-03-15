@@ -1,19 +1,24 @@
 package site.daydream.mote.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.jooq.Condition
+import org.jooq.DSLContext
+import org.jooq.ResultQuery
+import org.jooq.impl.DSL.*
 import org.slf4j.LoggerFactory
 import site.daydream.mote.exception.NotFoundException
+import site.daydream.mote.generated.Tables.TAGS
+import site.daydream.mote.generated.tables.Posts.POSTS
 import site.daydream.mote.model.*
 import site.daydream.mote.util.count
 import site.daydream.mote.util.replaceFromStart
-import java.sql.Connection
-import java.sql.ResultSet
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
+import site.daydream.mote.generated.Tables.TAG_POST_ASSOC as ASSOC
 
 class PostService(
-    private val db: DatabaseService,
+    private val dsl: DSLContext,
     private val tagService: TagService,
     private val objectMapper: ObjectMapper,
 ) {
@@ -34,36 +39,39 @@ class PostService(
     fun findById(id: Int?): Post? {
         if (id == null) return null
 
-        return db.queryOne(
-            "SELECT * FROM posts WHERE id = ? AND deleted_at IS NULL",
-            id
-        ) { it.toPost() }
+        return dsl.selectFrom(POSTS)
+            .where(POSTS.ID.eq(id))
+            .and(POSTS.DELETED_AT.isNull)
+            .fetchOneIntoClass()
     }
 
     fun findByShared(): List<Post> {
-        return db.query(
-            "SELECT * FROM posts WHERE shared = 1 AND deleted_at IS NULL ORDER BY created_at DESC"
-        ) { it.toPost() }
+        return dsl.selectFrom(POSTS)
+            .where(POSTS.SHARED.eq(true))
+            .and(POSTS.DELETED_AT.isNull)
+            .orderBy(POSTS.CREATED_AT.desc())
+            .fetchAllIntoClass()
     }
 
     fun findByIds(ids: List<Int>): List<Post> {
         if (ids.isEmpty()) return emptyList()
 
-        val placeholders = ids.joinToString(",") { "?" }
-        val posts = db.query(
-            "SELECT * FROM posts WHERE id IN ($placeholders) AND deleted_at IS NULL",
-            *ids.toTypedArray()
-        ) { it.toPost() }.toMutableList()
+        val posts = dsl.selectFrom(POSTS)
+            .where(POSTS.ID.`in`(ids))
+            .and(POSTS.DELETED_AT.isNull)
+            .fetchAllIntoClass<Post>()
 
-        attachParents(posts)
-        attachTags(posts)
-        return posts
+        return posts.toMutableList().apply {
+            attachParents(this)
+            attachTags(this)
+        }
     }
 
     fun getActiveDays(): Int {
-        return db.queryInt(
-            "SELECT COUNT(DISTINCT date(created_at / 1000, 'unixepoch')) FROM posts WHERE deleted_at IS NULL"
-        )
+        return dsl.select(count(field("DISTINCT date(created_at / 1000, 'unixepoch')")))
+            .from(POSTS)
+            .where(POSTS.DELETED_AT.isNull)
+            .fetchOne()?.value1() ?: 0
     }
 
     fun getDailyCounts(startDate: ZonedDateTime, endDate: ZonedDateTime): List<Int> {
@@ -71,17 +79,19 @@ class PostService(
         val startTimestamp = startDate.toInstant().toEpochMilli()
         val endTimestamp = endDate.toInstant().toEpochMilli()
 
-        val dailyCounts = db.query(
-            """
-            SELECT CAST((created_at + ?) / 86400000 AS INTEGER) AS local_day, COUNT(*) AS count
-            FROM posts
-            WHERE deleted_at IS NULL AND created_at BETWEEN ? AND ?
-            GROUP BY local_day
-            """,
-            offsetMs, startTimestamp, endTimestamp
-        ) { rs ->
-            rs.getLong("local_day") to rs.getInt("count")
-        }.toMap()
+        val dailyCounts = dsl
+            .select(
+                floor((POSTS.CREATED_AT.plus(offsetMs)).div(86400000L)).`as`("local_day"),
+                count().`as`("count")
+            )
+            .from(POSTS)
+            .where(POSTS.DELETED_AT.isNull)
+            .and(POSTS.CREATED_AT.between(startTimestamp).and(endTimestamp))
+            .groupBy(field("local_day"))
+            .fetchMap(
+                { it.get("local_day", Long::class.java) },
+                { it.get("count", Int::class.java) }
+            )
 
         val days = ChronoUnit.DAYS.between(
             startDate.toLocalDate(),
@@ -100,108 +110,106 @@ class PostService(
         }
     }
 
-    fun getCount(): Int {
-        return db.queryInt("SELECT COUNT(*) FROM posts WHERE deleted_at IS NULL")
-    }
+    fun getCount(): Int =
+        dsl.fetchCount(POSTS, POSTS.DELETED_AT.isNull)
 
     fun filterPosts(options: FilterPostRequest, perPage: Int = 20): List<Post> {
-        val conditions = mutableListOf<String>()
-        val params = mutableListOf<Any?>()
+        var condition: Condition = trueCondition()
 
-        if (options.deleted) {
-            conditions.add("p.deleted_at IS NOT NULL")
-        } else {
-            conditions.add("p.deleted_at IS NULL")
-        }
-
-        options.parentId?.let {
-            conditions.add("p.parent_id = ?")
-            params.add(it)
-        }
-
-        options.color?.let {
-            conditions.add("p.color = ?")
-            params.add(it.toString().lowercase())
-        }
-
-        options.tag?.let { tagName ->
-            conditions.add("""
-                EXISTS (
-                    SELECT 1 FROM tags t
-                    JOIN tag_post_assoc a ON t.id = a.tag_id
-                    WHERE a.post_id = p.id AND (t.name = ? OR t.name LIKE ? || '/%')
-                )
-            """)
-            params.add(tagName)
-            params.add(tagName)
-        }
-
-        options.startDate?.let {
-            conditions.add("p.created_at >= ?")
-            params.add(it)
-        }
-
-        options.endDate?.let {
-            conditions.add("p.created_at <= ?")
-            params.add(it)
-        }
-
-        options.shared?.let {
-            conditions.add("p.shared = ?")
-            params.add(it)
-        }
-
-        options.hasFiles?.let {
-            conditions.add(if (it) "p.files IS NOT NULL" else "p.files IS NULL")
-        }
-
-        val orderField = when (options.orderBy) {
-            SortingField.CREATED_AT -> "p.created_at"
-            SortingField.UPDATED_AT -> "p.updated_at"
-            SortingField.DELETED_AT -> "p.deleted_at"
-        }
-
-        options.cursor?.let {
-            if (options.ascending) {
-                conditions.add("$orderField > ?")
+        with(options) {
+            condition = if (deleted) {
+                condition.and(POSTS.DELETED_AT.isNotNull)
             } else {
-                conditions.add("$orderField < ?")
+                condition.and(POSTS.DELETED_AT.isNull)
             }
-            params.add(it)
+
+            parentId?.let {
+                condition = condition.and(POSTS.PARENT_ID.eq(it))
+            }
+
+            color?.let {
+                condition = condition.and(POSTS.COLOR.eq(it.toString().lowercase()))
+            }
+
+            tag?.let {
+                condition = condition.and(
+                    exists(
+                        selectOne()
+                            .from(TAGS)
+                            .join(ASSOC).on(TAGS.ID.eq(ASSOC.TAG_ID))
+                            .where(ASSOC.POST_ID.eq(POSTS.ID))
+                            .and(TAGS.NAME.eq(it).or(TAGS.NAME.startsWith("$it/")))
+                    )
+                )
+            }
+
+            startDate?.let {
+                condition = condition.and(POSTS.CREATED_AT.greaterOrEqual(startDate))
+            }
+
+            endDate?.let {
+                condition = condition.and(POSTS.CREATED_AT.lessOrEqual(endDate))
+            }
+
+            shared?.let {
+                condition = condition.and(POSTS.SHARED.eq(it))
+            }
+
+            hasFiles?.let {
+                condition = if (it) {
+                    condition.and(POSTS.FILES.isNotNull)
+                } else {
+                    condition.and(POSTS.FILES.isNull)
+                }
+            }
+
+            val orderField = when (orderBy) {
+                SortingField.CREATED_AT -> POSTS.CREATED_AT
+                SortingField.UPDATED_AT -> POSTS.UPDATED_AT
+                SortingField.DELETED_AT -> POSTS.DELETED_AT
+            }
+
+            cursor?.let {
+                condition = if (ascending) {
+                    condition.and(orderField.greaterThan(it))
+                } else {
+                    condition.and(orderField.lessThan(it))
+                }
+            }
+
+            val orderClause = if (ascending) orderField.asc() else orderField.desc()
+
+            return dsl
+                .selectDistinct()
+                .from(POSTS)
+                .where(condition)
+                .orderBy(orderClause)
+                .limit(perPage)
+                .fetchInto(Post::class.java)
+                .toMutableList().apply {
+                    attachParents(this)
+                    attachTags(this)
+                }
         }
-
-        val orderClause = if (options.ascending) "$orderField ASC" else "$orderField DESC"
-        val whereClause = if (conditions.isNotEmpty()) conditions.joinToString(" AND ") else "1=1"
-
-        val posts = db.query(
-            "SELECT DISTINCT p.* FROM posts p WHERE $whereClause ORDER BY $orderClause LIMIT ?",
-            *params.toTypedArray(), perPage
-        ) { it.toPost() }.toMutableList()
-
-        attachParents(posts)
-        attachTags(posts)
-        return posts
     }
 
     fun create(post: Post): CreateResponse {
-        val now = Instant.now().toEpochMilli()
-        val id = db.insertReturningId(
-            """
-            INSERT INTO posts (content, files, color, shared, created_at, updated_at, parent_id, children_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-            """,
-            post.content, post.files, post.color, post.shared, now, now, post.parentId
-        )
+        val record = dsl.newRecord(POSTS, post)
+        record.store()
 
         // update post-tag association
         val hashTags = extractHashTags(post.content)
         val tags = hashTags.map { tagName -> tagService.findOrCreate(tagName) }
-        updatePostTagAssoc(id, tags, true)
+        updatePostTagAssoc(record.id, tags, true)
 
         // update children count
         post.parentId?.let { updateChildrenCount(it, true) }
 
-        return CreateResponse(id = id, createdAt = now, updatedAt = now)
+        return CreateResponse(
+            id = record.id,
+            createdAt = record.createdAt,
+            updatedAt = record.updatedAt,
+        )
     }
 
     fun update(post: UpdatePostRequest) {
@@ -209,10 +217,10 @@ class PostService(
 
         // 1. update children_count of parent
         if (post.isParentIdPresent()) {
-            val oldParentId = db.queryOne(
-                "SELECT parent_id FROM posts WHERE id = ?",
-                post.id
-            ) { rs -> rs.getObject("parent_id") as? Int }
+            val oldParentId = dsl.select(POSTS.PARENT_ID)
+                .from(POSTS)
+                .where(POSTS.ID.eq(post.id))
+                .fetchOne()?.get(POSTS.PARENT_ID)
 
             val newParentId = post.parentId
             when {
@@ -222,39 +230,25 @@ class PostService(
         }
 
         // 2. update post
-        val setClauses = mutableListOf<String>()
-        val params = mutableListOf<Any?>()
-
-        post.content?.let {
-            setClauses.add("content = ?")
-            params.add(it)
-        }
-        post.shared?.let {
-            setClauses.add("shared = ?")
-            params.add(it)
-        }
-        if (post.isFilesPresent()) {
-            setClauses.add("files = ?")
-            params.add(post.files?.let { objectMapper.writeValueAsString(it) })
-        }
-        if (post.isColorPresent()) {
-            setClauses.add("color = ?")
-            params.add(post.getColor()?.toString()?.lowercase())
-        }
-        if (post.isParentIdPresent()) {
-            setClauses.add("parent_id = ?")
-            params.add(post.parentId)
-        }
-
-        setClauses.add("updated_at = ?")
-        params.add(updatedAt)
-
-        params.add(post.id)
-
-        db.execute(
-            "UPDATE posts SET ${setClauses.joinToString(", ")} WHERE id = ?",
-            *params.toTypedArray()
-        )
+        dsl.update(POSTS)
+            .apply {
+                post.content?.let { this.set(POSTS.CONTENT, it) }
+                post.shared?.let { this.set(POSTS.SHARED, it) }
+                if (post.isFilesPresent()) {
+                    this.set(
+                        POSTS.FILES,
+                        post.files?.let { objectMapper.writeValueAsString(it) })
+                }
+                if (post.isColorPresent()) {
+                    this.set(POSTS.COLOR, post.getColor()?.toString()?.lowercase())
+                }
+                if (post.isParentIdPresent()) {
+                    this.set(POSTS.PARENT_ID, post.parentId)
+                }
+            }
+            .set(POSTS.UPDATED_AT, updatedAt)
+            .where(POSTS.ID.eq(post.id))
+            .execute()
 
         // 3. handle tags
         post.content?.let {
@@ -265,63 +259,67 @@ class PostService(
     }
 
     fun delete(id: Int) {
-        val parentId = db.queryOne(
-            "SELECT parent_id FROM posts WHERE id = ? AND deleted_at IS NULL",
-            id
-        ) { rs -> rs.getObject("parent_id") as? Int }
+        val parentId = dsl.select(POSTS.PARENT_ID)
+            .from(POSTS)
+            .where(POSTS.ID.eq(id))
+            .and(POSTS.DELETED_AT.isNull)
+            .fetchOne()?.get(POSTS.PARENT_ID)
 
-        db.execute(
-            "UPDATE posts SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL",
-            Instant.now().toEpochMilli(), id
-        )
+        dsl.update(POSTS)
+            .set(POSTS.DELETED_AT, Instant.now().toEpochMilli())
+            .where(POSTS.ID.eq(id))
+            .and(POSTS.DELETED_AT.isNull)
+            .execute()
 
         parentId?.let { updateChildrenCount(it, false) }
     }
 
     fun restore(id: Int) {
-        val parentId = db.queryOne(
-            "SELECT parent_id FROM posts WHERE id = ? AND deleted_at IS NOT NULL",
-            id
-        ) { rs -> rs.getObject("parent_id") as? Int }
+        val parentId = dsl.select(POSTS.PARENT_ID)
+            .from(POSTS)
+            .where(POSTS.ID.eq(id))
+            .and(POSTS.DELETED_AT.isNotNull)
+            .fetchOne()?.get(POSTS.PARENT_ID)
 
-        db.execute(
-            "UPDATE posts SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL",
-            id
-        )
+        dsl.update(POSTS)
+            .set(POSTS.DELETED_AT, null as Long?)
+            .where(POSTS.ID.eq(id))
+            .and(POSTS.DELETED_AT.isNotNull)
+            .execute()
 
         parentId?.let { updateChildrenCount(it, true) }
     }
 
     fun clear(id: Int) {
-        db.execute("DELETE FROM posts WHERE id = ? AND deleted_at IS NOT NULL", id)
+        dsl.deleteFrom(POSTS)
+            .where(POSTS.ID.eq(id))
+            .and(POSTS.DELETED_AT.isNotNull)
+            .execute()
     }
 
     fun clearAll(): List<Int> {
-        val ids = db.query(
-            "SELECT id FROM posts WHERE deleted_at IS NOT NULL"
-        ) { it.getInt("id") }
-        if (ids.isNotEmpty()) {
-            db.execute("DELETE FROM posts WHERE deleted_at IS NOT NULL")
-        }
-        return ids
+        return dsl.deleteFrom(POSTS)
+            .where(POSTS.DELETED_AT.isNotNull)
+            .returning(POSTS.ID)
+            .fetch(POSTS.ID)
     }
 
     private fun updatePostTagAssoc(postId: Int, tags: List<Tag>, isNewPost: Boolean = false) {
         if (!isNewPost) {
-            db.execute("DELETE FROM tag_post_assoc WHERE post_id = ?", postId)
+            dsl.deleteFrom(ASSOC)
+                .where(ASSOC.POST_ID.eq(postId))
+                .execute()
         }
+
         if (tags.isEmpty()) return
 
-        db.withConnection { conn ->
-            conn.prepareStatement("INSERT OR IGNORE INTO tag_post_assoc (post_id, tag_id) VALUES (?, ?)").use { stmt ->
-                tags.forEach { tag ->
-                    stmt.setInt(1, postId)
-                    stmt.setObject(2, tag.id)
-                    stmt.addBatch()
-                }
-                stmt.executeBatch()
+        dsl.batch(
+            tags.map { tag ->
+                dsl.insertInto(ASSOC)
+                    .columns(ASSOC.POST_ID, ASSOC.TAG_ID)
+                    .values(postId, tag.id)
             }
-        }
+        ).execute()
     }
 
     private fun attachTags(posts: MutableList<Post>) {
@@ -329,21 +327,17 @@ class PostService(
         val postIds = posts.mapNotNull { it.id }
         if (postIds.isEmpty()) return
 
-        val placeholders = postIds.joinToString(",") { "?" }
-        val tagMap = db.query(
-            """
-            SELECT a.post_id, t.name
-            FROM tag_post_assoc a
-            JOIN tags t ON a.tag_id = t.id
-            WHERE a.post_id IN ($placeholders)
-            """,
-            *postIds.toTypedArray()
-        ) { rs ->
-            rs.getInt("post_id") to rs.getString("name")
-        }.groupBy({ it.first }, { it.second })
+        val tags = dsl.select(ASSOC.POST_ID, TAGS.NAME)
+            .from(ASSOC)
+            .join(TAGS).on(ASSOC.TAG_ID.eq(TAGS.ID))
+            .where(ASSOC.POST_ID.`in`(postIds))
+            .fetchGroups(
+                { it.get(0, Int::class.java) },
+                { it.get(1, String::class.java) }
+            )
 
         posts.forEach {
-            it.tags = tagMap[it.id] ?: emptyList()
+            it.tags = tags[it.id] ?: emptyList()
         }
     }
 
@@ -362,8 +356,14 @@ class PostService(
     }
 
     private fun updateChildrenCount(parentId: Int, increment: Boolean) {
-        val op = if (increment) "children_count + 1" else "children_count - 1"
-        db.execute("UPDATE posts SET children_count = $op WHERE id = ?", parentId)
+        dsl.update(POSTS)
+            .set(
+                POSTS.CHILDREN_COUNT,
+                if (increment) POSTS.CHILDREN_COUNT.plus(1)
+                else POSTS.CHILDREN_COUNT.minus(1)
+            )
+            .where(POSTS.ID.eq(parentId))
+            .execute()
     }
 }
 
@@ -375,17 +375,10 @@ fun extractHashTags(content: String): Set<String> {
         .toSet()
 }
 
-fun ResultSet.toPost(): Post {
-    return Post(
-        id = getInt("id"),
-        content = getString("content"),
-        files = getString("files"),
-        color = getString("color"),
-        shared = getBoolean("shared"),
-        deletedAt = getObject("deleted_at") as? Long,
-        createdAt = getLong("created_at"),
-        updatedAt = getLong("updated_at"),
-        parentId = getObject("parent_id") as? Int,
-        childrenCount = getInt("children_count"),
-    )
+inline fun <reified T : Any> ResultQuery<*>.fetchAllIntoClass(): List<T> {
+    return this.fetchInto(T::class.java)
+}
+
+inline fun <reified T : Any> ResultQuery<*>.fetchOneIntoClass(): T? {
+    return this.fetchOneInto(T::class.java)
 }

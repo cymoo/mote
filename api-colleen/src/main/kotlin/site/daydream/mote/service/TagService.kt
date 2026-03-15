@@ -1,48 +1,47 @@
 package site.daydream.mote.service
 
+import org.jooq.DSLContext
+import org.jooq.impl.DSL
+import org.jooq.impl.DSL.selectOne
 import org.slf4j.LoggerFactory
 import site.daydream.mote.exception.BadRequestException
+import site.daydream.mote.generated.Tables.POSTS
+import site.daydream.mote.generated.Tables.TAGS
 import site.daydream.mote.model.Post
 import site.daydream.mote.model.Tag
 import site.daydream.mote.model.TagWithPostCount
 import site.daydream.mote.util.count
 import site.daydream.mote.util.replaceFromStart
 import java.time.Instant
+import site.daydream.mote.generated.Tables.TAG_POST_ASSOC as ASSOC
 
-class TagService(private val db: DatabaseService) {
+class TagService(private val dsl: DSLContext) {
     private val logger = LoggerFactory.getLogger(TagService::class.java)
 
-    fun findByName(name: String): Tag? {
-        return db.queryOne(
-            "SELECT * FROM tags WHERE name = ?",
-            name
-        ) { it.toTag() }
-    }
+    fun findByName(name: String): Tag? =
+        dsl.selectFrom(TAGS)
+            .where(TAGS.NAME.eq(name))
+            .fetchOneIntoClass()
 
-    fun getCount(): Int {
-        return db.queryInt("SELECT COUNT(*) FROM tags")
-    }
+    fun getCount(): Int =
+        dsl.fetchCount(TAGS)
 
     fun getAllWithPostCount(): List<TagWithPostCount> {
-        return db.query(
-            """
+        val sql = """
             SELECT t.name, t.sticky,
                 (
                     SELECT COUNT(DISTINCT a.post_id)
                     FROM tag_post_assoc a
                     WHERE a.tag_id IN (
-                        SELECT id FROM tags WHERE name = t.name OR name LIKE t.name || '/%'
+                        SELECT id
+                        FROM tags
+                        WHERE name = t.name
+                           OR name LIKE t.name || '/%'
                     )
-                ) AS post_count
-            FROM tags t
-            """
-        ) { rs ->
-            TagWithPostCount(
-                name = rs.getString("name"),
-                sticky = rs.getBoolean("sticky"),
-                postCount = rs.getLong("post_count")
-            )
-        }
+            ) AS post_count
+            FROM tags t;
+        """
+        return dsl.resultQuery(sql).fetchAllIntoClass()
     }
 
     fun findOrCreate(name: String): Tag {
@@ -51,39 +50,40 @@ class TagService(private val db: DatabaseService) {
 
     fun insertOrUpdate(name: String, sticky: Boolean) {
         val now = Instant.now().toEpochMilli()
-        db.execute(
-            """
-            INSERT INTO tags (name, sticky, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET sticky = ?, updated_at = ?
-            """,
-            name, sticky, now, now, sticky, now
-        )
+
+        dsl.insertInto(TAGS)
+            .columns(TAGS.NAME, TAGS.STICKY, TAGS.CREATED_AT, TAGS.UPDATED_AT)
+            .values(name, sticky, now, now)
+            .onConflict(TAGS.NAME)
+            .doUpdate()
+            .set(TAGS.STICKY, sticky)
+            .set(TAGS.UPDATED_AT, now)
+            .execute()
     }
 
     fun create(name: String): Tag {
-        val now = Instant.now().toEpochMilli()
-        val id = db.insertReturningId(
-            "INSERT INTO tags (name, sticky, created_at, updated_at) VALUES (?, ?, ?, ?)",
-            name, false, now, now
-        )
-        return Tag(id = id, name = name, createdAt = now, updatedAt = now)
+        val record = dsl.newRecord(TAGS, Tag(name = name))
+        record.store()
+        return Tag(id = record.id, name = record.name)
     }
 
     fun deleteAssociatedPosts(name: String) {
         val now = Instant.now().toEpochMilli()
-        db.execute(
-            """
-            UPDATE posts SET deleted_at = ?
-            WHERE id IN (
-                SELECT a.post_id FROM tag_post_assoc a
-                WHERE a.tag_id IN (
-                    SELECT id FROM tags WHERE name = ? OR name LIKE ? || '/%'
+
+        dsl.update(POSTS)
+            .set(POSTS.DELETED_AT, now)
+            .where(
+                POSTS.ID.`in`(
+                    dsl.select(ASSOC.POST_ID).from(ASSOC)
+                        .where(
+                            ASSOC.TAG_ID.`in`(
+                                dsl.select(TAGS.ID).from(TAGS)
+                                    .where(TAGS.NAME.eq(name).or(TAGS.NAME.startsWith("$name/")))
+                            )
+                        )
                 )
             )
-            """,
-            now, name, name
-        )
+            .execute()
     }
 
     fun renameOrMerge(name: String, newName: String) {
@@ -92,11 +92,15 @@ class TagService(private val db: DatabaseService) {
             throw BadRequestException("""Cannot move "$name" to a subtag of itself "$newName"""")
         }
 
-        // Get all affected tags
-        val affectedTags = db.query(
-            "SELECT * FROM tags WHERE name = ? OR name = ? OR name LIKE ? || '/%'",
-            name, newName, name
-        ) { it.toTag() }
+        // Get all affected tags in a single query
+        val affectedTags = dsl
+            .selectFrom(TAGS)
+            .where(
+                TAGS.NAME.eq(name)
+                    .or(TAGS.NAME.eq(newName))
+                    .or(TAGS.NAME.startsWith("$name/"))
+            )
+            .fetchAllIntoClass<Tag>()
 
         val sourceTag = affectedTags.find { it.name == name } ?: create(name)
         val targetTag = affectedTags.find { it.name == newName }
@@ -124,64 +128,62 @@ class TagService(private val db: DatabaseService) {
     private fun rename(tag: Tag, newName: String) {
         val oldName = tag.name
 
-        db.execute(
-            "UPDATE tags SET name = ?, updated_at = ? WHERE id = ?",
-            newName, Instant.now().toEpochMilli(), tag.id
-        )
+        dsl.update(TAGS)
+            .set(TAGS.NAME, newName)
+            .set(TAGS.UPDATED_AT, Instant.now().toEpochMilli())
+            .where(TAGS.ID.eq(tag.id))
+            .execute()
 
-        db.execute(
-            """
-            UPDATE posts SET content = REPLACE(content, ?||'<', ?||'<')
-            WHERE id IN (
-                SELECT post_id FROM tag_post_assoc WHERE tag_id = ?
+        dsl.update(POSTS)
+            .set(
+                POSTS.CONTENT,
+                DSL.replace(POSTS.CONTENT, ">#$oldName<", ">#$newName<")
             )
-            """,
-            ">#$oldName", ">#$newName", tag.id
-        )
+            .where(
+                POSTS.ID.`in`(
+                    dsl.select(ASSOC.POST_ID)
+                        .from(ASSOC)
+                        .where(ASSOC.TAG_ID.eq(tag.id))
+                )
+            )
+            .execute()
     }
 
     private fun merge(sourceTag: Tag, targetTag: Tag) {
-        val postIds = db.query(
-            "SELECT post_id FROM tag_post_assoc WHERE tag_id = ?",
-            sourceTag.id
-        ) { it.getInt("post_id") }
+        val postIds = dsl.select(ASSOC.POST_ID)
+            .from(ASSOC)
+            .where(ASSOC.TAG_ID.eq(sourceTag.id))
+            .fetch(ASSOC.POST_ID)
 
         if (postIds.isEmpty()) return
 
-        val placeholders = postIds.joinToString(",") { "?" }
-
         // Update post content
-        db.execute(
-            "UPDATE posts SET content = REPLACE(content, ?, ?) WHERE id IN ($placeholders)",
-            ">#${sourceTag.name}<", ">#${targetTag.name}<", *postIds.toTypedArray()
-        )
+        dsl.update(POSTS)
+            .set(
+                POSTS.CONTENT,
+                DSL.replace(POSTS.CONTENT, ">#${sourceTag.name}<", ">#${targetTag.name}<")
+            )
+            .where(POSTS.ID.`in`(postIds))
+            .execute()
 
-        // Insert new tag associations
-        db.withConnection { conn ->
-            conn.prepareStatement(
-                """
-                INSERT OR IGNORE INTO tag_post_assoc (post_id, tag_id)
-                SELECT post_id, ? FROM tag_post_assoc WHERE tag_id = ?
-                """
-            ).use { stmt ->
-                stmt.setObject(1, targetTag.id)
-                stmt.setObject(2, sourceTag.id)
-                stmt.executeUpdate()
-            }
-        }
+        // Insert new tag associations (ignoring if they already exist)
+        dsl.insertInto(ASSOC)
+            .columns(ASSOC.POST_ID, ASSOC.TAG_ID)
+            .select(
+                dsl.select(ASSOC.POST_ID, DSL.value(targetTag.id).`as`("tag_id"))
+                    .from(ASSOC)
+                    .where(ASSOC.TAG_ID.eq(sourceTag.id))
+            )
+            .onConflictDoNothing()
+            .execute()
 
         // Delete old associations and source tag
-        db.execute("DELETE FROM tag_post_assoc WHERE tag_id = ?", sourceTag.id)
-        db.execute("DELETE FROM tags WHERE id = ?", sourceTag.id)
-    }
-}
+        dsl.deleteFrom(ASSOC)
+            .where(ASSOC.TAG_ID.eq(sourceTag.id))
+            .execute()
 
-fun java.sql.ResultSet.toTag(): Tag {
-    return Tag(
-        id = getInt("id"),
-        name = getString("name"),
-        sticky = getBoolean("sticky"),
-        createdAt = getLong("created_at"),
-        updatedAt = getLong("updated_at"),
-    )
+        dsl.deleteFrom(TAGS)
+            .where(TAGS.ID.eq(sourceTag.id))
+            .execute()
+    }
 }

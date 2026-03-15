@@ -21,7 +21,8 @@
         <hikari.version>6.2.1</hikari.version>
         <sqlite.version>3.47.1.0</sqlite.version>
         <flyway.version>10.21.0</flyway.version>
-        <lettuce.version>6.5.3.RELEASE</lettuce.version>
+        <jedis.version>5.2.0</jedis.version>
+        <jooq.version>3.19.16</jooq.version>
         <pebble.version>3.2.2</pebble.version>
         <hanlp.version>portable-1.8.6</hanlp.version>
         <thumbnailator.version>0.4.20</thumbnailator.version>
@@ -29,7 +30,6 @@
         <webp-imageio.version>0.1.6</webp-imageio.version>
         <logback.version>1.5.27</logback.version>
         <slf4j.version>2.0.9</slf4j.version>
-        <commons-pool2.version>2.12.1</commons-pool2.version>
         <junit.version>5.11.4</junit.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -95,16 +95,18 @@
             <version>${flyway.version}</version>
         </dependency>
 
+        <!-- JOOQ -->
+        <dependency>
+            <groupId>org.jooq</groupId>
+            <artifactId>jooq</artifactId>
+            <version>${jooq.version}</version>
+        </dependency>
+
         <!-- Redis -->
         <dependency>
-            <groupId>io.lettuce</groupId>
-            <artifactId>lettuce-core</artifactId>
-            <version>${lettuce.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-pool2</artifactId>
-            <version>${commons-pool2.version}</version>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>${jedis.version}</version>
         </dependency>
 
         <!-- Template Engine -->
@@ -183,6 +185,12 @@
                         <goals>
                             <goal>compile</goal>
                         </goals>
+                        <configuration>
+                            <sourceDirs>
+                                <sourceDir>src/main/kotlin</sourceDir>
+                                <sourceDir>target/generated-sources/jooq</sourceDir>
+                            </sourceDirs>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>test-compile</id>
@@ -252,6 +260,45 @@
                 <version>3.6.3</version>
                 <configuration>
                     <mainClass>site.daydream.mote.AppKt</mainClass>
+                </configuration>
+            </plugin>
+
+            <!-- JOOQ Code Generation Plugin -->
+            <plugin>
+                <groupId>org.jooq</groupId>
+                <artifactId>jooq-codegen-maven</artifactId>
+                <version>${jooq.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <logging>WARN</logging>
+                    <jdbc>
+                        <driver>org.sqlite.JDBC</driver>
+                        <url>jdbc:sqlite:${project.basedir}/../data/app-dev.db</url>
+                    </jdbc>
+                    <generator>
+                        <database>
+                            <name>org.jooq.meta.sqlite.SQLiteDatabase</name>
+                            <includes>tags|posts|tag_post_assoc</includes>
+                            <forcedTypes>
+                                <forcedType>
+                                    <name>BIGINT</name>
+                                    <includeExpression>.*(created_at|updated_at|deleted_at)</includeExpression>
+                                </forcedType>
+                            </forcedTypes>
+                        </database>
+                        <target>
+                            <packageName>site.daydream.mote.generated</packageName>
+                            <directory>target/generated-sources/jooq</directory>
+                        </target>
+                    </generator>
                 </configuration>
             </plugin>
         </plugins>
