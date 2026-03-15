@@ -6,9 +6,9 @@ A lightweight notebook API backend built with the [Colleen](https://github.com/c
 
 - **Framework**: [Colleen](https://github.com/cymoo/colleen) - A lightweight web framework for Kotlin
 - **Task Scheduling**: [Cleary](https://github.com/cymoo/cleary) - A lightweight task scheduler for Kotlin
-- **Database**: SQLite (via JDBC + HikariCP)
+- **Database**: SQLite (via JOOQ + HikariCP)
 - **Migrations**: Flyway
-- **Cache/Search**: Redis (via Lettuce)
+- **Cache/Search**: Redis (via Jedis)
 - **Template Engine**: Pebble
 - **JSON**: Jackson
 - **Image Processing**: Thumbnailator + metadata-extractor
@@ -86,8 +86,8 @@ api-colleen/
 │   │   ├── TagService.kt       # Tag management
 │   │   ├── SearchService.kt    # Full-text search (Redis)
 │   │   ├── TaskService.kt      # Background tasks (Cleary)
-│   │   ├── DatabaseService.kt  # JDBC database access
-│   │   ├── RedisService.kt     # Redis client wrapper
+│   │   ├── DatabaseService.kt  # Database access (JOOQ + HikariCP)
+│   │   ├── RedisService.kt     # Redis client wrapper (Jedis)
 │   │   ├── UploadService.kt    # File upload handling
 │   │   └── AuthService.kt      # Authentication
 │   ├── exception/               # Custom exceptions
