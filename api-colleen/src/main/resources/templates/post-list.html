@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block css %}
+<style>
+  article {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  article > a {
+    display: block;
+    opacity: 1;
+    transform: scale(1);
+    transition: all .2s ease-in-out;
+  }
+
+  article > a:hover {
+    transform: scale(1.007);
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    color: hsl(var(--foreground) / 0.93);
+  }
+
+  time {
+    margin-top: 0.5rem;
+    color: hsl(var(--foreground) / 0.80);
+    font-size: 0.8rem;
+  }
+
+  p {
+    margin-top: 0.5rem;
+    color: hsl(var(--foreground) / 0.85);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="articles">
+  {% for post in posts %}
+  <article>
+    <a href="/shared/{{ post.id }}" rel="prefetch">
+      <h2>{{ post.title | raw }}</h2>
+      <time>{{ post.createdAt | date("yyyy-MM-dd") }}</time>
+      {% if post.description %}
+      <p>{{ post.description | raw }}</p>
+      {% endif %}
+    </a>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}
