@@ -214,7 +214,7 @@ class PostService(
                 post.id
             ) { rs -> rs.getObject("parent_id") as? Int }
 
-            val newParentId = post.getParentId()
+            val newParentId = post.parentId
             when {
                 oldParentId != null && newParentId == null -> updateChildrenCount(oldParentId, false)
                 oldParentId == null && newParentId != null -> updateChildrenCount(newParentId, true)
@@ -235,7 +235,7 @@ class PostService(
         }
         if (post.isFilesPresent()) {
             setClauses.add("files = ?")
-            params.add(post.getFiles()?.let { objectMapper.writeValueAsString(it) })
+            params.add(post.files?.let { objectMapper.writeValueAsString(it) })
         }
         if (post.isColorPresent()) {
             setClauses.add("color = ?")
@@ -243,7 +243,7 @@ class PostService(
         }
         if (post.isParentIdPresent()) {
             setClauses.add("parent_id = ?")
-            params.add(post.getParentId())
+            params.add(post.parentId)
         }
 
         setClauses.add("updated_at = ?")

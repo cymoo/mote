@@ -13,31 +13,31 @@ data class Post(
     val id: Int? = null,
     val content: String,
 
-    @JsonSerialize(nullsUsing = DefaultEmptyListSerializer::class)
+    @get:JsonSerialize(nullsUsing = DefaultEmptyListSerializer::class)
     @get:JsonRawValue
     val files: String? = null,
 
     val color: String? = null,
     val shared: Boolean = false,
 
-    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val deletedAt: Long? = null,
 
     val createdAt: Long = Instant.now().toEpochMilli(),
     val updatedAt: Long = Instant.now().toEpochMilli(),
 
-    @JsonIgnore
+    @get:JsonIgnore
     val parentId: Int? = null,
 
     val childrenCount: Int = 0,
 
-    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val score: Double? = null,
 
-    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
     var parent: Post? = null,
 
-    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
     var tags: List<String>? = null
 )
 
@@ -113,30 +113,19 @@ data class UpdatePostRequest(
     val id: Int,
     val content: String? = null,
     val shared: Boolean? = null,
-    val files: Any? = UNSET,
-    val color: Any? = UNSET,
-    val parentId: Any? = UNSET,
+    val files: List<FileInfo>? = null,
+    val color: String? = null,
+    val parentId: Int? = null,
 ) {
-    companion object {
-        val UNSET = Object()
-    }
+    // Track which fields were explicitly present in the JSON
+    @Transient
+    var presentFields: Set<String> = emptySet()
 
-    fun isFilesPresent(): Boolean = files !== UNSET
-    fun isColorPresent(): Boolean = color !== UNSET
-    fun isParentIdPresent(): Boolean = parentId !== UNSET
+    fun isFilesPresent(): Boolean = "files" in presentFields
+    fun isColorPresent(): Boolean = "color" in presentFields
+    fun isParentIdPresent(): Boolean = "parent_id" in presentFields
 
-    @Suppress("UNCHECKED_CAST")
-    fun getFiles(): List<FileInfo>? = if (isFilesPresent()) files as? List<FileInfo> else null
-
-    fun getColor(): CategoryColor? = if (isColorPresent()) {
-        when (color) {
-            is String -> CategoryColor.valueOf(color.uppercase())
-            is CategoryColor -> color
-            else -> null
-        }
-    } else null
-
-    fun getParentId(): Int? = if (isParentIdPresent()) parentId as? Int else null
+    fun getColor(): CategoryColor? = color?.let { CategoryColor.valueOf(it.uppercase()) }
 }
 
 data class DeletePostRequest(

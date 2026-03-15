@@ -76,8 +76,15 @@ class PostApiController {
     }
 
     @io.github.cymoo.colleen.Post("/update-post")
-    fun updatePost(body: Json<UpdatePostRequest>, postService: PostService, taskService: TaskService): Result<Unit> {
-        val payload = body.value
+    fun updatePost(ctx: Context, postService: PostService, taskService: TaskService): Result<Unit> {
+        val objectMapper = ctx.getService<ObjectMapper>()
+
+        // Parse raw JSON to detect which fields are present
+        val rawText = ctx.request.text()
+        val rawMap = objectMapper.readValue(rawText, Map::class.java)
+        val payload = objectMapper.readValue(rawText, UpdatePostRequest::class.java)
+        payload.presentFields = rawMap.keys.map { it.toString() }.toSet()
+
         val post = postService.findById(payload.id)
         if (post == null || post.deletedAt != null) {
             throw NotFoundException("Post not found")
