@@ -2,8 +2,8 @@ package site.daydream.mote.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.github.cymoo.colleen.*
-import io.github.cymoo.colleen.middleware.PebbleRender
 import site.daydream.mote.config.AppConfig
+import site.daydream.mote.middleware.render
 import site.daydream.mote.model.FileInfo
 import site.daydream.mote.service.PostService
 

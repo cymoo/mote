@@ -49,21 +49,27 @@ class RedisService(config: RedisConfig, val objectMapper: ObjectMapper) {
     fun exists(key: String): Boolean = executeSync { it.exists(key) != 0L }
 
     fun mget(keys: List<String>): List<String?> {
-        return executeSync { it.mget(*keys.toTypedArray()) }
-            .map { if (it.hasValue()) it.value else null }
+        val conn = pool.borrowObject()
+        return try {
+            conn.sync().mget(*keys.toTypedArray()).map { if (it.hasValue()) it.value else null }
+        } finally {
+            pool.returnObject(conn)
+        }
     }
 
-    inline fun <reified T : Any> mgetObject(keys: List<String>): List<T?> {
-        val typeReference = object : TypeReference<T>() {}
-        return executeSync { it.mget(*keys.toTypedArray()) }
-            .map {
+    fun <T : Any> mgetObject(keys: List<String>, typeReference: TypeReference<T>): List<T?> {
+        val conn = pool.borrowObject()
+        return try {
+            conn.sync().mget(*keys.toTypedArray()).map {
                 if (it.hasValue()) objectMapper.readValue(it.value, typeReference)
                 else null
             }
+        } finally {
+            pool.returnObject(conn)
+        }
     }
 
-    inline fun <reified T> getObject(key: String): T? {
-        val typeReference = object : TypeReference<T>() {}
+    fun <T> getObject(key: String, typeReference: TypeReference<T>): T? {
         return get(key)?.let { objectMapper.readValue(it, typeReference) }
     }
 
@@ -90,7 +96,8 @@ class RedisService(config: RedisConfig, val objectMapper: ObjectMapper) {
     }
 
     fun multi(callback: (RedisCommands<String, String>).() -> Any) {
-        pool.borrowObject().use { conn ->
+        val conn = pool.borrowObject()
+        try {
             val commands = conn.sync()
             try {
                 commands.multi()
@@ -100,6 +107,8 @@ class RedisService(config: RedisConfig, val objectMapper: ObjectMapper) {
                 commands.discard()
                 throw RuntimeException("Failed to execute Redis command", e)
             }
+        } finally {
+            pool.returnObject(conn)
         }
     }
 
@@ -107,59 +116,38 @@ class RedisService(config: RedisConfig, val objectMapper: ObjectMapper) {
         timeout: Duration = Duration.ofSeconds(5),
         callback: RedisAsyncCommands<String, String>.() -> List<RedisFuture<R>>
     ): List<R> {
-        return pool.borrowObject().use { conn ->
-            try {
-                conn.setAutoFlushCommands(false)
-                val futures = conn.async().callback()
-                conn.flushCommands()
-                val success = LettuceFutures.awaitAll(timeout, *futures.toTypedArray())
-                if (!success) {
-                    throw RuntimeException("Pipeline execution timed out after ${timeout.seconds} seconds")
-                }
-                futures.map { it.get() }
-            } catch (e: Exception) {
-                throw RuntimeException("Failed to execute Redis commands", e)
-            } finally {
-                conn.setAutoFlushCommands(true)
+        val conn = pool.borrowObject()
+        return try {
+            conn.setAutoFlushCommands(false)
+            val futures = conn.async().callback()
+            conn.flushCommands()
+            val success = LettuceFutures.awaitAll(timeout, *futures.toTypedArray())
+            if (!success) {
+                throw RuntimeException("Pipeline execution timed out after ${timeout.seconds} seconds")
             }
+            futures.map { it.get() }
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to execute Redis commands", e)
+        } finally {
+            conn.setAutoFlushCommands(true)
+            pool.returnObject(conn)
         }
     }
 
-    inline fun <R> executeSync(crossinline callback: (RedisCommands<String, String>) -> R): R {
+    fun <R> executeSync(callback: (RedisCommands<String, String>) -> R): R {
+        val conn = pool.borrowObject()
         return try {
-            pool.borrowObject().use { conn ->
-                conn.setAutoFlushCommands(true)
-                callback(conn.sync())
-            }
+            conn.setAutoFlushCommands(true)
+            callback(conn.sync())
         } catch (e: Exception) {
             throw RuntimeException("Failed to execute Redis command", e)
+        } finally {
+            pool.returnObject(conn)
         }
     }
 
     fun close() {
         pool.close()
         client.shutdown()
-    }
-
-    private fun <T : AutoCloseable> GenericObjectPool<T>.borrowObject(): PooledResource<T> {
-        val obj = this.borrowObject()
-        return PooledResource(this, obj)
-    }
-}
-
-private class PooledResource<T : AutoCloseable>(
-    private val pool: GenericObjectPool<T>,
-    val resource: T
-) : AutoCloseable {
-    override fun close() {
-        pool.returnObject(resource)
-    }
-}
-
-private fun <T : AutoCloseable, R> PooledResource<T>.use(block: (T) -> R): R {
-    return try {
-        block(this.resource)
-    } finally {
-        this.close()
     }
 }

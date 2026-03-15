@@ -1,5 +1,6 @@
 package site.daydream.mote.service
 
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.hankcs.hanlp.tokenizer.IndexTokenizer
 import org.slf4j.LoggerFactory
@@ -84,7 +85,7 @@ class SearchService(
         }
 
         val newTokenFrequency = newTokens.groupingBy { it }.eachCount()
-        val oldTokenFrequency = redisService.getObject<Map<String, Int>>(docTokensKey(id))
+        val oldTokenFrequency = redisService.getObject(docTokensKey(id), MAP_TYPE_REF)
         require(!oldTokenFrequency.isNullOrEmpty())
 
         redisService.multi {
@@ -103,7 +104,7 @@ class SearchService(
     }
 
     fun deindex(id: Int) {
-        val tokenFrequency = redisService.getObject<Map<String, Int>>(docTokensKey(id))
+        val tokenFrequency = redisService.getObject(docTokensKey(id), MAP_TYPE_REF)
         require(!tokenFrequency.isNullOrEmpty())
 
         redisService.multi {
@@ -155,7 +156,7 @@ class SearchService(
     private fun rankDocuments(tokens: List<String>, docIds: Set<Int>): List<DocumentMatch> {
         val totalDocs = getDocCount().toDouble()
 
-        val tokenFrequencies = redisService.mgetObject<Map<String, Int>>(docIds.map { docTokensKey(it) })
+        val tokenFrequencies = redisService.mgetObject(docIds.map { docTokensKey(it) }, MAP_TYPE_REF)
         val docFrequencies = redisService.pipeline { tokens.map { scard(tokenDocsKey(it)) } }.map { it.toDouble() }
 
         return docIds.zip(tokenFrequencies).map { (id, tokenFreq) ->
@@ -189,4 +190,8 @@ class SearchService(
     private fun docCountKey() = "${keyPrefix}doc_count"
     private fun docTokensKey(id: Int) = "${keyPrefix}doc:$id"
     private fun tokenDocsKey(token: String) = "${keyPrefix}token:$token"
+
+    companion object {
+        val MAP_TYPE_REF = object : TypeReference<Map<String, Int>>() {}
+    }
 }

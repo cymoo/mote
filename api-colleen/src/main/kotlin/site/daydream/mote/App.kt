@@ -1,13 +1,11 @@
 package site.daydream.mote
 
-import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.PropertyNamingStrategies
-import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.github.cymoo.colleen.Colleen
 import io.github.cymoo.colleen.middleware.Cors
-import io.github.cymoo.colleen.middleware.PebbleRender
 import io.github.cymoo.colleen.middleware.RequestLogger
 import io.github.cymoo.colleen.middleware.ServeStatic
 import org.slf4j.LoggerFactory
@@ -16,6 +14,7 @@ import site.daydream.mote.controller.MigrationController
 import site.daydream.mote.controller.PostApiController
 import site.daydream.mote.controller.PostPageController
 import site.daydream.mote.middleware.AuthMiddleware
+import site.daydream.mote.middleware.PebbleRender
 import site.daydream.mote.service.*
 import site.daydream.mote.util.Env
 import javax.imageio.ImageIO
@@ -49,28 +48,26 @@ fun main() {
 
     val app = Colleen()
 
-    // Configure Jackson
-    app.config.jackson { mapper ->
-        mapper.registerModule(KotlinModule.Builder().build())
-        mapper.registerModule(JavaTimeModule())
-        mapper.propertyNamingStrategy = PropertyNamingStrategies.SNAKE_CASE
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-        mapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
-    }
-
+    // Configure JSON
     app.config.json {
         includeNulls = false
+        failOnUnknownProperties = false
     }
 
     // Configure server
     app.config.server {
         host = serverConfig.host
         port = serverConfig.port
-        maxRequestSize = 10 * 1024 * 1024 // 10MB
+        maxRequestSize = 10L * 1024 * 1024 // 10MB
     }
 
-    // Get the configured ObjectMapper from Colleen
-    val objectMapper = app.config.objectMapper
+    // Get the underlying ObjectMapper and configure it
+    val jacksonMapper = app.config.jsonMapper as io.github.cymoo.colleen.json.JacksonMapper
+    val objectMapper: ObjectMapper = jacksonMapper.mapper.apply {
+        registerModule(KotlinModule.Builder().build())
+        registerModule(JavaTimeModule())
+        propertyNamingStrategy = PropertyNamingStrategies.SNAKE_CASE
+    }
 
     // Initialize remaining services
     val redisService = RedisService(redisConfig, objectMapper)
@@ -100,26 +97,17 @@ fun main() {
     // Template engine
     app.use(PebbleRender())
 
-    // Static files serving (for uploads)
-    app.use(ServeStatic(
-        basePath = "/${uploadConfig.uploadUrl}",
-        diskPath = uploadConfig.uploadDir
-    ))
-
-    // Static files serving (for CSS/JS)
-    app.use(ServeStatic(
-        basePath = "/static",
-        diskPath = "src/main/resources/static"
-    ))
-
     // CORS for API
     app.use(Cors(
-        allowOrigins = corsConfig.allowedOrigins,
-        allowMethods = corsConfig.allowedMethods,
-        allowHeaders = corsConfig.allowedHeaders,
+        allowOrigins = corsConfig.allowedOrigins.toSet(),
+        allowMethods = corsConfig.allowedMethods.joinToString(", "),
+        allowHeaders = corsConfig.allowedHeaders.joinToString(", "),
         allowCredentials = corsConfig.allowCredentials,
         maxAge = corsConfig.maxAge.toInt()
     ))
+
+    // Static files serving (for uploads)
+    app.use(ServeStatic(uploadConfig.uploadDir, "/${uploadConfig.uploadUrl}"))
 
     // Error handler for validation errors
     app.onError<IllegalArgumentException> { e, ctx ->
@@ -133,7 +121,7 @@ fun main() {
     // Auth middleware for /api routes (excluding login)
     val authMiddleware = AuthMiddleware(
         authService,
-        excludePaths = setOf("/api/login", "/api")
+        excludePaths = setOf("/login")
     )
 
     // Mount API routes with auth
@@ -145,7 +133,7 @@ fun main() {
     // Mount shared pages (no auth required)
     app.addController(PostPageController())
 
-    // Mount migration controller (no auth for simplicity, same as KT backend)
+    // Mount migration controller
     app.addController(MigrationController())
 
     // Start task scheduler

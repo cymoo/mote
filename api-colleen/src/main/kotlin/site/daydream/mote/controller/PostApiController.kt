@@ -1,7 +1,15 @@
 package site.daydream.mote.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.github.cymoo.colleen.*
+import io.github.cymoo.colleen.BadRequest
+import io.github.cymoo.colleen.Context
+import io.github.cymoo.colleen.Controller
+import io.github.cymoo.colleen.Get
+import io.github.cymoo.colleen.Json
+import io.github.cymoo.colleen.Param
+import io.github.cymoo.colleen.Query
+import io.github.cymoo.colleen.Result
+import io.github.cymoo.colleen.UploadedFile
 import site.daydream.mote.config.AppConfig
 import site.daydream.mote.exception.AuthenticationException
 import site.daydream.mote.exception.NotFoundException
@@ -13,44 +21,44 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
-@Controller("/api")
+@Controller("/")
 class PostApiController {
 
-    @Post("/login")
-    fun login(body: Json<LoginRequest>, authService: AuthService): Int {
+    @io.github.cymoo.colleen.Post("/login")
+    fun login(body: Json<LoginRequest>, authService: AuthService): Result<Unit> {
         if (!authService.isValidToken(body.value.password)) {
             throw AuthenticationException("invalid password")
         }
-        return 204
+        return Result.noContent()
     }
 
     @Get("/auth")
-    fun auth(): Int = 204
+    fun auth(): Result<Unit> = Result.noContent()
 
     @Get("/get-tags")
     fun getTags(tagService: TagService): List<TagWithPostCount> {
         return tagService.getAllWithPostCount()
     }
 
-    @Post("/rename-tag")
-    fun renameTag(body: Json<RenameTagRequest>, tagService: TagService): Int {
+    @io.github.cymoo.colleen.Post("/rename-tag")
+    fun renameTag(body: Json<RenameTagRequest>, tagService: TagService): Result<Unit> {
         tagService.renameOrMerge(body.value.name, body.value.newName)
-        return 204
+        return Result.noContent()
     }
 
-    @Post("/delete-tag")
-    fun deleteTag(body: Json<Name>, tagService: TagService): Int {
+    @io.github.cymoo.colleen.Post("/delete-tag")
+    fun deleteTag(body: Json<Name>, tagService: TagService): Result<Unit> {
         tagService.deleteAssociatedPosts(name = body.value.name)
-        return 204
+        return Result.noContent()
     }
 
-    @Post("/stick-tag")
-    fun stickTag(body: Json<StickyTagRequest>, tagService: TagService): Int {
+    @io.github.cymoo.colleen.Post("/stick-tag")
+    fun stickTag(body: Json<StickyTagRequest>, tagService: TagService): Result<Unit> {
         tagService.insertOrUpdate(body.value.name, body.value.sticky)
-        return 204
+        return Result.noContent()
     }
 
-    @Post("/create-post")
+    @io.github.cymoo.colleen.Post("/create-post")
     fun createPost(body: Json<CreatePostRequest>, postService: PostService, taskService: TaskService, ctx: Context): Result<CreateResponse> {
         val payload = body.value
         val objectMapper = ctx.getService<ObjectMapper>()
@@ -67,8 +75,8 @@ class PostApiController {
         return Result.created(response)
     }
 
-    @Post("/update-post")
-    fun updatePost(body: Json<UpdatePostRequest>, postService: PostService, taskService: TaskService): Int {
+    @io.github.cymoo.colleen.Post("/update-post")
+    fun updatePost(body: Json<UpdatePostRequest>, postService: PostService, taskService: TaskService): Result<Unit> {
         val payload = body.value
         val post = postService.findById(payload.id)
         if (post == null || post.deletedAt != null) {
@@ -81,11 +89,11 @@ class PostApiController {
                 taskService.rebuildIndex(payload.id, it)
             }
         }
-        return 204
+        return Result.noContent()
     }
 
-    @Post("/delete-post")
-    fun deletePost(body: Json<DeletePostRequest>, postService: PostService, taskService: TaskService): Int {
+    @io.github.cymoo.colleen.Post("/delete-post")
+    fun deletePost(body: Json<DeletePostRequest>, postService: PostService, taskService: TaskService): Result<Unit> {
         val payload = body.value
         if (payload.hard) {
             postService.clear(payload.id)
@@ -93,22 +101,22 @@ class PostApiController {
         } else {
             postService.delete(payload.id)
         }
-        return 204
+        return Result.noContent()
     }
 
-    @Post("/restore-post")
-    fun restorePost(body: Json<Id>, postService: PostService): Int {
+    @io.github.cymoo.colleen.Post("/restore-post")
+    fun restorePost(body: Json<Id>, postService: PostService): Result<Unit> {
         postService.restore(body.value.id)
-        return 204
+        return Result.noContent()
     }
 
-    @Post("/clear-posts")
-    fun clearPosts(postService: PostService, taskService: TaskService): Int {
+    @io.github.cymoo.colleen.Post("/clear-posts")
+    fun clearPosts(postService: PostService, taskService: TaskService): Result<Unit> {
         val ids = postService.clearAll()
         for (id in ids) {
             taskService.deleteIndex(id)
         }
-        return 204
+        return Result.noContent()
     }
 
     @Get("/search")
@@ -224,9 +232,9 @@ class PostApiController {
         </html>
     """.trimIndent()
 
-    @Post("/upload")
+    @io.github.cymoo.colleen.Post("/upload")
     fun uploadFile(file: UploadedFile, uploadService: UploadService): FileInfo {
-        val item = file.value ?: throw io.github.cymoo.colleen.BadRequest("File is required")
+        val item = file.value ?: throw BadRequest("File is required")
         return uploadService.handleFileUpload(
             filename = item.filename,
             contentType = item.contentType,

@@ -6,7 +6,6 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlin.time.Duration.Companion.hours
 
 class TaskService(
     private val searchService: SearchService,

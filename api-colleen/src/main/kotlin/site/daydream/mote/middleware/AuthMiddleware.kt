@@ -22,7 +22,7 @@ class AuthMiddleware(
             return
         }
 
-        val token = ctx.cookie("token") ?: extractBearer(ctx)
+        val token = ctx.request.cookie("token") ?: extractBearer(ctx)
 
         if (token.isNullOrEmpty()) {
             throw AuthenticationException("No token provided")
