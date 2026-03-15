@@ -116,7 +116,7 @@ function useCodeBlockEnhancer(ref: RefObject<HTMLElement>) {
       const text = code.textContent || ''
       const lines = text.split('\n')
 
-      code.innerHTML = lines.map((line) => `<span>${line || ''}</span>`).join('\n')
+      code.innerHTML = lines.map((line) => `<span>${escapeHtml(line || '')}</span>`).join('\n')
 
       const btn = document.createElement('button')
       btn.className = 'code-copy-btn'
@@ -153,4 +153,15 @@ if (typeof document !== 'undefined') {
   }
 
   ensureGlobalListener()
+}
+
+function escapeHtml(str: string) {
+  if (str.length === 0) return str
+
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
