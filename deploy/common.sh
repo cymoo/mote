@@ -37,10 +37,7 @@ export LOG_LEVEL=INFO
 export NODE_VERSION="v24.11.0"
 export GOLANG_VERSION="1.25.4"
 
-export NGINX_VERSION="1.24.0"
-export REDIS_VERSION="8.2.3"
-
-# If true, use mirrors to download dependencies for Python, Node.Js, Go, Rust, Maven, etc.
+# If true, use mirrors to download dependencies for Node.js and Go
 export CHINA_MIRROR=true
 
 # Colors for logging
@@ -74,14 +71,6 @@ check_not_root() {
     fi
 }
 
-# Ensure the current user is root (for scenarios where privileged execution is required)
-check_must_root() {
-    if [ "$EUID" -ne 0 ]; then
-        log_error "This script must be run with root privileges"
-        exit 1
-    fi
-}
-
 # Ensure system user exists, create if not
 ensure_user_exists() {
   if [ $# -eq 0 ]; then
@@ -103,4 +92,21 @@ check_command() {
         return 1
     fi
     return 0
+}
+
+# Write backend .env config to the given path.
+# Always overwrites; enforces 600 permissions owned by APP_USER.
+write_env_config() {
+    local dest="$1"
+    sudo tee "$dest" > /dev/null <<EOF
+UPLOAD_PATH=${UPLOADS_DIR}
+HTTP_PORT=${API_PORT}
+HTTP_IP=${API_ADDR}
+LOG_LEVEL=${LOG_LEVEL}
+LOG_REQUESTS=false
+APP_ENV=prod
+DATABASE_URL=${DB_FILE}
+EOF
+    sudo chmod 600 "$dest"
+    sudo chown "${APP_USER}:${APP_USER}" "$dest"
 }

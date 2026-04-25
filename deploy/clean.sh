@@ -120,22 +120,10 @@ remove_nginx() {
 clean_backend() {
     log_info "Cleaning backend files..."
 
-    local cleaned=0
-    local langs=(rust go python kotlin)
-
-    for lang in "${langs[@]}"; do
-        if [[ -d "$DEPLOY_ROOT/api/$lang" ]]; then
-            sudo rm -rf "$DEPLOY_ROOT/api/$lang"
-            cleaned=$((cleaned + 1))
-        fi
-    done
-
-    if [[ -L "$DEPLOY_ROOT/api/current" ]]; then
-        sudo rm -f "$DEPLOY_ROOT/api/current"
-    fi
-
-    if [[ $cleaned -gt 0 ]]; then
-        log_success "Cleaned $cleaned backend(s)"
+    if [[ -d "${DEPLOY_ROOT}/api" ]]; then
+        # Remove all content under api/ (handles current symlink and any language subdirs)
+        sudo find "${DEPLOY_ROOT}/api" -maxdepth 1 -mindepth 1 -exec rm -rf {} +
+        log_success "Backend files cleaned"
     else
         log_info "No backend files to clean"
     fi

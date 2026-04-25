@@ -81,14 +81,7 @@ manage_password() {
             sudo systemctl restart "${APP_NAME}"
         else
             log_info "Password file already exists: $SECRET_FILE"
-
-            # Verify file permissions
-            local file_perms
-            file_perms=$(stat -c %a "$SECRET_FILE" 2>/dev/null || stat -f %A "$SECRET_FILE" 2>/dev/null)
-            if [[ "$file_perms" != "600" ]]; then
-                log_warn "Fixing file permissions..."
-                sudo chmod 600 "$SECRET_FILE"
-            fi
+            sudo chmod 600 "$SECRET_FILE"
         fi
     else
         log_info "Password file does not exist, creating new one..."

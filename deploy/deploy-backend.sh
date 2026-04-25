@@ -33,16 +33,7 @@ deploy() {
     sudo cp "$SRC_DIR/bin/mote" "$DEST_DIR/mote"
     sudo chmod +x "$DEST_DIR/mote"
 
-    sudo tee "${DEST_DIR}/.env" > /dev/null <<EOF
-UPLOAD_PATH=${UPLOADS_DIR}
-HTTP_PORT=${API_PORT}
-HTTP_IP=${API_ADDR}
-LOG_LEVEL=${LOG_LEVEL}
-LOG_REQUESTS=false
-APP_ENV=prod
-DATABASE_URL=${DB_FILE}
-EOF
-    sudo chmod 600 "${DEST_DIR}/.env"
+    write_env_config "${DEST_DIR}/.env"
 
     ensure_user_exists "$APP_USER"
     sudo chown -R "$APP_USER:$APP_USER" "$DEST_DIR"

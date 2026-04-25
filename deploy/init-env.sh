@@ -1,5 +1,6 @@
 #!/bin/bash
-# init-env.sh - Script to initialize deployment environment (directories, users, permissions, dependencies)
+# init-env.sh - Create deployment directory structure and system user.
+# Run once on a fresh server before installing dependencies.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,7 +29,4 @@ sudo chmod 755 "${CONFIG_DIR}" "${CONFIG_DIR}"/{nginx,systemd}
 # Set ownership
 sudo chown -R "${APP_USER}:${APP_USER}" "${DEPLOY_ROOT}"
 
-# Install system dependencies
-bash "${SCRIPT_DIR}/install-deps.sh" system redis
-
-log_success "Deployment environment initialized successfully."
+log_success "Deployment environment initialized. Run 'make install-sys' and 'make install-redis' next."

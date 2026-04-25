@@ -19,22 +19,7 @@ deploy_binary() {
     log_info "Deploying Go binary..."
 
     sudo mkdir -p "$DEST_DIR"
-
-    # Write env config if not present
-    local env_file="${DEST_DIR}/.env"
-    if [[ ! -f "$env_file" ]]; then
-        sudo tee "$env_file" > /dev/null <<EOF
-UPLOAD_PATH=${UPLOADS_DIR}
-HTTP_PORT=${API_PORT}
-HTTP_IP=${API_ADDR}
-LOG_LEVEL=${LOG_LEVEL}
-LOG_REQUESTS=false
-APP_ENV=prod
-DATABASE_URL=${DB_FILE}
-EOF
-        sudo chmod 600 "$env_file"
-        sudo chown "${APP_USER}:${APP_USER}" "$env_file"
-    fi
+    write_env_config "${DEST_DIR}/.env"
 
     sudo mv "$BINARY_SRC" "$DEST_DIR/mote"
     sudo chmod +x "$DEST_DIR/mote"
