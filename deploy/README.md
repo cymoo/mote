@@ -33,11 +33,17 @@ docker compose up -d
 
 **4. Configure host nginx**
 
-Copy `deploy/nginx-host.conf` to `/etc/nginx/sites-available/mote`, replace `example.com` with your domain, then:
+Copy `deploy/nginx-host.conf` to `/etc/nginx/sites-available/mote` and replace `example.com` with your domain:
 ```bash
-certbot --nginx -d your-domain.com
-ln -s /etc/nginx/sites-available/mote /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
+sudo cp deploy/nginx-host.conf /etc/nginx/sites-available/mote
+sudo sed -i 's/example.com/your-domain.com/g' /etc/nginx/sites-available/mote
+sudo ln -s /etc/nginx/sites-available/mote /etc/nginx/sites-enabled/mote
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Then get a free TLS certificate (certbot automatically adds the HTTPS server block and sets up auto-renewal):
+```bash
+sudo certbot --nginx -d your-domain.com --email you@example.com --agree-tos
 ```
 
 **5. Configure local deploy tool**
