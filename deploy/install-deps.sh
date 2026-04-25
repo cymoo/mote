@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-deps.sh - Script to install dependencies (system, nodejs, rust, go, python, jdk, redis)
+# install-deps.sh - Script to install server dependencies (system, nodejs, go, redis)
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,15 +8,12 @@ source "${SCRIPT_DIR}/common.sh"
 # Display usage information
 usage() {
     cat <<EOF
-Usage: $0 <COMPONENT> [COMPONENT...] [OPTIONS]
+Usage: $0 <COMPONENT> [COMPONENT...]
 
 Components (at least one required):
     sys, system         System dependencies (curl, wget, git, nginx, sqlite3, etc.)
     node, nodejs        Node.js and npm
-    rust                Rust toolchain
     go, golang          Go language
-    python, py          Python3 and pip
-    jdk, java           Java and Maven
     redis               Redis server
 
 Options:
@@ -24,16 +21,12 @@ Options:
 
 Examples:
     $0 sys                      # Install only system dependencies
-    $0 python                   # Install only Python
-    $0 python rust              # Install Python and Rust
-    $0 node go redis            # Install Node.js, Go, and Redis
-    $0 sys python --china-mirror   # Install with China mirrors
+    $0 go redis                 # Install Go and Redis
+    $0 sys node go redis        # Install everything
 
 Description:
-    This script installs development dependencies for the project.
-    You must specify at least one component to install.
-
-    Each component is installed independently - no automatic dependencies.
+    This script installs server dependencies. The Go binary is self-contained
+    (no runtime needed on production), but Go is required for manual/emergency builds.
 EOF
     exit 0
 }
@@ -60,20 +53,309 @@ while [[ $# -gt 0 ]]; do
             COMPONENTS_TO_INSTALL+=("nodejs")
             shift
             ;;
-        rust)
-            COMPONENTS_TO_INSTALL+=("rust")
-            shift
-            ;;
         go|golang)
             COMPONENTS_TO_INSTALL+=("go")
             shift
             ;;
-        python|py)
-            COMPONENTS_TO_INSTALL+=("python")
+        redis)
+            COMPONENTS_TO_INSTALL+=("redis")
             shift
             ;;
-        jdk|java)
-            COMPONENTS_TO_INSTALL+=("jdk")
+        *)
+            log_error "Unknown component: $1"
+            echo ""
+            log_info "Run '$0 --help' for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate at least one component
+if [[ ${#COMPONENTS_TO_INSTALL[@]} -eq 0 ]]; then
+    log_error "No components specified"
+    echo ""
+    usage
+fi
+
+# Install system dependencies
+install_system_deps() {
+    log_info "Installing system dependencies..."
+
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq \
+        curl \
+        wget \
+        git \
+        build-essential \
+        pkg-config \
+        gpg \
+        openssl \
+        libssl-dev \
+        ca-certificates \
+        gnupg \
+        lsb-release \
+        gettext-base \
+        nginx \
+        sqlite3 \
+        libsqlite3-dev \
+        > /dev/null
+
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+
+    log_success "System dependencies installed"
+}
+
+# Install Node.js to /usr/local/node and link to /usr/bin/node
+install_nodejs() {
+    # Check if already installed with correct version
+    if command -v node &> /dev/null; then
+        local installed_version=$(node --version)
+        if [[ "$installed_version" == "$NODE_VERSION" ]]; then
+            log_info "Node.js $installed_version already installed"
+            return 0
+        fi
+    fi
+
+    log_info "Installing Node.js ${NODE_VERSION}..."
+
+    # Determine download URL
+    if [[ "$CHINA_MIRROR" == true ]]; then
+        local download_url="https://npmmirror.com/mirrors/node/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz"
+    else
+        local download_url="https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz"
+    fi
+
+    # Download and extract
+    wget -q --show-progress "$download_url" -O /tmp/node.tar.xz
+    sudo tar -xJf /tmp/node.tar.xz -C /usr/local/
+    sudo rm -f /usr/local/node
+    sudo ln -sf "/usr/local/node-${NODE_VERSION}-linux-x64" /usr/local/node
+
+    # Create symlinks
+    sudo ln -sf /usr/local/node/bin/node /usr/bin/node
+    sudo ln -sf /usr/local/node/bin/npm /usr/bin/npm
+    sudo ln -sf /usr/local/node/bin/npx /usr/bin/npx
+
+    # Configure npm registry
+    if [[ "$CHINA_MIRROR" == true ]]; then
+        npm config set registry https://registry.npmmirror.com
+        log_info "Configured npm to use China mirror"
+    fi
+
+    # Clean up
+    rm -f /tmp/node.tar.xz
+
+    log_success "Node.js $(node --version) installed"
+}
+
+# Install Go to /usr/local/go and link to /usr/bin/go
+install_go() {
+    # Check if already installed with correct version
+    if [[ -f /usr/local/go/bin/go ]]; then
+        local installed_version=$(/usr/local/go/bin/go version | awk '{print $3}' | sed 's/go//')
+        if [[ "$installed_version" == "$GOLANG_VERSION" ]]; then
+            log_info "Go $installed_version already installed"
+            return 0
+        fi
+    fi
+
+    log_info "Installing Go ${GOLANG_VERSION}..."
+
+    # Determine download URL
+    if [[ "$CHINA_MIRROR" == true ]]; then
+        local download_url="https://golang.google.cn/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz"
+    else
+        local download_url="https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz"
+    fi
+
+    # Download and install
+    wget -q --show-progress "$download_url" -O /tmp/go.tar.gz
+    sudo tar -C /tmp -xzf /tmp/go.tar.gz
+    sudo mv /tmp/go "/usr/local/go-${GOLANG_VERSION}"
+
+    # Create symlinks
+    sudo ln -sf "/usr/local/go-${GOLANG_VERSION}" /usr/local/go
+    sudo ln -sf /usr/local/go/bin/go /usr/bin/go
+    sudo ln -sf /usr/local/go/bin/gofmt /usr/bin/gofmt
+
+    # Configure GOPROXY for China
+    if [[ "$CHINA_MIRROR" == true ]]; then
+        /usr/local/go/bin/go env -w GO111MODULE=on
+        /usr/local/go/bin/go env -w GOPROXY=https://goproxy.cn,direct
+        log_info "Configured Go to use China proxy"
+    fi
+
+    # Clean up
+    rm -f /tmp/go.tar.gz
+
+    log_success "Go $(/usr/local/go/bin/go version | awk '{print $3}') installed"
+}
+
+# Install Redis with apt
+install_redis() {
+    # Check if already installed
+    if command -v redis-server &> /dev/null; then
+        local redis_version=$(redis-server --version | awk '{print $3}' | cut -d'=' -f2)
+        log_info "Redis $redis_version already installed"
+        return 0
+    fi
+
+    log_info "Installing Redis..."
+
+    # Add Redis repository
+    curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+    sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | \
+        sudo tee /etc/apt/sources.list.d/redis.list > /dev/null
+
+    # Install Redis
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq redis > /dev/null
+
+    # Enable and start Redis
+    sudo systemctl enable redis-server
+    sudo systemctl start redis-server
+
+    log_success "Redis $(redis-server --version | awk '{print $3}' | cut -d'=' -f2) installed"
+}
+
+# Verify a single component installation
+verify_component() {
+    local component="$1"
+
+    case "$component" in
+        system)
+            local verified=true
+            for cmd in curl wget git nginx sqlite3; do
+                if ! command -v "$cmd" &> /dev/null; then
+                    echo "  ✗ $cmd (missing)"
+                    verified=false
+                fi
+            done
+            if [[ "$verified" == true ]]; then
+                echo "  ✓ System dependencies"
+            fi
+            ;;
+        nodejs)
+            if command -v node &> /dev/null; then
+                echo "  ✓ node ($(node --version))"
+            else
+                echo "  ✗ node (missing)"
+                return 1
+            fi
+            ;;
+        go)
+            if command -v go &> /dev/null; then
+                echo "  ✓ go ($(go version | awk '{print $3}'))"
+            else
+                echo "  ✗ go (missing)"
+                return 1
+            fi
+            ;;
+        redis)
+            if command -v redis-server &> /dev/null; then
+                echo "  ✓ redis ($(redis-server --version | awk '{print $3}' | cut -d'=' -f2))"
+            else
+                echo "  ✗ redis (missing)"
+                return 1
+            fi
+            ;;
+    esac
+
+    return 0
+}
+
+# Verify all installed components
+verify_installations() {
+    log_info "Verifying installations..."
+    echo ""
+
+    local all_ok=true
+
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        if ! verify_component "$component"; then
+            all_ok=false
+        fi
+    done
+
+    echo ""
+
+    if [[ "$all_ok" == true ]]; then
+        log_success "All installations verified successfully!"
+    else
+        log_error "Some installations failed. Please check the output above."
+        return 1
+    fi
+}
+
+# Print installation summary
+print_summary() {
+    echo ""
+    log_info "Components to install:"
+    echo ""
+
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        case "$component" in
+            system) echo "  • System dependencies" ;;
+            nodejs) echo "  • Node.js" ;;
+            go) echo "  • Go" ;;
+            redis) echo "  • Redis" ;;
+        esac
+    done
+}
+
+# Main installation process
+main() {
+    log_info "Starting dependency installation..."
+
+    # Show what will be installed
+    print_summary
+    echo ""
+
+    # Install each component
+    for component in "${COMPONENTS_TO_INSTALL[@]}"; do
+        case "$component" in
+            system) install_system_deps ;;
+            nodejs) install_nodejs ;;
+            go) install_go ;;
+            redis) install_redis ;;
+        esac
+    done
+
+    # Verify
+    verify_installations
+
+    echo ""
+    log_success "Installation completed successfully!"
+}
+
+main "$@"
+
+# Parse command line arguments
+declare -a COMPONENTS_TO_INSTALL
+
+if [[ $# -eq 0 ]]; then
+    log_error "No components specified"
+    echo ""
+    usage
+fi
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            ;;
+        sys|system)
+            COMPONENTS_TO_INSTALL+=("system")
+            shift
+            ;;
+        node|nodejs)
+            COMPONENTS_TO_INSTALL+=("nodejs")
+            shift
+            ;;
+        go|golang)
+            COMPONENTS_TO_INSTALL+=("go")
             shift
             ;;
         redis)

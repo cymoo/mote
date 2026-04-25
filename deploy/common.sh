@@ -36,10 +36,6 @@ export LOG_LEVEL=INFO
 # Language runtime versions
 export NODE_VERSION="v24.11.0"
 export GOLANG_VERSION="1.25.4"
-export RUST_VERSION="1.91.0"
-export PYTHON_VERSION="3.12.3"
-export JDK_VERSION="21"
-export MAVEN_VERSION="3.9.9"
 
 export NGINX_VERSION="1.24.0"
 export REDIS_VERSION="8.2.3"

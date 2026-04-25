@@ -1,0 +1,97 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: api-go/go.mod
+          cache-dependency-path: api-go/go.sum
+
+      - name: Build Go backend
+        run: |
+          cd api-go
+          go build -ldflags="-s -w" -o bin/mote ./cmd/server
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'yarn'
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install frontend dependencies
+        run: cd frontend && yarn install --frozen-lockfile
+
+      - name: Build frontend
+        run: cd frontend && yarn build
+        env:
+          VITE_MEMO_URL: /memo
+          VITE_BLOG_URL: /shared
+          VITE_MANIFEST_START_URL: /memo
+
+      - name: Upload Go binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: mote-binary
+          path: api-go/bin/mote
+          retention-days: 7
+
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: mote-frontend
+          path: frontend/dist/
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Download Go binary
+        uses: actions/download-artifact@v4
+        with:
+          name: mote-binary
+          path: ./artifacts/
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: mote-frontend
+          path: ./frontend-dist/
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Upload binary to server
+        run: |
+          chmod +x ./artifacts/mote
+          scp -P ${{ vars.SSH_PORT || 22 }} \
+            ./artifacts/mote \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/mote-new
+
+      - name: Upload frontend to server
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${{ vars.SSH_PORT || 22 }}" \
+            ./frontend-dist/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/mote-frontend/
+
+      - name: Deploy on server
+        run: |
+          ssh -p ${{ vars.SSH_PORT || 22 }} \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "bash /opt/mote/deploy/deploy-artifacts.sh"
