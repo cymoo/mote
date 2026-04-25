@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.local
+.env.dev
+.env.prod
+data/
+uploads/
+backups/
+frontend/node_modules/
+frontend/dist/
+api-rs/
+api-py/
+api-kt/

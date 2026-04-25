@@ -1,203 +1,97 @@
-# Deployment Documentation
+# Mote — Deployment
 
-This document describes how to deploy and manage Mote.
+Docker-based deployment. The server runs three containers: the Go app, nginx (serves frontend + proxies API), and Redis. Host nginx handles HTTPS.
 
-**Normal deployments are fully automatic**: push to `main` → GitHub Actions builds the Go binary and frontend → uploads artifacts to the server → restarts the service.
-
-This guide covers first-time server setup and emergency manual operations.
-
-## Table of Contents
-
-- [Architecture Overview](#architecture-overview)
-- [GitHub Secrets Setup](#github-secrets-setup)
-- [First-time Server Setup](#first-time-server-setup)
-- [Daily Maintenance](#daily-maintenance)
-- [Emergency Manual Deployment](#emergency-manual-deployment)
-- [Troubleshooting](#troubleshooting)
-- [Script Reference](#script-reference)
-
-## Architecture Overview
-
-```
-push to main
-    │
-    ▼
-GitHub Actions (.github/workflows/deploy.yml)
-    ├── Build Go binary  (api-go/)
-    ├── Build frontend   (frontend/)
-    └── SCP artifacts → server → deploy-artifacts.sh
-
-Server (initialized once manually)
-    ├── /opt/mote/api/current/mote   ← Go binary (replaced on each deploy)
-    ├── /opt/mote/web/build/         ← Frontend assets (replaced on each deploy)
-    ├── /opt/mote/data/app.db        ← SQLite database (persistent)
-    ├── /opt/mote/uploads/           ← User uploads (persistent)
-    └── /opt/mote/config/.secret     ← Password file (generated once)
-```
-
-The Go binary is statically compiled — no language runtime is needed on the server.
-
-## GitHub Secrets Setup
-
-Add the following to your repository's **Settings → Secrets and variables → Actions**:
-
-| Secret / Variable | Description |
-|---|---|
-| `SSH_HOST` | Server IP or hostname |
-| `SSH_USER` | SSH user with sudo access |
-| `SSH_PRIVATE_KEY` | Private key content (generate with `make setup-deploy-key`) |
-| `SSH_KNOWN_HOSTS` | Server fingerprint (`ssh-keyscan -p PORT HOST`) |
-| `SSH_PORT` *(variable, optional)* | SSH port (default: 22) |
-
-### Generate SSH deploy key
+## Prerequisites
 
 On the server:
+- Docker with Compose plugin (`docker compose`)
+- nginx + certbot (for HTTPS)
+- git
+- sqlite3 (for backups)
 
+## First-time Setup
+
+**1. Clone the repo on the server**
 ```bash
-make setup-deploy-key
+git clone https://github.com/cymoo/mote.git /opt/mote
+cd /opt/mote
 ```
 
-This creates an ed25519 key pair in `/opt/mote/config/` and outputs the private key — paste it into the `SSH_PRIVATE_KEY` secret.
-
-## First-time Server Setup
-
-Run once on a fresh server:
-
+**2. Create `.env` from the example**
 ```bash
-cd /path/to/mote/deploy
-
-# 1. Create directories and system user
-make init-env
-
-# 2. Install system packages and Redis
-make install-sys
-make install-redis
-
-# 3. Configure Nginx
-make setup-nginx DOMAIN=example.com
-
-# 4. Setup HTTPS
-make setup-https DOMAIN=example.com EMAIL=admin@example.com
-
-# 5. Generate deploy key and add to GitHub Secrets
-make setup-deploy-key
-
-# 6. Push to main — GitHub Actions handles the rest
+cp .env.example .env
+# Edit .env and set MOTE_PASSWORD to a strong random string
+nano .env
 ```
 
-After the first push to `main`, GitHub Actions will:
-1. Build the Go binary and frontend
-2. Upload them to `/tmp/` on the server
-3. Run `deploy-artifacts.sh` which installs the binary, updates static files, and starts the service
-
-## Daily Maintenance
-
-### Service management
-
+**3. Start services**
 ```bash
-make status          # Show mote + nginx status
-make restart-backend # Restart Go service
-make logs            # Last 50 log lines
-make logs-follow     # Tail logs live
-make logs-nginx      # Nginx access + error logs
+docker compose build
+docker compose up -d
 ```
 
-### Backup
+**4. Configure host nginx**
 
+Copy `deploy/nginx-host.conf` to `/etc/nginx/sites-available/mote`, replace `example.com` with your domain, then:
 ```bash
-make backup
+certbot --nginx -d your-domain.com
+ln -s /etc/nginx/sites-available/mote /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
 ```
 
-Backups go to `/opt/mote/backups/`, keeping the last 5.
-
-### Password management
-
+**5. Configure local deploy tool**
 ```bash
-make view-password       # Show current password
-make gen-password-force  # Regenerate password (restarts service)
+cd deploy
+cp .deploy.example .deploy
+# Edit .deploy: set SERVER (e.g. user@1.2.3.4) and REMOTE_DIR
 ```
 
-### Health check
+## Daily Workflow
+
+From your local machine, inside `deploy/`:
 
 ```bash
-make health-check
+make deploy    # backup → git pull → rebuild → restart (one command)
+make backup    # manual backup only
+make logs      # tail app logs
+make ps        # container status
+make restart   # restart all containers
 ```
 
-### Disk usage
+## Backup & Restore
 
+Backups are stored in `/opt/mote/backups/` on the server. Each backup set contains:
+- `app.db` — SQLite database (hot backup via VACUUM INTO)
+- `uploads.tar.gz` — uploaded files
+
+The last 5 backup sets are kept automatically.
+
+**Restore database:**
 ```bash
-make disk-usage
+docker compose stop app
+cp backups/backup-YYYYMMDD-HHMMSS/app.db data/app.db
+docker compose start app
 ```
 
-## Emergency Manual Deployment
-
-Use when GitHub Actions is unavailable and you need to deploy from the server itself:
-
+**Restore uploads:**
 ```bash
-# Install Go if not present
-make install-go
-
-# Build and deploy
-make deploy-go
+tar -xzf backups/backup-YYYYMMDD-HHMMSS/uploads.tar.gz -C .
 ```
 
-For frontend only:
+## Directory Layout on Server
 
-```bash
-make install-node
-make deploy-frontend
 ```
-
-## Troubleshooting
-
-### Service won't start
-
-```bash
-make logs
-make status
-sudo netstat -tlnp | grep 8001   # check port conflict
+/opt/mote/
+├── data/app.db       ← SQLite database (persistent)
+├── uploads/          ← user-uploaded files (persistent)
+├── backups/          ← backup sets (managed by backup.sh)
+├── .env              ← secrets (not in git)
+├── compose.yml
+├── Dockerfile
+├── Dockerfile.web
+└── deploy/
+    ├── nginx.conf        ← web container nginx config
+    ├── nginx-host.conf   ← host nginx template
+    └── backup.sh
 ```
-
-### Frontend not loading
-
-```bash
-make status        # check nginx
-make logs-nginx
-sudo nginx -t      # validate config
-```
-
-### HTTPS certificate issues
-
-```bash
-sudo certbot certificates
-make setup-https DOMAIN=example.com EMAIL=admin@example.com
-```
-
-### Disk space
-
-```bash
-make disk-usage
-make clean          # remove deployment files (keeps data + backups)
-make clean-data     # also removes data (keeps backups)
-make clean-full     # removes everything
-```
-
-## Script Reference
-
-| Script | Description |
-|---|---|
-| `common.sh` | Shared config (paths, ports, versions) — sourced by all scripts |
-| `init-env.sh` | Create directories and `mote` system user |
-| `setup-https.sh` | Obtain Let's Encrypt certificate |
-| `setup-nginx.sh` | Generate and install Nginx config |
-| `setup-systemd.sh` | Generate and install systemd service unit |
-| `install-deps.sh` | Install sys / nodejs / go / redis |
-| `deploy-artifacts.sh` | **CI-facing**: receive pre-built binary + frontend, deploy, restart |
-| `deploy-frontend.sh` | Manual: build and deploy frontend from source |
-| `deploy-backend.sh` | Manual/emergency: build and deploy Go backend from source |
-| `gen-password.sh` | Generate `MOTE_PASSWORD` secret file |
-| `get-password.sh` | Print current password |
-| `backup.sh` | Backup database and uploads |
-| `check-health.sh` | Health check for all services |
-| `clean.sh` | Remove deployment artifacts |
-

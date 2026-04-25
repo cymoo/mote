@@ -71,3 +71,7 @@ diff.txt
 
 e2e/.auth/
 app-test.db
+
+# Deployment secrets (never commit these)
+.env
+deploy/.deploy

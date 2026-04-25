@@ -1,104 +1,51 @@
 #!/bin/bash
-# backup.sh - Standalone backup script for SQLite database and uploads
+# Backup SQLite database and uploads directory.
+# Keeps the last MAX_BACKUPS backup sets, removing older ones.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/common.sh"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BACKUP_DIR="${REPO_ROOT}/backups"
+DB_FILE="${REPO_ROOT}/data/app.db"
+UPLOADS_DIR="${REPO_ROOT}/uploads"
+MAX_BACKUPS=5
 
-# Backup SQLite database using VACUUM INTO
-backup_database() {
-    local backup_file="$1"
+if ! command -v sqlite3 &>/dev/null; then
+    echo "[ERROR] sqlite3 is not installed" >&2
+    exit 1
+fi
 
-    if ! command -v sqlite3 &> /dev/null; then
-        log_error "sqlite3 command not found"
-        exit 1
-    fi
+timestamp=$(date +%Y%m%d-%H%M%S)
+backup_path="${BACKUP_DIR}/backup-${timestamp}"
+backed_up=false
 
-    if sudo sqlite3 "$DB_FILE" "VACUUM INTO '${backup_file}'" 2>&1; then
-        log_info "Database backed up: $(sudo du -h "$backup_file" | cut -f1)"
-        return 0
-    else
-        return 1
-    fi
-}
+mkdir -p "$backup_path"
 
-# Backup uploads directory
-backup_uploads() {
-    local backup_dir="$1"
+# Database: safe hot backup via VACUUM INTO (works while app is running)
+if [[ -f "$DB_FILE" ]]; then
+    sqlite3 "$DB_FILE" "VACUUM INTO '${backup_path}/app.db'"
+    echo "[INFO] Database backed up ($(du -h "${backup_path}/app.db" | cut -f1))"
+    backed_up=true
+fi
 
-    # Check if directory exists and is readable
-    if [[ ! -d "$UPLOADS_DIR" ]]; then
-        return 1
-    fi
+# Uploads directory
+if [[ -d "$UPLOADS_DIR" ]] && [[ -n "$(ls -A "$UPLOADS_DIR" 2>/dev/null)" ]]; then
+    tar -czf "${backup_path}/uploads.tar.gz" -C "$(dirname "$UPLOADS_DIR")" "$(basename "$UPLOADS_DIR")"
+    echo "[INFO] Uploads backed up ($(du -h "${backup_path}/uploads.tar.gz" | cut -f1))"
+    backed_up=true
+fi
 
-    # Check if directory is empty (handle permission errors)
-    if ! sudo test -n "$(sudo ls -A "$UPLOADS_DIR" 2>/dev/null)"; then
-        return 1
-    fi
+if [[ "$backed_up" == false ]]; then
+    rm -rf "$backup_path"
+    echo "[INFO] Nothing to backup"
+    exit 0
+fi
 
-    if sudo cp -r "$UPLOADS_DIR" "${backup_dir}/"; then
-        log_info "Uploads backed up: $(sudo du -sh "$UPLOADS_DIR" | cut -f1)"
-        return 0
-    else
-        log_error "Uploads backup failed"
-        return 1
-    fi
-}
+echo "[INFO] Backup created: backup-${timestamp}"
 
-# Clean old backups
-cleanup_old_backups() {
-    local count=$(sudo find "${BACKUP_DIR}" -maxdepth 1 -type d -name "backup-*" 2>/dev/null | wc -l)
-
-    if [[ $count -gt $MAX_BACKUPS ]]; then
-        # Use null-delimited output to handle spaces in paths
-        sudo find "${BACKUP_DIR}" -maxdepth 1 -type d -name "backup-*" -print0 | \
-            sort -z | head -z -n -${MAX_BACKUPS} | \
-            xargs -0 sudo rm -rf
-        log_info "Cleaned up $((count - MAX_BACKUPS)) old backup(s)"
-    fi
-}
-
-# Main backup function
-main() {
-    local timestamp=$(date +%Y%m%d-%H%M%S)
-    local backup_name="backup-${timestamp}"
-    local backup_path="${BACKUP_DIR}/${backup_name}"
-
-    local has_data=false
-
-    log_info "Starting backup..."
-
-    # Create backup directory with sudo
-    if ! sudo mkdir -p "$backup_path"; then
-        log_error "Failed to create backup directory"
-        exit 1
-    fi
-
-    # Backup database
-    if backup_database "${backup_path}/app.db"; then
-        has_data=true
-    fi
-
-    # Backup uploads
-    if backup_uploads "$backup_path"; then
-        has_data=true
-    fi
-
-    if [[ "$has_data" == false ]]; then
-        sudo rm -rf "$backup_path"
-        log_info "No data to backup"
-        return 0
-    fi
-
-    # Create metadata
-    cat <<EOF | sudo tee "${backup_path}/info.txt" > /dev/null
-Date: $(date '+%Y-%m-%d %H:%M:%S')
-Size: $(sudo du -sh "$backup_path" | cut -f1)
-EOF
-
-    log_success "Backup created: $backup_name"
-
-    cleanup_old_backups
-}
-
-main "$@"
+# Rotate: keep only the most recent MAX_BACKUPS
+count=$(find "$BACKUP_DIR" -maxdepth 1 -type d -name "backup-*" | wc -l)
+if (( count > MAX_BACKUPS )); then
+    to_delete=$(( count - MAX_BACKUPS ))
+    find "$BACKUP_DIR" -maxdepth 1 -type d -name "backup-*" | sort | head -n "$to_delete" | xargs rm -rf
+    echo "[INFO] Removed $to_delete old backup(s), keeping ${MAX_BACKUPS}"
+fi
