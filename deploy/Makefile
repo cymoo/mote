@@ -48,24 +48,18 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@$(SUDO) rm -f /etc/nginx/sites-enabled/default
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' nginx-init.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
 	@$(SUDO) nginx -t && \
-	  ($(SUDO) systemctl reload nginx > /dev/null 2>&1 || \
-	   ($(SUDO) nginx -s quit > /dev/null 2>&1; \
-	    $(SUDO) systemctl stop nginx > /dev/null 2>&1; \
-	    sleep 1; $(SUDO) systemctl start nginx))
+	  ($(SUDO) nginx -s reload 2>/dev/null || $(SUDO) systemctl start nginx)
 	@echo "$(YELLOW)-> Obtaining TLS certificate...$(NC)"
 	@$(SUDO) certbot certonly --webroot -w $(CERTBOT_WEBROOT) -d $(DOMAIN) \
 	    --agree-tos --non-interactive --register-unsafely-without-email \
 	    --keep-until-expiring \
-	    --deploy-hook "systemctl reload nginx"
+	    --deploy-hook "nginx -s reload"
 	@echo "$(YELLOW)-> Enabling HTTPS nginx config...$(NC)"
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
 	@$(SUDO) nginx -t && \
-	  ($(SUDO) systemctl reload nginx > /dev/null 2>&1 || \
-	   ($(SUDO) nginx -s quit > /dev/null 2>&1; \
-	    $(SUDO) systemctl stop nginx > /dev/null 2>&1; \
-	    sleep 1; $(SUDO) systemctl start nginx))
+	  ($(SUDO) nginx -s reload 2>/dev/null || $(SUDO) systemctl start nginx)
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
 deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
@@ -84,10 +78,7 @@ deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
 	@$(SUDO) nginx -t && \
-	  ($(SUDO) systemctl reload nginx > /dev/null 2>&1 || \
-	   ($(SUDO) nginx -s quit > /dev/null 2>&1; \
-	    $(SUDO) systemctl stop nginx > /dev/null 2>&1; \
-	    sleep 1; $(SUDO) systemctl start nginx))
+	  ($(SUDO) nginx -s reload 2>/dev/null || $(SUDO) systemctl start nginx)
 	@echo "$(GREEN)Deploy complete$(NC)"
 
 backup: ## Backup database and uploads
