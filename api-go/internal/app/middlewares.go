@@ -161,9 +161,9 @@ func SimpleAuthCheck(authService *services.AuthService, excludedPaths ...string)
 				token = extractBearerToken(r)
 			}
 
-			// if no token provided, return 400
+			// if no token provided, return 401
 			if token == "" {
-				e.SendJSONError(w, 400, "bad_request", "no token provided")
+				e.SendJSONError(w, 401, "unauthorized", "no token provided")
 				return
 			}
 

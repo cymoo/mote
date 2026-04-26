@@ -13,9 +13,11 @@ services:
       DATABASE_URL: /data/app.db
       UPLOAD_PATH: /uploads
       REDIS_URL: redis:6379
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
-      - app_data:/data
-      - app_uploads:/uploads
+      - ../data:/data
+      - ../uploads:/uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -25,22 +27,6 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - DOMAIN=${DOMAIN}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - web:/srv/web:ro
-      - caddy_data:/data
-    depends_on:
-      app:
-        condition: service_started
 
   redis:
     image: redis:7-alpine
@@ -54,8 +40,4 @@ services:
       - redis_data:/data
 
 volumes:
-  app_data:
-  app_uploads:
-  web:
   redis_data:
-  caddy_data:

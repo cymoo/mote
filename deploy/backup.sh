@@ -24,11 +24,10 @@ if docker compose exec -T app sqlite3 /data/app.db "VACUUM INTO '/tmp/app.db'" 2
     backed_up=true
 fi
 
-# Uploads directory
-if docker compose exec -T app sh -c 'test -n "$(ls -A /uploads 2>/dev/null)"' 2>/dev/null; then
-    docker compose exec -T app tar -czf /tmp/uploads.tar.gz /uploads
-    docker compose cp app:/tmp/uploads.tar.gz "${backup_path}/uploads.tar.gz"
-    docker compose exec -T app rm /tmp/uploads.tar.gz
+# Uploads directory: backup directly from bind-mount path on host
+UPLOADS_DIR="${SCRIPT_DIR}/../uploads"
+if [[ -d "$UPLOADS_DIR" ]] && [[ -n "$(ls -A "$UPLOADS_DIR" 2>/dev/null)" ]]; then
+    tar -czf "${backup_path}/uploads.tar.gz" -C "${SCRIPT_DIR}/.." uploads
     echo "[INFO] Uploads backed up ($(du -h "${backup_path}/uploads.tar.gz" | cut -f1))"
     backed_up=true
 fi

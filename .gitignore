@@ -77,3 +77,6 @@ app-test.db
 
 # Runtime data created by deployment
 backups/
+data/app.db
+uploads/
+web/
