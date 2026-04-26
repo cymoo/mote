@@ -22,6 +22,8 @@ WEB_DIR         := $(APP_DIR)/web
 NGINX_CONF      := /etc/nginx/conf.d/mote.conf
 CERTBOT_WEBROOT := /var/www/certbot
 DOMAIN          := $(shell grep '^DOMAIN=' .env 2>/dev/null | cut -d= -f2)
+# Use sudo only when not already root
+SUDO            := $(if $(filter 0,$(shell id -u)),,sudo)
 
 .PHONY: help setup deploy backup logs ps restart
 
@@ -35,7 +37,7 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@command -v nginx   > /dev/null 2>&1 || { echo "$(RED)ERROR: nginx not installed$(NC)" >&2; exit 1; }
 	@command -v certbot > /dev/null 2>&1 || { echo "$(RED)ERROR: certbot not installed$(NC)" >&2; exit 1; }
 	@echo "$(YELLOW)-> Creating directories...$(NC)"
-	@mkdir -p $(APP_DIR)/data $(APP_DIR)/uploads $(WEB_DIR) $(CERTBOT_WEBROOT)
+	@$(SUDO) mkdir -p $(APP_DIR)/data $(APP_DIR)/uploads $(WEB_DIR) $(CERTBOT_WEBROOT)
 	@echo "$(YELLOW)-> Building frontend...$(NC)"
 	@docker build -t mote-frontend -f Dockerfile.frontend ..
 	@docker run --rm -v $(WEB_DIR):/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
@@ -43,19 +45,19 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@docker compose build
 	@docker compose up -d --wait
 	@echo "$(YELLOW)-> Configuring nginx (HTTP only for ACME challenge)...$(NC)"
-	@rm -f /etc/nginx/sites-enabled/default
-	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' nginx-init.conf > $(NGINX_CONF)
-	@nginx -t && (nginx -s reload 2>/dev/null || nginx)
+	@$(SUDO) rm -f /etc/nginx/sites-enabled/default
+	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' nginx-init.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
+	@$(SUDO) nginx -t && ($(SUDO) nginx -s reload 2>/dev/null || $(SUDO) nginx)
 	@echo "$(YELLOW)-> Obtaining TLS certificate...$(NC)"
-	@certbot certonly --webroot -w $(CERTBOT_WEBROOT) -d $(DOMAIN) \
+	@$(SUDO) certbot certonly --webroot -w $(CERTBOT_WEBROOT) -d $(DOMAIN) \
 	    --agree-tos --non-interactive --register-unsafely-without-email \
 	    --keep-until-expiring \
 	    --deploy-hook "nginx -s reload"
 	@echo "$(YELLOW)-> Enabling HTTPS nginx config...$(NC)"
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
-	     nginx.conf > $(NGINX_CONF)
-	@nginx -t && nginx -s reload
+	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
+	@$(SUDO) nginx -t && $(SUDO) nginx -s reload
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
 deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
@@ -72,8 +74,8 @@ deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
 	@echo "$(YELLOW)-> Refreshing nginx config...$(NC)"
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
-	     nginx.conf > $(NGINX_CONF)
-	@nginx -t && nginx -s reload
+	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
+	@$(SUDO) nginx -t && $(SUDO) nginx -s reload
 	@echo "$(GREEN)Deploy complete$(NC)"
 
 backup: ## Backup database and uploads
