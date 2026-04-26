@@ -25,7 +25,7 @@ DOMAIN          := $(shell grep '^DOMAIN=' .env 2>/dev/null | cut -d= -f2)
 # Use sudo only when not already root
 SUDO            := $(if $(filter 0,$(shell id -u)),,sudo)
 
-.PHONY: help setup deploy backup logs ps restart
+.PHONY: help setup deploy _deploy backup logs ps restart
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -48,7 +48,8 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@$(SUDO) rm -f /etc/nginx/sites-enabled/default
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' nginx-init.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
 	@$(SUDO) nginx -t && \
-	  ($(SUDO) nginx -s reload 2>/dev/null || $(SUDO) systemctl start nginx)
+	  ($(SUDO) pkill -HUP nginx 2>/dev/null || \
+	   ($(SUDO) pkill nginx 2>/dev/null; sleep 1; $(SUDO) systemctl start nginx))
 	@echo "$(YELLOW)-> Obtaining TLS certificate...$(NC)"
 	@$(SUDO) certbot certonly --webroot -w $(CERTBOT_WEBROOT) -d $(DOMAIN) \
 	    --agree-tos --non-interactive --register-unsafely-without-email \
@@ -59,7 +60,8 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
 	@$(SUDO) nginx -t && \
-	  ($(SUDO) nginx -s reload 2>/dev/null || $(SUDO) systemctl start nginx)
+	  ($(SUDO) pkill -HUP nginx 2>/dev/null || \
+	   ($(SUDO) pkill nginx 2>/dev/null; sleep 1; $(SUDO) systemctl start nginx))
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
 deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
@@ -67,6 +69,10 @@ deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
 	@$(MAKE) -s backup
 	@echo "$(YELLOW)-> Pulling latest code...$(NC)"
 	@git -C .. pull origin main
+	@$(MAKE) -s _deploy
+
+# Internal: runs after git pull so make re-reads the latest Makefile
+_deploy:
 	@echo "$(YELLOW)-> Building frontend...$(NC)"
 	@docker build -t mote-frontend -f Dockerfile.frontend ..
 	@docker run --rm -v $(WEB_DIR):/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
@@ -78,7 +84,8 @@ deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
 	@$(SUDO) nginx -t && \
-	  ($(SUDO) nginx -s reload 2>/dev/null || $(SUDO) systemctl start nginx)
+	  ($(SUDO) pkill -HUP nginx 2>/dev/null || \
+	   ($(SUDO) pkill nginx 2>/dev/null; sleep 1; $(SUDO) systemctl start nginx))
 	@echo "$(GREEN)Deploy complete$(NC)"
 
 backup: ## Backup database and uploads
