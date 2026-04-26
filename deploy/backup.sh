@@ -1,18 +1,12 @@
 #!/bin/bash
-# Backup SQLite database and uploads directory.
+# Backup SQLite database and uploads directory using Docker volumes.
 # Keeps the last MAX_BACKUPS backup sets, removing older ones.
+# Must be run from the deploy/ directory (where compose.yml lives).
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKUP_DIR="${REPO_ROOT}/backups"
-DB_FILE="${REPO_ROOT}/data/app.db"
-UPLOADS_DIR="${REPO_ROOT}/uploads"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKUP_DIR="${SCRIPT_DIR}/../backups"
 MAX_BACKUPS=5
-
-if ! command -v sqlite3 &>/dev/null; then
-    echo "[ERROR] sqlite3 is not installed" >&2
-    exit 1
-fi
 
 timestamp=$(date +%Y%m%d-%H%M%S)
 backup_path="${BACKUP_DIR}/backup-${timestamp}"
@@ -20,16 +14,21 @@ backed_up=false
 
 mkdir -p "$backup_path"
 
+cd "$SCRIPT_DIR"
+
 # Database: safe hot backup via VACUUM INTO (works while app is running)
-if [[ -f "$DB_FILE" ]]; then
-    sqlite3 "$DB_FILE" "VACUUM INTO '${backup_path}/app.db'"
+if docker compose exec -T app sqlite3 /data/app.db "VACUUM INTO '/tmp/app.db'" 2>/dev/null; then
+    docker compose cp app:/tmp/app.db "${backup_path}/app.db"
+    docker compose exec -T app rm /tmp/app.db
     echo "[INFO] Database backed up ($(du -h "${backup_path}/app.db" | cut -f1))"
     backed_up=true
 fi
 
 # Uploads directory
-if [[ -d "$UPLOADS_DIR" ]] && [[ -n "$(ls -A "$UPLOADS_DIR" 2>/dev/null)" ]]; then
-    tar -czf "${backup_path}/uploads.tar.gz" -C "$(dirname "$UPLOADS_DIR")" "$(basename "$UPLOADS_DIR")"
+if docker compose exec -T app sh -c 'test -n "$(ls -A /uploads 2>/dev/null)"' 2>/dev/null; then
+    docker compose exec -T app tar -czf /tmp/uploads.tar.gz /uploads
+    docker compose cp app:/tmp/uploads.tar.gz "${backup_path}/uploads.tar.gz"
+    docker compose exec -T app rm /tmp/uploads.tar.gz
     echo "[INFO] Uploads backed up ($(du -h "${backup_path}/uploads.tar.gz" | cut -f1))"
     backed_up=true
 fi

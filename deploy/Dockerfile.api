@@ -6,7 +6,7 @@ COPY api-go/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /mote ./cmd/server
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata sqlite
 RUN addgroup -g 1000 -S mote && adduser -u 1000 -S -G mote -H mote
 WORKDIR /opt/mote
 COPY --from=builder /mote ./mote

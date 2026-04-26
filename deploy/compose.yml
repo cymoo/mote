@@ -1,3 +1,5 @@
+name: mote
+
 services:
   app:
     build:
@@ -12,8 +14,8 @@ services:
       UPLOAD_PATH: /uploads
       REDIS_URL: redis:6379
     volumes:
-      - ../data:/data
-      - ../uploads:/uploads
+      - app_data:/data
+      - app_uploads:/uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -34,7 +36,7 @@ services:
       - DOMAIN=${DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../web:/srv/web:ro
+      - web:/srv/web:ro
       - caddy_data:/data
     depends_on:
       app:
@@ -52,5 +54,8 @@ services:
       - redis_data:/data
 
 volumes:
+  app_data:
+  app_uploads:
+  web:
   redis_data:
   caddy_data:
