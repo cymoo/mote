@@ -10,34 +10,24 @@ On the server:
 
 ## First-time Setup
 
-All steps run from your **local machine**, inside `deploy/`.
+SSH into the server and run everything from `deploy/`:
 
-**1. Configure the local deploy tool**
 ```bash
-cp .deploy.example .deploy
-# Edit .deploy: set SERVER (e.g. user@1.2.3.4) and REMOTE_DIR
-```
-
-**2. Create the app config**
-```bash
-cp .env.example .env
-# Edit .env: set MOTE_PASSWORD (strong random string) and DOMAIN
-```
-
-**3. Run setup**
-```bash
+git clone https://github.com/cymoo/mote.git /opt/mote
+cd /opt/mote/deploy
+cp .env.example .env        # edit: MOTE_PASSWORD, DOMAIN
 make setup
 ```
 
-This clones the repo on the server, uploads `.env`, builds the frontend and Go binary, starts all containers. Caddy automatically obtains a TLS certificate on the first request — make sure your domain's DNS points to the server and ports 80/443 are open.
+Caddy automatically obtains a TLS certificate on the first request — make sure your domain's DNS points to the server and ports 80/443 are open.
 
 ## Daily Workflow
 
-From your local machine, inside `deploy/`:
+SSH into the server, `cd /opt/mote/deploy`, then:
 
 ```bash
-make deploy    # backup -> git pull -> build frontend -> rebuild -> restart
-make backup    # manual backup only
+make deploy    # backup -> git pull -> rebuild -> restart
+make backup    # manual backup
 make logs      # tail app logs
 make ps        # container status
 make restart   # restart all containers
