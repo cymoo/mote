@@ -1,5 +1,5 @@
 #!/bin/bash
-# Backup SQLite database and uploads directory using Docker volumes.
+# Backup SQLite database and uploads directory.
 # Keeps the last MAX_BACKUPS backup sets, removing older ones.
 # Must be run from the deploy/ directory (where compose.yml lives).
 set -euo pipefail

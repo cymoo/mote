@@ -43,6 +43,7 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@docker compose build
 	@docker compose up -d --wait
 	@echo "$(YELLOW)-> Configuring nginx (HTTP only for ACME challenge)...$(NC)"
+	@rm -f /etc/nginx/sites-enabled/default
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' nginx-init.conf > $(NGINX_CONF)
 	@nginx -t && (nginx -s reload 2>/dev/null || nginx)
 	@echo "$(YELLOW)-> Obtaining TLS certificate...$(NC)"
@@ -57,7 +58,7 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@nginx -t && nginx -s reload
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
-deploy: ## Backup, git pull, rebuild images, restart
+deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
 	@echo "$(YELLOW)-> Backing up...$(NC)"
 	@$(MAKE) -s backup
 	@echo "$(YELLOW)-> Pulling latest code...$(NC)"
@@ -68,6 +69,11 @@ deploy: ## Backup, git pull, rebuild images, restart
 	@echo "$(YELLOW)-> Rebuilding and restarting containers...$(NC)"
 	@docker compose build
 	@docker compose up -d --remove-orphans --wait
+	@echo "$(YELLOW)-> Refreshing nginx config...$(NC)"
+	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
+	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
+	     nginx.conf > $(NGINX_CONF)
+	@nginx -t && nginx -s reload
 	@echo "$(GREEN)Deploy complete$(NC)"
 
 backup: ## Backup database and uploads

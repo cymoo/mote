@@ -32,6 +32,8 @@ Before running `make setup`, ensure:
 - Ports 80 and 443 are open in your firewall
 - nginx and certbot are installed (`apt install nginx certbot` or equivalent)
 
+> **Note:** `make setup` automatically removes `/etc/nginx/sites-enabled/default` to avoid port 80 conflicts on Ubuntu/Debian.
+
 ## Daily Workflow
 
 SSH into the server, `cd /opt/mote/deploy`, then:
@@ -78,5 +80,7 @@ Redis data is stored in a Docker named volume (`mote_redis_data`).
 
 ## TLS / HTTPS
 
-Certbot obtains and auto-renews the certificate. On renewal, the deploy hook runs `nginx -s reload` automatically. Certificates are stored in `/etc/letsencrypt/live/<DOMAIN>/`.
+Certbot obtains and auto-renews the certificate. Renewal is triggered automatically by certbot's systemd timer (installed with certbot). On each renewal, the deploy hook `nginx -s reload` runs automatically. Certificates are stored in `/etc/letsencrypt/live/<DOMAIN>/`.
+
+To verify renewal works: `certbot renew --dry-run`
 
