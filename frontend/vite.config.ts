@@ -11,6 +11,7 @@ export default defineConfig(({mode}) => {
   const baseUrl = env.VITE_MANIFEST_START_URL || '/'
 
   return {
+    base: (env.VITE_MEMO_URL || '/memo') + '/',
     plugins: [
       react(),
       tailwindcss(),

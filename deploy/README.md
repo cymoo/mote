@@ -1,6 +1,6 @@
 # Mote — Deployment
 
-Docker-based deployment. The server runs three containers: the Go app, nginx (serves frontend + proxies API), and Redis. Host nginx handles HTTPS.
+Docker-based deployment. The server runs three containers: the Go app, Caddy (serves frontend + HTTPS + proxies API), and Redis. No host-level nginx or certbot needed — Caddy handles TLS automatically.
 
 All server-side commands below are run from `/opt/mote/deploy/`.
 
@@ -8,7 +8,6 @@ All server-side commands below are run from `/opt/mote/deploy/`.
 
 On the server:
 - Docker with Compose plugin v2.21+ (`docker compose`)
-- nginx + certbot (for HTTPS)
 - git
 - sqlite3 (for backups)
 
@@ -23,30 +22,27 @@ cd /opt/mote/deploy
 **2. Create `.env` from the example**
 ```bash
 cp .env.example .env
-# Edit .env and set MOTE_PASSWORD to a strong random string
+# Edit .env: set MOTE_PASSWORD (strong random string) and DOMAIN (your domain)
 nano .env
 ```
 
-**3. Create data directories and start services**
+**3. Create data directories**
 ```bash
-mkdir -p ../data ../uploads   # create before first run so they're owned by your user
+mkdir -p ../data ../uploads ../web
+```
+
+**4. Build the frontend and start services**
+```bash
+# Build frontend assets and extract to ../web
+docker build -t mote-frontend -f Dockerfile.frontend ..
+docker run --rm -v /opt/mote/web:/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
+
+# Build and start all containers
 docker compose build
 docker compose up -d
 ```
 
-**4. Configure host nginx**
-
-```bash
-sudo cp nginx-host.conf /etc/nginx/sites-available/mote
-sudo sed -i 's/example.com/your-domain.com/g' /etc/nginx/sites-available/mote
-sudo ln -s /etc/nginx/sites-available/mote /etc/nginx/sites-enabled/mote
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-Then get a free TLS certificate (certbot automatically adds the HTTPS server block and sets up auto-renewal):
-```bash
-sudo certbot --nginx -d your-domain.com --email you@example.com --agree-tos
-```
+Caddy will automatically obtain a TLS certificate from Let's Encrypt on the first request. Make sure your domain's DNS points to the server and ports 80/443 are open before starting.
 
 **5. Configure local deploy tool**
 ```bash
@@ -59,7 +55,7 @@ cp .deploy.example .deploy
 From your local machine, inside `deploy/`:
 
 ```bash
-make deploy    # backup -> git pull -> rebuild -> restart (one command)
+make deploy    # backup -> git pull -> build frontend -> rebuild -> restart
 make backup    # manual backup only
 make logs      # tail app logs
 make ps        # container status
@@ -93,16 +89,27 @@ tar -xzf ../backups/backup-YYYYMMDD-HHMMSS/uploads.tar.gz -C ..
 /opt/mote/
 ├── data/app.db       <- SQLite database (persistent)
 ├── uploads/          <- user-uploaded files (persistent)
+├── web/              <- built React SPA (populated by deploy)
 ├── backups/          <- backup sets (managed by backup.sh)
 └── deploy/
     ├── .env              <- secrets (not in git)
     ├── .deploy           <- local deploy config (not in git)
     ├── compose.yml
+    ├── Caddyfile
     ├── Dockerfile.api
-    ├── Dockerfile.web
-    ├── nginx.conf        <- web container nginx config
-    ├── nginx-host.conf   <- host nginx template
+    ├── Dockerfile.frontend
     ├── Makefile
     ├── backup.sh
     └── README.md
+```
+
+## TLS / HTTPS
+
+Caddy obtains and renews certificates from Let's Encrypt automatically. Certificates are stored in the `caddy_data` Docker volume — keep this volume intact to avoid hitting Let's Encrypt rate limits.
+
+If you need to test without a real domain (e.g., on a staging server), add the following to `Caddyfile` before the site block to use Let's Encrypt's staging CA:
+```
+{
+    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
 ```

@@ -15,6 +15,7 @@ import (
 
 	"github.com/cymoo/mote/assets"
 	"github.com/cymoo/mote/internal/config"
+	"github.com/cymoo/mote/internal/services"
 	"github.com/cymoo/mote/internal/tasks"
 	"github.com/cymoo/mote/pkg/fulltext"
 
@@ -193,10 +194,11 @@ func (app *App) setupRoutes() {
 	r.Use(PanicRecovery(appEnv == "development" || appEnv == "dev"))
 	r.Use(CORS(app.config.HTTP.CORS))
 
-	// Serve uploaded files
+	// Serve uploaded files (auth required)
 	uploadUrl := app.config.Upload.BaseURL
 	uploadPath := app.config.Upload.BasePath
-	r.Handle(uploadUrl+"/*", http.StripPrefix(uploadUrl, http.FileServer(http.Dir(uploadPath))))
+	authService := services.NewAuthService()
+	r.With(SimpleAuthCheck(authService)).Handle(uploadUrl+"/*", http.StripPrefix(uploadUrl, http.FileServer(http.Dir(uploadPath))))
 
 	// Serve static files
 	staticUrl := app.config.StaticURL

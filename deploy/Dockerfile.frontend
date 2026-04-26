@@ -10,8 +10,3 @@ RUN VITE_MEMO_URL=$VITE_MEMO_URL \
     VITE_BLOG_URL=$VITE_BLOG_URL \
     VITE_MANIFEST_START_URL=$VITE_MANIFEST_START_URL \
     yarn build
-
-FROM nginx:alpine
-COPY --from=frontend-builder /app/dist /usr/share/nginx/html
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
