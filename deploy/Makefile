@@ -57,7 +57,7 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
-	@$(SUDO) nginx -t && $(SUDO) systemctl reload nginx
+	@$(SUDO) nginx -t && ($(SUDO) systemctl reload nginx 2>/dev/null || $(SUDO) systemctl start nginx)
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
 deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
@@ -75,7 +75,7 @@ deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
-	@$(SUDO) nginx -t && $(SUDO) systemctl reload nginx
+	@$(SUDO) nginx -t && ($(SUDO) systemctl reload nginx 2>/dev/null || $(SUDO) systemctl start nginx)
 	@echo "$(GREEN)Deploy complete$(NC)"
 
 backup: ## Backup database and uploads
