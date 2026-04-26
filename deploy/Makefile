@@ -42,7 +42,7 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@docker build -t mote-frontend -f Dockerfile.frontend ..
 	@docker run --rm -v $(WEB_DIR):/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
 	@echo "$(YELLOW)-> Building and starting containers...$(NC)"
-	@docker compose build
+	@docker compose build app
 	@docker compose up -d --wait
 	@echo "$(YELLOW)-> Configuring nginx (HTTP only for ACME challenge)...$(NC)"
 	@$(SUDO) rm -f /etc/nginx/sites-enabled/default
@@ -77,7 +77,7 @@ _deploy:
 	@docker build -t mote-frontend -f Dockerfile.frontend ..
 	@docker run --rm -v $(WEB_DIR):/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
 	@echo "$(YELLOW)-> Rebuilding and restarting containers...$(NC)"
-	@docker compose build
+	@docker compose build app
 	@docker compose up -d --remove-orphans --wait
 	@echo "$(YELLOW)-> Refreshing nginx config...$(NC)"
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \

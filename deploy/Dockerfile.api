@@ -15,7 +15,5 @@ COPY --from=builder /mote ./mote
 COPY deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:8000/health | grep -q healthy
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["./mote"]
