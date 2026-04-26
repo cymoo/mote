@@ -2,8 +2,6 @@
 
 Docker-based deployment. The server runs three containers: the Go app, Caddy (serves frontend + HTTPS + proxies API), and Redis. All persistent data lives in Docker named volumes — no host directories to create or manage.
 
-All server-side commands below are run from `/opt/mote/deploy/`.
-
 ## Prerequisites
 
 On the server:
@@ -12,31 +10,26 @@ On the server:
 
 ## First-time Setup
 
-**1. Clone the repo on the server**
-```bash
-git clone https://github.com/cymoo/mote.git /opt/mote
-cd /opt/mote/deploy
-```
+All steps run from your **local machine**, inside `deploy/`.
 
-**2. Create `.env` from the example**
-```bash
-cp .env.example .env
-# Edit .env: set MOTE_PASSWORD (strong random string) and DOMAIN (your domain)
-nano .env
-```
-
-**3. Configure local deploy tool** *(on your local machine)*
+**1. Configure the local deploy tool**
 ```bash
 cp .deploy.example .deploy
 # Edit .deploy: set SERVER (e.g. user@1.2.3.4) and REMOTE_DIR
 ```
 
-**4. Run first-time setup** *(from your local machine, inside `deploy/`)*
+**2. Create the app config**
+```bash
+cp .env.example .env
+# Edit .env: set MOTE_PASSWORD (strong random string) and DOMAIN
+```
+
+**3. Run setup**
 ```bash
 make setup
 ```
 
-This builds the frontend, compiles the Go binary, starts all containers, and Caddy automatically obtains a TLS certificate on the first request. Make sure your domain's DNS points to the server and ports 80/443 are open.
+This clones the repo on the server, uploads `.env`, builds the frontend and Go binary, starts all containers. Caddy automatically obtains a TLS certificate on the first request — make sure your domain's DNS points to the server and ports 80/443 are open.
 
 ## Daily Workflow
 

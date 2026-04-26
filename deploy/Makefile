@@ -1,8 +1,10 @@
 # Mote deployment Makefile
-# All docker compose commands run in deploy/ on the server (where compose.yml lives).
+# All commands run locally and SSH to the server as needed.
 #
-# First-time setup:
-#   cp .deploy.example .deploy    # then edit SERVER and REMOTE_DIR
+# First-time setup (all from local, inside deploy/):
+#   1. cp .deploy.example .deploy  # edit: SERVER, REMOTE_DIR
+#   2. cp .env.example .env        # edit: MOTE_PASSWORD, DOMAIN
+#   3. make setup
 #
 # Usage:
 #   make deploy    -- backup, pull, rebuild, restart (one-click deploy)
@@ -16,6 +18,7 @@ REMOTE_DIR ?= /opt/mote
 
 GREEN  := \033[0;32m
 YELLOW := \033[0;33m
+RED    := \033[0;31m
 NC     := \033[0m
 
 .PHONY: help setup deploy backup logs logs-caddy ps restart
@@ -24,7 +27,13 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$$$' $(MAKEFILE_LIST) | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-12s$(NC) %s\n", $$$$1, $$$$2}'
 
-setup: ## First-time server setup: build frontend, build images, start containers
+setup: ## First-time: clone repo on server, upload .env, build and start
+	@test -f .env || { echo "$(RED)ERROR: create .env from .env.example first$(NC)" >&2; exit 1; }
+	@echo "$(YELLOW)-> Cloning repo on server (if needed)...$(NC)"
+	@ssh $(SERVER) "[ -d $(REMOTE_DIR)/.git ] || git clone https://github.com/cymoo/mote.git $(REMOTE_DIR)"
+	@echo "$(YELLOW)-> Uploading .env...$(NC)"
+	@scp -q .env $(SERVER):$(REMOTE_DIR)/deploy/.env
+	@ssh $(SERVER) "chmod 600 $(REMOTE_DIR)/deploy/.env"
 	@echo "$(YELLOW)-> Building frontend...$(NC)"
 	@ssh $(SERVER) "cd $(REMOTE_DIR) && \
 	  docker build -t mote-frontend -f deploy/Dockerfile.frontend . && \
