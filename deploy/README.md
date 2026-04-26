@@ -2,10 +2,12 @@
 
 Docker-based deployment. The server runs three containers: the Go app, nginx (serves frontend + proxies API), and Redis. Host nginx handles HTTPS.
 
+All server-side commands below are run from `/opt/mote/deploy/`.
+
 ## Prerequisites
 
 On the server:
-- Docker with Compose plugin (`docker compose`)
+- Docker with Compose plugin v2.21+ (`docker compose`)
 - nginx + certbot (for HTTPS)
 - git
 - sqlite3 (for backups)
@@ -15,7 +17,7 @@ On the server:
 **1. Clone the repo on the server**
 ```bash
 git clone https://github.com/cymoo/mote.git /opt/mote
-cd /opt/mote
+cd /opt/mote/deploy
 ```
 
 **2. Create `.env` from the example**
@@ -25,17 +27,17 @@ cp .env.example .env
 nano .env
 ```
 
-**3. Start services**
+**3. Create data directories and start services**
 ```bash
+mkdir -p ../data ../uploads   # create before first run so they're owned by your user
 docker compose build
 docker compose up -d
 ```
 
 **4. Configure host nginx**
 
-Copy `deploy/nginx-host.conf` to `/etc/nginx/sites-available/mote` and replace `example.com` with your domain:
 ```bash
-sudo cp deploy/nginx-host.conf /etc/nginx/sites-available/mote
+sudo cp nginx-host.conf /etc/nginx/sites-available/mote
 sudo sed -i 's/example.com/your-domain.com/g' /etc/nginx/sites-available/mote
 sudo ln -s /etc/nginx/sites-available/mote /etc/nginx/sites-enabled/mote
 sudo nginx -t && sudo systemctl reload nginx
@@ -48,7 +50,6 @@ sudo certbot --nginx -d your-domain.com --email you@example.com --agree-tos
 
 **5. Configure local deploy tool**
 ```bash
-cd deploy
 cp .deploy.example .deploy
 # Edit .deploy: set SERVER (e.g. user@1.2.3.4) and REMOTE_DIR
 ```
@@ -58,7 +59,7 @@ cp .deploy.example .deploy
 From your local machine, inside `deploy/`:
 
 ```bash
-make deploy    # backup → git pull → rebuild → restart (one command)
+make deploy    # backup -> git pull -> rebuild -> restart (one command)
 make backup    # manual backup only
 make logs      # tail app logs
 make ps        # container status
@@ -75,29 +76,33 @@ The last 5 backup sets are kept automatically.
 
 **Restore database:**
 ```bash
+# From /opt/mote/deploy on the server:
 docker compose stop app
-cp backups/backup-YYYYMMDD-HHMMSS/app.db data/app.db
+cp ../backups/backup-YYYYMMDD-HHMMSS/app.db ../data/app.db
 docker compose start app
 ```
 
 **Restore uploads:**
 ```bash
-tar -xzf backups/backup-YYYYMMDD-HHMMSS/uploads.tar.gz -C .
+tar -xzf ../backups/backup-YYYYMMDD-HHMMSS/uploads.tar.gz -C ..
 ```
 
 ## Directory Layout on Server
 
 ```
 /opt/mote/
-├── data/app.db       ← SQLite database (persistent)
-├── uploads/          ← user-uploaded files (persistent)
-├── backups/          ← backup sets (managed by backup.sh)
-├── .env              ← secrets (not in git)
-├── compose.yml
-├── Dockerfile
-├── Dockerfile.web
+├── data/app.db       <- SQLite database (persistent)
+├── uploads/          <- user-uploaded files (persistent)
+├── backups/          <- backup sets (managed by backup.sh)
 └── deploy/
-    ├── nginx.conf        ← web container nginx config
-    ├── nginx-host.conf   ← host nginx template
-    └── backup.sh
+    ├── .env              <- secrets (not in git)
+    ├── .deploy           <- local deploy config (not in git)
+    ├── compose.yml
+    ├── Dockerfile.api
+    ├── Dockerfile.web
+    ├── nginx.conf        <- web container nginx config
+    ├── nginx-host.conf   <- host nginx template
+    ├── Makefile
+    ├── backup.sh
+    └── README.md
 ```

@@ -1,8 +1,8 @@
 services:
   app:
     build:
-      context: .
-      dockerfile: Dockerfile.api
+      context: ..
+      dockerfile: deploy/Dockerfile.api
     restart: unless-stopped
     env_file: .env
     environment:
@@ -12,8 +12,8 @@ services:
       UPLOAD_PATH: /uploads
       REDIS_URL: redis:6379
     volumes:
-      - ./data:/data
-      - ./uploads:/uploads
+      - ../data:/data
+      - ../uploads:/uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -26,8 +26,8 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: Dockerfile.web
+      context: ..
+      dockerfile: deploy/Dockerfile.web
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:80"

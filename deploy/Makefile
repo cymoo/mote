@@ -1,17 +1,17 @@
 # Mote deployment Makefile
-# Targets SSH to the server and run Docker Compose commands there.
+# All docker compose commands run in deploy/ on the server (where compose.yml lives).
 #
 # First-time setup:
 #   cp .deploy.example .deploy    # then edit SERVER and REMOTE_DIR
 #
 # Usage:
-#   make deploy    — backup, pull, rebuild, restart (one-click deploy)
-#   make backup    — backup database and uploads
-#   make logs      — tail app logs
-#   make ps        — container status
+#   make deploy    -- backup, pull, rebuild, restart (one-click deploy)
+#   make backup    -- backup database and uploads
+#   make logs      -- tail app logs
+#   make ps        -- container status
 
 -include .deploy
-SERVER     ?= $(error SERVER is not set — copy .deploy.example to .deploy)
+SERVER     ?= $(error SERVER is not set -- copy .deploy.example to .deploy)
 REMOTE_DIR ?= /opt/mote
 
 GREEN  := \033[0;32m
@@ -21,32 +21,31 @@ NC     := \033[0m
 .PHONY: help deploy backup logs logs-web ps restart
 
 help: ## Show available targets
-@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-  awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-10s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$$$' $(MAKEFILE_LIST) | \
+	  awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-10s$(NC) %s\n", $$$$1, $$$$2}'
 
-deploy: ## Backup → git pull → rebuild images → restart (waits for healthy)
-@echo "$(YELLOW)→ Backing up...$(NC)"
-@$(MAKE) -s backup
-@echo "$(YELLOW)→ Deploying to $(SERVER):$(REMOTE_DIR)...$(NC)"
-@ssh $(SERVER) "cd $(REMOTE_DIR) && \
-  git pull origin main && \
-  docker compose build && \
-  docker compose up -d --remove-orphans --wait"
-@echo "$(GREEN)✓ Deploy complete$(NC)"
+deploy: ## Backup, git pull, rebuild images, restart (waits for healthy)
+	@echo "$(YELLOW)-> Backing up...$(NC)"
+	@$(MAKE) -s backup
+	@echo "$(YELLOW)-> Deploying to $(SERVER):$(REMOTE_DIR)...$(NC)"
+	@ssh $(SERVER) "cd $(REMOTE_DIR) && git pull origin main && cd deploy && \
+	  docker compose build && \
+	  docker compose up -d --remove-orphans --wait"
+	@echo "$(GREEN)Deploy complete$(NC)"
 
 backup: ## Backup database and uploads on the server
-@ssh $(SERVER) "cd $(REMOTE_DIR) && bash deploy/backup.sh"
+	@ssh $(SERVER) "cd $(REMOTE_DIR)/deploy && bash backup.sh"
 
 logs: ## Tail app container logs
-@ssh $(SERVER) "cd $(REMOTE_DIR) && docker compose logs -f app"
+	@ssh $(SERVER) "cd $(REMOTE_DIR)/deploy && docker compose logs -f app"
 
 logs-web: ## Tail web (nginx) container logs
-@ssh $(SERVER) "cd $(REMOTE_DIR) && docker compose logs -f web"
+	@ssh $(SERVER) "cd $(REMOTE_DIR)/deploy && docker compose logs -f web"
 
 ps: ## Show container status
-@ssh $(SERVER) "cd $(REMOTE_DIR) && docker compose ps"
+	@ssh $(SERVER) "cd $(REMOTE_DIR)/deploy && docker compose ps"
 
 restart: ## Restart all containers
-@ssh $(SERVER) "cd $(REMOTE_DIR) && docker compose restart"
+	@ssh $(SERVER) "cd $(REMOTE_DIR)/deploy && docker compose restart"
 
 .DEFAULT_GOAL := help
