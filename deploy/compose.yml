@@ -18,6 +18,7 @@ services:
     volumes:
       - ../data:/data
       - ../uploads:/uploads
+      - /etc/localtime:/etc/localtime:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -36,8 +37,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    sysctls:
-      vm.overcommit_memory: 1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -45,6 +44,7 @@ services:
       retries: 3
     volumes:
       - redis_data:/data
+      - /etc/localtime:/etc/localtime:ro
     logging:
       driver: "json-file"
       options:
