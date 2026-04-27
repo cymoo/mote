@@ -47,21 +47,17 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@echo "$(YELLOW)-> Configuring nginx (HTTP only for ACME challenge)...$(NC)"
 	@$(SUDO) rm -f /etc/nginx/sites-enabled/default
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' nginx-init.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
-	@$(SUDO) nginx -t && \
-	  ($(SUDO) pkill -HUP nginx 2>/dev/null || \
-	   ($(SUDO) pkill nginx 2>/dev/null; sleep 1; $(SUDO) systemctl start nginx))
+	@$(SUDO) nginx -t && $(SUDO) systemctl reload-or-restart nginx
 	@echo "$(YELLOW)-> Obtaining TLS certificate...$(NC)"
 	@$(SUDO) certbot certonly --webroot -w $(CERTBOT_WEBROOT) -d $(DOMAIN) \
 	    --agree-tos --non-interactive --register-unsafely-without-email \
 	    --keep-until-expiring \
-	    --deploy-hook "nginx -s reload"
+	    --deploy-hook "systemctl reload nginx"
 	@echo "$(YELLOW)-> Enabling HTTPS nginx config...$(NC)"
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
-	@$(SUDO) nginx -t && \
-	  ($(SUDO) pkill -HUP nginx 2>/dev/null || \
-	   ($(SUDO) pkill nginx 2>/dev/null; sleep 1; $(SUDO) systemctl start nginx))
+	@$(SUDO) nginx -t && $(SUDO) systemctl reload-or-restart nginx
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
 deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
@@ -83,9 +79,7 @@ _deploy:
 	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
 	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
 	     nginx.conf | $(SUDO) tee $(NGINX_CONF) > /dev/null
-	@$(SUDO) nginx -t && \
-	  ($(SUDO) pkill -HUP nginx 2>/dev/null || \
-	   ($(SUDO) pkill nginx 2>/dev/null; sleep 1; $(SUDO) systemctl start nginx))
+	@$(SUDO) nginx -t && $(SUDO) systemctl reload-or-restart nginx
 	@echo "$(GREEN)Deploy complete$(NC)"
 
 backup: ## Backup database and uploads
