@@ -27,8 +27,8 @@ fi
 # Uploads directory: backup directly from bind-mount path on host
 UPLOADS_DIR="${SCRIPT_DIR}/../uploads"
 if [[ -d "$UPLOADS_DIR" ]] && [[ -n "$(ls -A "$UPLOADS_DIR" 2>/dev/null)" ]]; then
-    tar -czf "${backup_path}/uploads.tar.gz" -C "${SCRIPT_DIR}/.." uploads
-    echo "[INFO] Uploads backed up ($(du -h "${backup_path}/uploads.tar.gz" | cut -f1))"
+    tar -cf "${backup_path}/uploads.tar" -C "${SCRIPT_DIR}/.." uploads
+    echo "[INFO] Uploads backed up ($(du -h "${backup_path}/uploads.tar" | cut -f1))"
     backed_up=true
 fi
 
