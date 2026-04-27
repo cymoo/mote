@@ -84,7 +84,7 @@ async function handleResponse(res: Response) {
   try {
     json = (await res.json()) as object
   } catch (err) {
-    throw new AppError(500, 'Server error', err)
+    throw new AppError(res.status, 'Server error', err)
   }
 
   if ('error' in json) throw AppError.fromResponse(json as ErrorResponse)

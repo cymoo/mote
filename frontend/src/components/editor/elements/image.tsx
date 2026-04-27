@@ -10,6 +10,7 @@ import {
 } from 'slate-react'
 
 import { cx } from '@/utils/css.ts'
+import { AppError } from '@/error.ts'
 import { delay } from '@/utils/func.ts'
 import { useLatest } from '@/utils/hooks/use-latest.ts'
 import { useIsUnmounted } from '@/utils/hooks/use-unmount.ts'
@@ -158,6 +159,10 @@ export const Image = ({ attributes, children, element }: RenderElementProps) => 
           }
         } catch (err) {
           console.error(err)
+          // Don't retry client errors (e.g. 413 Too Large); propagate to .catch()
+          if (err instanceof AppError && err.code >= 400 && err.code < 500) {
+            throw err
+          }
           if (!isUnmounted()) {
             await delay(2000)
             return upload()
@@ -187,6 +192,13 @@ export const Image = ({ attributes, children, element }: RenderElementProps) => 
         })
         .catch((err: unknown) => {
           console.error(err)
+          // On a permanent client error, remove the placeholder image node
+          if (err instanceof AppError && err.code >= 400 && err.code < 500) {
+            HistoryEditor.withoutSaving(editor as HistoryEditor, () => {
+              Transforms.removeNodes(editor, { at: new_path.current })
+              URLWithStore.revokeObjectURL(url)
+            })
+          }
         })
         .finally(() => {
           setLoading(false)

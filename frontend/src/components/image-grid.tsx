@@ -16,6 +16,7 @@ import {
 } from 'react'
 
 import { cx } from '@/utils/css.ts'
+import { AppError } from '@/error.ts'
 import { delay } from '@/utils/func.ts'
 import { useLatest } from '@/utils/hooks/use-latest.ts'
 import { useMergeRefs } from '@/utils/hooks/use-merge-refs.ts'
@@ -180,6 +181,15 @@ export const ImageGrid = memo(function ImageGrid({
       if (isUnmounted()) return
       // if the image has been deleted
       if (latestImages.current.findIndex((image) => image.url === objectUrl) === -1) return
+
+      // Don't retry client errors (e.g. 413 Too Large); clean up the failed image
+      if (_err instanceof AppError && _err.code >= 400 && _err.code < 500) {
+        URLWithStore.revokeObjectURL(objectUrl)
+        setImages((images) => images.filter((image) => image.url !== objectUrl))
+        const message = _err.code === 413 ? 'Image is too large to upload' : 'Failed to upload image'
+        toast(message)
+        return
+      }
 
       // NOTE: A better approach is to determine whether to retry based on the status code,
       // such as retrying for 500 errors but not for 403 or 404 errors.
