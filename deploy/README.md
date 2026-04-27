@@ -15,9 +15,15 @@ On the server:
 SSH into the server and run everything from `deploy/`:
 
 ```bash
-git clone https://github.com/cymoo/mote.git /opt/mote
-cd /opt/mote/deploy
-cp .env.example .env        # edit: MOTE_PASSWORD, DOMAIN
+# Clone to any path you prefer; /opt/mote is the conventional choice.
+# Non-root users typically lack write access to /opt, so either use sudo
+# or choose a user-writable location such as ~/mote.
+sudo git clone https://github.com/cymoo/mote.git /opt/mote
+# — or —
+git clone https://github.com/cymoo/mote.git ~/mote
+
+cd /opt/mote/deploy       # adjust if you chose a different path
+cp .env.example .env      # edit: MOTE_PASSWORD, DOMAIN
 make setup
 ```
 
