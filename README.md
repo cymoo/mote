@@ -4,7 +4,7 @@
 
 Mote is a simple personal notebook and blog web APP.
 
-![screenshot](./data/screenshot-en.png)
+![screenshot](./samples/screenshot-en.png)
 
 ## Features
 

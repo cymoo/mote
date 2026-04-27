@@ -2,7 +2,7 @@
 
 Mote 是一个简单的个人笔记本和博客。
 
-![screenshot](./data/screenshot.png)
+![screenshot](./samples/screenshot.png)
 
 ## 功能
 
