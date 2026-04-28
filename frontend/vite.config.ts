@@ -6,12 +6,15 @@ import { URL, fileURLToPath } from 'node:url'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { defineConfig, loadEnv } from 'vite'
 
-export default defineConfig(({mode}) => {
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const baseUrl = env.VITE_MANIFEST_START_URL || '/'
 
+  const memoUrl = (env.VITE_MEMO_URL || '/memo').replace(/\/$/, '')
+  const base = (memoUrl || '') + '/'
+
   return {
-    base: (env.VITE_MEMO_URL || '/memo') + '/',
+    base,
     plugins: [
       react(),
       tailwindcss(),
