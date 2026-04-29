@@ -74,5 +74,7 @@
   "unlink": "unlink",
   "unlinkDescription": "Unlink from parent memo? This cannot be undone.",
   "addMemo": "add memo",
-  "totalMemos": "total memos"
+  "totalMemos": "total memos",
+  "markdownPasted": "Markdown converted to rich text",
+  "exportMarkdown": "export as Markdown"
 }

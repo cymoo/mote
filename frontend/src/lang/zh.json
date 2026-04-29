@@ -74,5 +74,7 @@
   "unlink": "解除关联",
   "unlinkDescription": "确认取消与父 memo 的关联吗？该操作不可逆",
   "addMemo": "添加 memo",
-  "totalMemos": "memo 总数"
+  "totalMemos": "memo 总数",
+  "markdownPasted": "已将 Markdown 转换为富文本",
+  "exportMarkdown": "导出为 Markdown"
 }

@@ -7,6 +7,10 @@ import {
   Transforms,
 } from 'slate'
 import { ReactEditor } from 'slate-react'
+import { marked } from 'marked'
+import toast from 'react-hot-toast'
+
+import { t } from '@/components/translation.tsx'
 
 import {
   BLOCK_QUOTE,
@@ -43,6 +47,51 @@ export function withPasteHtml(editor: Editor): Editor {
     const html = data.getData('text/html')
 
     if (!html) {
+      const text = data.getData('text/plain')
+      if (text && looksLikeMarkdown(text)) {
+        const parsedHtml = marked.parse(text) as string
+        const doc = new DOMParser().parseFromString(parsedHtml, 'text/html')
+        let nodes = fromHtml(doc.body) as Descendant[]
+
+        // Same cleanup as HTML paste path
+        const newLines = [`\n`, `\n\n`, `\r\n`]
+        const firstNode = nodes[0]
+        if (SlateText.isText(firstNode) && newLines.includes(firstNode.text)) {
+          nodes = nodes.slice(1)
+        }
+        const lastNode = nodes[nodes.length - 1]
+        if (SlateText.isText(lastNode) && newLines.includes(lastNode.text)) {
+          nodes = nodes.slice(0, nodes.length - 1)
+        }
+
+        const containBlockElement = nodes.some(
+          (node) => SlateElement.isElement(node) && Editor.isBlock(editor, node),
+        )
+        if (containBlockElement) {
+          nodes = nodes
+            .filter(
+              (node) =>
+                SlateElement.isElement(node) ||
+                (SlateText.isText(node) && node.text !== '\u200B\u200B'),
+            )
+            .filter(
+              (node) =>
+                SlateElement.isElement(node) ||
+                (SlateText.isText(node) && node.text.trim() !== ''),
+            )
+            .map((node) =>
+              SlateText.isText(node) || Editor.isInline(editor, node)
+                ? { type: 'paragraph', children: [{ ...node }] }
+                : node,
+            )
+        }
+
+        Transforms.insertFragment(editor, nodes)
+
+        const lang = (localStorage.getItem('lang') ?? 'en') as 'en' | 'zh'
+        toast.success(t('markdownPasted', lang), { duration: 2000 })
+        return
+      }
       insertData(data)
       return
     }
@@ -343,6 +392,31 @@ export function fromHtml(
   }
 
   if (isValidBlockNode && nodeName === 'LI') {
+    // Handle GitHub-style task list items (from marked output or pasted from GitHub)
+    const checkboxInput = el.querySelector(':scope > input[type="checkbox"]')
+    if (checkboxInput) {
+      const checked =
+        checkboxInput.hasAttribute('checked') || (checkboxInput as HTMLInputElement).checked
+      const taskChildren = Array.from(el.childNodes)
+        .filter((n) => n !== checkboxInput)
+        .map((n) => fromHtml(n, newMarks, false))
+        .flat()
+        .filter((n): n is Descendant => n !== null)
+      let filtered = ignoreConsecutiveEmptyText(
+        taskChildren.length ? taskChildren : [{ text: '' }],
+      )
+      // Trim leading whitespace from the first text node (marked inserts a space after the input)
+      const first = filtered[0]
+      if (first && SlateText.isText(first)) {
+        filtered = [{ ...first, text: first.text.trimStart() }, ...filtered.slice(1)]
+      }
+      return {
+        type: CHECK_LIST,
+        checked,
+        children: filtered.filter((n) => isInlineElementOrText(n)),
+      } as CheckListElement
+    }
+
     children = normalizeListItemChildren(children)
     return {
       type: LIST_ITEM,
@@ -368,6 +442,23 @@ export function fromHtml(
   }
 
   return children
+}
+
+function looksLikeMarkdown(text: string): boolean {
+  let score = 0
+  // Strong signals (count as 2 each)
+  if (/^```|^~~~/m.test(text)) score += 2 // fenced code blocks
+  if (/^#{1,6} /m.test(text)) score += 2 // ATX headings
+  if (/^[-*] \[[ xX]\]/m.test(text)) score += 2 // task list items
+  // Regular signals (count as 1 each)
+  if (/\*\*[^*\n]+\*\*/.test(text)) score++ // bold
+  if (/(?<!\*)\*(?!\*)[^*\n]+\*(?!\*)/.test(text)) score++ // italic
+  if (/^> /m.test(text)) score++ // blockquote
+  if (/\[[^\]\n]+\]\([^)\n]+\)/.test(text)) score++ // link
+  if (/^[-*] /m.test(text)) score++ // unordered list
+  if (/^\d+\. /m.test(text)) score++ // ordered list
+  if (/`[^`\n]+`/.test(text)) score++ // inline code
+  return score >= 2
 }
 
 function replaceHtmlSpecialSymbols(str: string) {

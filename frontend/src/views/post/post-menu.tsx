@@ -4,6 +4,7 @@ import { Location, useLocation, useSearchParams } from 'react-router'
 
 import { cx } from '@/utils/css.ts'
 import { formatDate } from '@/utils/date.ts'
+import { exportPostAsMarkdown } from '@/utils/markdown.ts'
 import { countWords } from '@/utils/text.ts'
 
 import { Button } from '@/components/button.tsx'
@@ -105,6 +106,11 @@ export function PostMenu({ post, mutator, standalone = false, className }: PostM
     })
   }
 
+  const handleExportMarkdown = () => {
+    setOpen(false)
+    exportPostAsMarkdown(post)
+  }
+
   const goToPostPage = () => {
     setOpen(false)
     const bg = (location.state as { backgroundLocation?: Location } | null)?.backgroundLocation
@@ -195,6 +201,20 @@ export function PostMenu({ post, mutator, standalone = false, className }: PostM
             </Button>
           </li>
         )}
+        <li>
+          <Divider />
+        </li>
+        <li>
+          <Button
+            className="w-full justify-start!"
+            variant="ghost"
+            onClick={() => {
+              handleExportMarkdown()
+            }}
+          >
+            <T name="exportMarkdown" />
+          </Button>
+        </li>
         <li>
           <Divider />
         </li>
