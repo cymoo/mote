@@ -105,6 +105,13 @@ func (app *App) initDatabase() error {
 		return fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
+	// Avoid SQLITE_BUSY under concurrent writes (e.g. parallel chunk uploads).
+	// SQLite serialises writers; without a busy timeout, contending writers
+	// fail immediately instead of waiting for the lock to be released.
+	if _, err = db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		return fmt.Errorf("failed to set busy_timeout: %w", err)
+	}
+
 	verifyForeignKeysConstraints(db)
 	verifyWALMode(db)
 

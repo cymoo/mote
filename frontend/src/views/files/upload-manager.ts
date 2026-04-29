@@ -90,7 +90,7 @@ class UploadManager {
           const idx = queue[i]
           const start = idx * init.chunk_size
           const blob = file.slice(start, start + init.chunk_size)
-          await putChunk(init.upload_id, idx, blob)
+          await putChunkWithRetry(init.upload_id, idx, blob)
           const cur = this.items.get(localID)
           if (cur) this.update(localID, { loaded: Math.min(cur.loaded + blob.size, file.size) })
         }
@@ -119,6 +119,10 @@ class UploadManager {
         status: 'failed',
         error: err instanceof Error ? err.message : String(err),
       })
+      // Best-effort cleanup of server-side chunks so a failed upload does not
+      // leave orphaned data behind.
+      const uploadID = this.uploadIDs.get(localID)
+      if (uploadID) void cancelUpload(uploadID).catch(() => {})
       throw err
     } finally {
       this.cancellers.delete(localID)
@@ -163,6 +167,39 @@ class UploadManager {
       if (v.status === 'done' || v.status === 'cancelled') this.items.delete(k)
     }
     this.emit()
+  }
+
+  // Remove every item that is no longer in flight (done / failed / cancelled).
+  clearFinished() {
+    for (const [k, v] of this.items) {
+      if (v.status === 'done' || v.status === 'cancelled' || v.status === 'failed') {
+        this.items.delete(k)
+        this.uploadIDs.delete(k)
+      }
+    }
+    this.emit()
+  }
+}
+
+// Retry transient chunk-upload failures (5xx, network) with exponential backoff
+// before giving up. SQLite BUSY storms during heavy concurrent uploads surface
+// as 500s and are recoverable on a second try.
+async function putChunkWithRetry(
+  uploadID: string,
+  idx: number,
+  blob: Blob,
+  attempts = 4,
+): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await putChunk(uploadID, idx, blob)
+      return
+    } catch (err) {
+      const code = (err as { code?: number }).code
+      const transient = code === undefined || code >= 500
+      if (!transient || i === attempts - 1) throw err
+      await new Promise((r) => setTimeout(r, 200 * Math.pow(2, i)))
+    }
   }
 }
 
