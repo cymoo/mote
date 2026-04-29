@@ -16,6 +16,10 @@ type DriveNode struct {
 	DeleteBatchID NullString `json:"-" db:"delete_batch_id"`
 	CreatedAt     int64      `json:"created_at" db:"created_at"`
 	UpdatedAt     int64      `json:"updated_at" db:"updated_at"`
+	// Path is the slash-joined names of the node's ancestors (excluding the node
+	// itself), populated only by search responses so the UI can show the full
+	// directory structure of each hit. Empty for items at the drive root.
+	Path string `json:"path,omitempty" db:"-"`
 }
 
 // DriveUpload represents a resumable upload session.

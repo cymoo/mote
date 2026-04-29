@@ -12,6 +12,10 @@ export interface DriveNode {
   deleted_at?: number | null
   created_at: number
   updated_at: number
+  // Server-populated only on search results: slash-joined ancestor names of the
+  // node's parents (e.g. "Photos/2024"). Empty string means the hit lives at
+  // the drive root.
+  path?: string
 }
 
 export interface DriveBreadcrumb {

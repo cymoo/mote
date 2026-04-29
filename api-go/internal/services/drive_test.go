@@ -200,3 +200,38 @@ func TestDrive_RootParentNull(t *testing.T) {
 	}
 	_ = models.DriveNode{} // touch package to silence imports if unused
 }
+
+// Search results should include a slash-joined ancestor path so the UI can
+// display the full directory of each hit.
+func TestDrive_SearchPopulatesPath(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+	a, _ := svc.CreateFolder(ctx, nil, "Photos")
+	b, _ := svc.CreateFolder(ctx, &a.ID, "2024")
+	leaf, _ := svc.CreateFolder(ctx, &b.ID, "vacation")
+	rootHit, _ := svc.CreateFolder(ctx, nil, "vacationRoot")
+
+	q := "vacation"
+	out, err := svc.List(ctx, nil, &q, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawLeaf, sawRoot bool
+	for _, n := range out {
+		switch n.ID {
+		case leaf.ID:
+			sawLeaf = true
+			if n.Path != "Photos/2024" {
+				t.Fatalf("leaf path = %q want Photos/2024", n.Path)
+			}
+		case rootHit.ID:
+			sawRoot = true
+			if n.Path != "" {
+				t.Fatalf("root-level hit should have empty Path, got %q", n.Path)
+			}
+		}
+	}
+	if !sawLeaf || !sawRoot {
+		t.Fatalf("missing search hits: leaf=%v root=%v results=%+v", sawLeaf, sawRoot, out)
+	}
+}

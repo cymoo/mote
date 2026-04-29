@@ -122,7 +122,40 @@ func (s *DriveService) List(ctx context.Context, parentID *int64, query *string,
 	if err := s.db.SelectContext(ctx, &out, q, args...); err != nil {
 		return nil, err
 	}
+	if query != nil && strings.TrimSpace(*query) != "" && len(out) > 0 {
+		if err := s.populatePaths(ctx, out); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
+}
+
+// populatePaths fills DriveNode.Path with the slash-joined ancestor names
+// (excluding the node itself) for each input row.
+func (s *DriveService) populatePaths(ctx context.Context, nodes []models.DriveNode) error {
+	cache := map[int64]string{}
+	for i := range nodes {
+		if !nodes[i].ParentID.Valid {
+			continue
+		}
+		pid := nodes[i].ParentID.Int64
+		if p, ok := cache[pid]; ok {
+			nodes[i].Path = p
+			continue
+		}
+		bcs, err := s.Breadcrumbs(ctx, pid)
+		if err != nil {
+			return err
+		}
+		parts := make([]string, 0, len(bcs))
+		for _, bc := range bcs {
+			parts = append(parts, bc.Name)
+		}
+		p := strings.Join(parts, "/")
+		cache[pid] = p
+		nodes[i].Path = p
+	}
+	return nil
 }
 
 // ListTrash returns soft-deleted batch roots (the topmost deleted ancestor per batch).
