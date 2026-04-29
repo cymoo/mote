@@ -29,11 +29,8 @@ CREATE TABLE drive_nodes (
   parent_id INTEGER REFERENCES drive_nodes(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK(type IN ('folder','file')),
   name TEXT NOT NULL,
-  name_lower TEXT NOT NULL,
   blob_path TEXT,
   size INTEGER,
-  mime_type TEXT,
-  ext TEXT,
   hash TEXT,
   deleted_at INTEGER,
   delete_batch_id TEXT,
@@ -41,7 +38,7 @@ CREATE TABLE drive_nodes (
   updated_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX drive_nodes_unique_active
-  ON drive_nodes(COALESCE(parent_id, 0), name_lower)
+  ON drive_nodes(COALESCE(parent_id, 0), LOWER(name))
   WHERE deleted_at IS NULL;
 CREATE INDEX drive_nodes_parent ON drive_nodes(parent_id, deleted_at);
 `
@@ -159,7 +156,7 @@ func TestDrive_AutoRename(t *testing.T) {
 	_ = os.MkdirAll(filepath.Dir(abs), 0755)
 	_ = os.WriteFile(abs, []byte("hi"), 0644)
 
-	if _, err := svc.CreateFileNode(ctx, &parent.ID, "report.pdf", blob, "application/pdf", ".pdf", "", 2); err != nil {
+	if _, err := svc.CreateFileNode(ctx, &parent.ID, "report.pdf", blob, "", 2); err != nil {
 		t.Fatalf("create file: %v", err)
 	}
 	cand, err := svc.AutoRename(ctx, &parent.ID, "report.pdf")

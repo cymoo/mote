@@ -32,11 +32,8 @@ CREATE TABLE drive_nodes (
   parent_id INTEGER REFERENCES drive_nodes(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK(type IN ('folder','file')),
   name TEXT NOT NULL,
-  name_lower TEXT NOT NULL,
   blob_path TEXT,
   size INTEGER,
-  mime_type TEXT,
-  ext TEXT,
   hash TEXT,
   deleted_at INTEGER,
   delete_batch_id TEXT,
@@ -44,7 +41,7 @@ CREATE TABLE drive_nodes (
   updated_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX drive_nodes_unique_active
-  ON drive_nodes(COALESCE(parent_id, 0), name_lower)
+  ON drive_nodes(COALESCE(parent_id, 0), LOWER(name))
   WHERE deleted_at IS NULL;
 
 CREATE TABLE drive_uploads (

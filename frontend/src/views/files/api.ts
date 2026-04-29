@@ -7,7 +7,6 @@ export interface DriveNode {
   name: string
   size: number | null
   mime_type: string | null
-  ext: string | null
   hash?: string | null
   deleted_at?: number | null
   created_at: number

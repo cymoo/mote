@@ -57,7 +57,7 @@ func (h *DriveShareHandler) Landing(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name":         node.Name,
 			"size":         node.Size.Int64,
-			"mime_type":    node.MimeType.String,
+			"mime_type":    node.MimeType(),
 			"has_password": share.HasPassword,
 			"authed":       authed,
 			"expires_at":   nullable(share.ExpiresAt),
@@ -139,10 +139,10 @@ func (h *DriveShareHandler) serveShared(w http.ResponseWriter, r *http.Request, 
 	defer f.Close()
 
 	disp := "inline"
-	if forceAttachment || mustForceAttachment(node.MimeType.String, node.Ext.String) {
+	if forceAttachment || mustForceAttachment(node.MimeType(), node.Ext()) {
 		disp = "attachment"
 	}
-	w.Header().Set("Content-Type", node.MimeType.String)
+	w.Header().Set("Content-Type", node.MimeType())
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf("%s; filename*=UTF-8''%s", disp, url.PathEscape(node.Name)))
 	w.Header().Set("X-Content-Type-Options", "nosniff")

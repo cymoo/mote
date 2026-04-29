@@ -185,10 +185,10 @@ func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAt
 		return
 	}
 	disp := "inline"
-	if forceAttachment || mustForceAttachment(node.MimeType.String, node.Ext.String) {
+	if forceAttachment || mustForceAttachment(node.MimeType(), node.Ext()) {
 		disp = "attachment"
 	}
-	w.Header().Set("Content-Type", node.MimeType.String)
+	w.Header().Set("Content-Type", node.MimeType())
 	w.Header().Set("Content-Disposition",
 		fmt.Sprintf("%s; filename*=UTF-8''%s", disp, url.PathEscape(node.Name)))
 	w.Header().Set("X-Content-Type-Options", "nosniff")

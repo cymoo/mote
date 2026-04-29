@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/cymoo/mote/internal/config"
@@ -278,14 +277,11 @@ func (s *DriveUploadService) Complete(
 		return nil, err
 	}
 
-	ext := strings.ToLower(filepath.Ext(finalName))
-	mimeType := MimeTypeFromExt(ext)
-
 	var node *models.DriveNode
 	if onCollision == "overwrite" {
-		node, err = s.drive.ReplaceFileNode(ctx, parentID, finalName, relPath, mimeType, ext, hash, u.Size)
+		node, err = s.drive.ReplaceFileNode(ctx, parentID, finalName, relPath, hash, u.Size)
 	} else {
-		node, err = s.drive.CreateFileNode(ctx, parentID, finalName, relPath, mimeType, ext, hash, u.Size)
+		node, err = s.drive.CreateFileNode(ctx, parentID, finalName, relPath, hash, u.Size)
 	}
 	if err != nil {
 		_ = os.Remove(absPath)

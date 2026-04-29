@@ -4,11 +4,8 @@ CREATE TABLE IF NOT EXISTS drive_nodes
   parent_id       INTEGER,
   type            TEXT    NOT NULL CHECK (type IN ('folder', 'file')),
   name            TEXT    NOT NULL,
-  name_lower      TEXT    NOT NULL,
   blob_path       TEXT,
   size            BIGINT,
-  mime_type       TEXT,
-  ext             TEXT,
   hash            TEXT,
   deleted_at      BIGINT,
   delete_batch_id TEXT,
@@ -20,13 +17,15 @@ CREATE TABLE IF NOT EXISTS drive_nodes
 );
 
 -- Active-name uniqueness within a parent (NULL parent treated as 0 via expression).
+-- Uses LOWER(name) directly so we don't have to denormalize a `name_lower`
+-- column; SQLite supports expressions in partial / unique indexes.
 CREATE UNIQUE INDEX IF NOT EXISTS drive_nodes_unique_active
-  ON drive_nodes (COALESCE(parent_id, 0), name_lower)
+  ON drive_nodes (COALESCE(parent_id, 0), LOWER(name))
   WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS drive_nodes_parent ON drive_nodes (parent_id, deleted_at);
 CREATE INDEX IF NOT EXISTS drive_nodes_deleted ON drive_nodes (deleted_at);
-CREATE INDEX IF NOT EXISTS drive_nodes_name_lower ON drive_nodes (name_lower);
+CREATE INDEX IF NOT EXISTS drive_nodes_name ON drive_nodes (LOWER(name));
 CREATE INDEX IF NOT EXISTS drive_nodes_delete_batch ON drive_nodes (delete_batch_id);
 
 CREATE TABLE IF NOT EXISTS drive_uploads

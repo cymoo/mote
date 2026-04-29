@@ -1,16 +1,25 @@
 package models
 
+import (
+	"encoding/json"
+	"mime"
+	"path/filepath"
+	"strings"
+)
+
 // DriveNode represents a folder or file in the drive tree.
+//
+// `mime_type` and `ext` are NOT stored in the database — they are pure
+// functions of `name` and would only duplicate state. They are still emitted
+// in JSON responses (see MarshalJSON) so the frontend doesn't have to
+// re-derive them.
 type DriveNode struct {
 	ID            int64      `json:"id" db:"id"`
 	ParentID      NullInt64  `json:"parent_id" db:"parent_id"`
 	Type          string     `json:"type" db:"type"`
 	Name          string     `json:"name" db:"name"`
-	NameLower     string     `json:"-" db:"name_lower"`
 	BlobPath      NullString `json:"-" db:"blob_path"`
 	Size          NullInt64  `json:"size" db:"size"`
-	MimeType      NullString `json:"mime_type" db:"mime_type"`
-	Ext           NullString `json:"ext" db:"ext"`
 	Hash          NullString `json:"hash,omitempty" db:"hash"`
 	DeletedAt     NullInt64  `json:"deleted_at,omitempty" db:"deleted_at"`
 	DeleteBatchID NullString `json:"-" db:"delete_batch_id"`
@@ -20,6 +29,45 @@ type DriveNode struct {
 	// itself), populated only by search responses so the UI can show the full
 	// directory structure of each hit. Empty for items at the drive root.
 	Path string `json:"path,omitempty" db:"-"`
+}
+
+// Ext returns the lower-cased filename extension (including the leading dot)
+// or "" for folders / extension-less names.
+func (n DriveNode) Ext() string {
+	if n.Type != "file" {
+		return ""
+	}
+	return strings.ToLower(filepath.Ext(n.Name))
+}
+
+// MimeType returns the MIME type derived from the filename extension. Folders
+// and unknown extensions yield "application/octet-stream".
+func (n DriveNode) MimeType() string {
+	if n.Type != "file" {
+		return ""
+	}
+	if mt := mime.TypeByExtension(n.Ext()); mt != "" {
+		return mt
+	}
+	return "application/octet-stream"
+}
+
+// MarshalJSON adds the derived `mime_type` and `ext` fields to the wire
+// representation while keeping the storage model lean.
+func (n DriveNode) MarshalJSON() ([]byte, error) {
+	type alias DriveNode
+	var ext, mt *string
+	if n.Type == "file" {
+		e := n.Ext()
+		ext = &e
+		m := n.MimeType()
+		mt = &m
+	}
+	return json.Marshal(&struct {
+		alias
+		Ext      *string `json:"ext"`
+		MimeType *string `json:"mime_type"`
+	}{alias(n), ext, mt})
 }
 
 // DriveUpload represents a resumable upload session.

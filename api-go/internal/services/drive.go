@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"mime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,11 +93,11 @@ func (s *DriveService) List(ctx context.Context, parentID *int64, query *string,
 	}
 	where += " AND deleted_at IS NULL"
 	if query != nil && strings.TrimSpace(*query) != "" {
-		where = "deleted_at IS NULL AND name_lower LIKE ?"
+		where = "deleted_at IS NULL AND LOWER(name) LIKE ?"
 		args = []any{"%" + strings.ToLower(strings.TrimSpace(*query)) + "%"}
 	}
 
-	col := "name_lower"
+	col := "LOWER(name)"
 	switch orderBy {
 	case "size":
 		col = "size"
@@ -107,7 +106,7 @@ func (s *DriveService) List(ctx context.Context, parentID *int64, query *string,
 	case "created_at":
 		col = "created_at"
 	case "name", "":
-		col = "name_lower"
+		col = "LOWER(name)"
 	}
 	dir := "ASC"
 	if strings.EqualFold(sort, "desc") {
@@ -209,10 +208,10 @@ func (s *DriveService) CreateFolder(ctx context.Context, parentID *int64, name s
 		}
 	}
 	now := time.Now().UnixMilli()
-	q := `INSERT INTO drive_nodes (parent_id, type, name, name_lower, created_at, updated_at)
-	      VALUES (?, 'folder', ?, ?, ?, ?) RETURNING id`
+	q := `INSERT INTO drive_nodes (parent_id, type, name, created_at, updated_at)
+	      VALUES (?, 'folder', ?, ?, ?) RETURNING id`
 	var id int64
-	err := s.db.QueryRowxContext(ctx, q, parentID, name, strings.ToLower(name), now, now).Scan(&id)
+	err := s.db.QueryRowxContext(ctx, q, parentID, name, now, now).Scan(&id)
 	if err != nil {
 		if isUniqueErr(err) {
 			return nil, ErrDriveNameConflict
@@ -229,9 +228,9 @@ func (s *DriveService) Rename(ctx context.Context, id int64, newName string) err
 	}
 	now := time.Now().UnixMilli()
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE drive_nodes SET name = ?, name_lower = ?, updated_at = ?
+		`UPDATE drive_nodes SET name = ?, updated_at = ?
 		 WHERE id = ? AND deleted_at IS NULL`,
-		newName, strings.ToLower(newName), now, id)
+		newName, now, id)
 	if err != nil {
 		if isUniqueErr(err) {
 			return ErrDriveNameConflict
@@ -368,9 +367,9 @@ func (s *DriveService) Restore(ctx context.Context, id int64) error {
 SELECT EXISTS(
   SELECT 1 FROM drive_nodes
   WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
-    AND name_lower = ?
+    AND LOWER(name) = ?
     AND deleted_at IS NULL
-)`, n.ParentID, n.NameLower).Scan(&conflict)
+)`, n.ParentID, strings.ToLower(n.Name)).Scan(&conflict)
 	if err != nil {
 		return err
 	}
@@ -472,10 +471,13 @@ func (s *DriveService) requireActiveFolder(ctx context.Context, id int64) (*mode
 // CreateFileNode inserts a new file row. Used by the upload service after
 // the blob has been written to disk. Returns the inserted node or
 // ErrDriveNameConflict on collision (caller can then apply a rename strategy).
+//
+// Note: mime_type / ext are not stored — they are derived from the filename
+// at read time (see DriveNode.MimeType / .Ext).
 func (s *DriveService) CreateFileNode(
 	ctx context.Context,
 	parentID *int64,
-	name, blobPath, mimeType, ext, hash string,
+	name, blobPath, hash string,
 	size int64,
 ) (*models.DriveNode, error) {
 	if err := validName(name); err != nil {
@@ -489,9 +491,9 @@ func (s *DriveService) CreateFileNode(
 	now := time.Now().UnixMilli()
 	var id int64
 	err := s.db.QueryRowxContext(ctx, `
-INSERT INTO drive_nodes (parent_id, type, name, name_lower, blob_path, size, mime_type, ext, hash, created_at, updated_at)
-VALUES (?, 'file', ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?) RETURNING id`,
-		parentID, name, strings.ToLower(name), blobPath, size, mimeType, ext, hash, now, now).Scan(&id)
+INSERT INTO drive_nodes (parent_id, type, name, blob_path, size, hash, created_at, updated_at)
+VALUES (?, 'file', ?, ?, ?, NULLIF(?, ''), ?, ?) RETURNING id`,
+		parentID, name, blobPath, size, hash, now, now).Scan(&id)
 	if err != nil {
 		if isUniqueErr(err) {
 			return nil, ErrDriveNameConflict
@@ -506,7 +508,7 @@ VALUES (?, 'file', ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?) RETURNING id`,
 func (s *DriveService) ReplaceFileNode(
 	ctx context.Context,
 	parentID *int64,
-	name, blobPath, mimeType, ext, hash string,
+	name, blobPath, hash string,
 	size int64,
 ) (*models.DriveNode, error) {
 	if err := validName(name); err != nil {
@@ -522,7 +524,7 @@ func (s *DriveService) ReplaceFileNode(
 	err = tx.GetContext(ctx, &existing, `
 SELECT * FROM drive_nodes
 WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
-  AND name_lower = ?
+  AND LOWER(name) = ?
   AND deleted_at IS NULL`, parentID, strings.ToLower(name))
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -534,9 +536,9 @@ WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
 		// Nothing to overwrite (or existing is a folder); insert fresh.
 		var id int64
 		if err := tx.QueryRowxContext(ctx, `
-INSERT INTO drive_nodes (parent_id, type, name, name_lower, blob_path, size, mime_type, ext, hash, created_at, updated_at)
-VALUES (?, 'file', ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?) RETURNING id`,
-			parentID, name, strings.ToLower(name), blobPath, size, mimeType, ext, hash, now, now,
+INSERT INTO drive_nodes (parent_id, type, name, blob_path, size, hash, created_at, updated_at)
+VALUES (?, 'file', ?, ?, ?, NULLIF(?, ''), ?, ?) RETURNING id`,
+			parentID, name, blobPath, size, hash, now, now,
 		).Scan(&id); err != nil {
 			if isUniqueErr(err) {
 				return nil, ErrDriveNameConflict
@@ -553,8 +555,8 @@ VALUES (?, 'file', ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?) RETURNING id`,
 	oldBlob := existing.BlobPath.String
 	_, err = tx.ExecContext(ctx, `
 UPDATE drive_nodes
-SET blob_path = ?, size = ?, mime_type = ?, ext = ?, hash = NULLIF(?, ''), updated_at = ?
-WHERE id = ?`, blobPath, size, mimeType, ext, hash, now, existing.ID)
+SET blob_path = ?, size = ?, hash = NULLIF(?, ''), updated_at = ?
+WHERE id = ?`, blobPath, size, hash, now, existing.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +575,7 @@ func (s *DriveService) FindActiveSibling(ctx context.Context, parentID *int64, n
 	err := s.db.GetContext(ctx, &n, `
 SELECT * FROM drive_nodes
 WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
-  AND name_lower = ?
+  AND LOWER(name) = ?
   AND deleted_at IS NULL`, parentID, strings.ToLower(name))
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -600,17 +602,6 @@ func (s *DriveService) AutoRename(ctx context.Context, parentID *int64, name str
 		}
 	}
 	return "", fmt.Errorf("could not allocate unique name for %q", name)
-}
-
-// MimeTypeFromExt is a small helper used when storing files.
-func MimeTypeFromExt(ext string) string {
-	if ext == "" {
-		return "application/octet-stream"
-	}
-	if mt := mime.TypeByExtension(ext); mt != "" {
-		return mt
-	}
-	return "application/octet-stream"
 }
 
 // newToken returns a hex-encoded random token of n bytes.

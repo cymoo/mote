@@ -92,7 +92,7 @@ func mustFile(t *testing.T, d *DriveService, parent *int64, name string, body []
 	if err := os.WriteFile(abs, body, 0o644); err != nil {
 		t.Fatalf("write blob: %v", err)
 	}
-	if _, err := d.CreateFileNode(ctx, parent, name, blobRel, "application/octet-stream", "", "", int64(len(body))); err != nil {
+	if _, err := d.CreateFileNode(ctx, parent, name, blobRel, "", int64(len(body))); err != nil {
 		t.Fatalf("create file %s: %v", name, err)
 	}
 }
