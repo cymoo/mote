@@ -76,5 +76,6 @@
   "addMemo": "添加 memo",
   "totalMemos": "memo 总数",
   "markdownPasted": "已将 Markdown 转换为富文本",
-  "exportMarkdown": "导出为 Markdown"
+  "exportMarkdown": "导出为 Markdown",
+  "files": "文件"
 }

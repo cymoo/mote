@@ -76,5 +76,6 @@
   "addMemo": "add memo",
   "totalMemos": "total memos",
   "markdownPasted": "Markdown converted to rich text",
-  "exportMarkdown": "export as Markdown"
+  "exportMarkdown": "export as Markdown",
+  "files": "files"
 }

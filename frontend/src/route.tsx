@@ -39,6 +39,9 @@ const swrOptions = {
 }
 
 const Play = lazy(() => import('./views/play.tsx'))
+const FilesPage = lazy(() =>
+  import('./views/files/files-page.tsx').then((m) => ({ default: m.FilesPage })),
+)
 
 export const App = () => {
   const location = useLocation()
@@ -80,6 +83,14 @@ export const App = () => {
         />
         <Route path="/login" element={<Login />} />
         <Route path="/play" element={<Play />} />
+        <Route
+          path="/files"
+          element={
+            <RequireAuth>
+              <FilesPage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="*"
           element={
