@@ -419,6 +419,7 @@ SELECT n.id, n.blob_path FROM drive_nodes n WHERE n.id IN (SELECT id FROM subtre
 	for _, r := range rows {
 		if r.BlobPath.Valid {
 			_ = os.Remove(s.BlobAbsPath(r.BlobPath.String))
+			s.PurgeThumb(r.BlobPath.String)
 		}
 	}
 	return nil
@@ -565,6 +566,7 @@ WHERE id = ?`, blobPath, size, hash, now, existing.ID)
 	}
 	if oldBlob != "" && oldBlob != blobPath {
 		_ = os.Remove(s.BlobAbsPath(oldBlob))
+		s.PurgeThumb(oldBlob)
 	}
 	return s.FindByID(ctx, existing.ID)
 }

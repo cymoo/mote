@@ -24,7 +24,7 @@ import { Button } from '@/components/button.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover.tsx'
 import { T, t } from '@/components/translation.tsx'
 
-import { DriveBreadcrumb, DriveNode } from './api'
+import { DriveBreadcrumb, DriveNode, thumbURL } from './api'
 
 type Lang = 'en' | 'zh'
 
@@ -148,7 +148,7 @@ export const SelectionBar = memo(function SelectionBar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 w-7 px-0"
+        className="size-7! px-0!"
         onClick={onDownload}
         title={t('download', lang)}
         aria-label={t('download', lang)}
@@ -158,7 +158,7 @@ export const SelectionBar = memo(function SelectionBar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 w-7 px-0"
+        className="size-7! px-0!"
         onClick={onMove}
         title={t('move', lang)}
         aria-label={t('move', lang)}
@@ -168,7 +168,7 @@ export const SelectionBar = memo(function SelectionBar({
       <Button
         variant="ghost"
         size="sm"
-        className="text-destructive hover:text-destructive h-7 w-7 px-0"
+        className="text-destructive hover:text-destructive size-7! px-0!"
         onClick={onDelete}
         title={t('delete', lang)}
         aria-label={t('delete', lang)}
@@ -178,7 +178,7 @@ export const SelectionBar = memo(function SelectionBar({
       <Button
         variant="ghost"
         size="sm"
-        className="h-7 w-7 px-0"
+        className="size-7! px-0!"
         onClick={onClear}
         title={t('clearSelection', lang)}
         aria-label={t('clearSelection', lang)}
@@ -202,12 +202,45 @@ export const NodeIcon = memo(function NodeIcon({
   if (node.type === 'folder')
     return <FolderIcon className={cx(cls, 'text-primary fill-primary/15')} />
   const mt = node.mime_type ?? ''
-  if (mt.startsWith('image/')) return <ImageIcon className={cx(cls, 'text-emerald-500')} />
+  if (mt.startsWith('image/')) return <ImageThumb node={node} large={large} />
   if (mt.startsWith('video/')) return <FilmIcon className={cx(cls, 'text-rose-500')} />
   if (mt.startsWith('audio/')) return <MusicIcon className={cx(cls, 'text-amber-500')} />
   if (mt.includes('pdf')) return <FileTextIcon className={cx(cls, 'text-red-500')} />
   if (mt.startsWith('text/')) return <FileTextIcon className={cx(cls, 'text-blue-500')} />
   return <FileIcon className={cx(cls, 'text-muted-foreground')} />
+})
+
+// Renders a server-generated thumbnail for image files; falls back to the
+// generic icon if the request fails (e.g. unsupported format / decode error).
+const ImageThumb = memo(function ImageThumb({
+  node,
+  large,
+}: {
+  node: DriveNode
+  large?: boolean
+}) {
+  const [failed, setFailed] = useState(false)
+  const cls = large ? 'size-14' : 'size-6'
+  if (failed) {
+    return <ImageIcon className={cx(large ? 'size-10' : 'size-5', 'text-emerald-500')} />
+  }
+  return (
+    <div
+      className={cx(
+        cls,
+        'bg-muted/50 ring-border/40 flex items-center justify-center overflow-hidden rounded ring-1',
+      )}
+    >
+      <img
+        src={thumbURL(node.id)}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="size-full object-cover"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  )
 })
 
 // ---------- checkbox ----------

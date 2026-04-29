@@ -1,5 +1,5 @@
-import { RotateCcwIcon, Trash2Icon, UploadIcon } from 'lucide-react'
-import { memo } from 'react'
+import { ArrowDownIcon, ArrowUpIcon, RotateCcwIcon, Trash2Icon, UploadIcon } from 'lucide-react'
+import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
 
@@ -11,6 +11,9 @@ import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu } from './parts'
 
 type Lang = 'en' | 'zh'
 
+export type SortKey = 'name' | 'size' | 'updated_at'
+export type SortDir = 'asc' | 'desc'
+
 // ---------- list view ----------
 
 interface ListViewProps {
@@ -21,6 +24,9 @@ interface ListViewProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
+  sortKey: SortKey
+  sortDir: SortDir
+  onSort: (k: SortKey) => void
   lang: Lang
 }
 
@@ -32,6 +38,9 @@ export const ListView = memo(function ListView({
   onOpen,
   onAction,
   onNavigateToParent,
+  sortKey,
+  sortDir,
+  onSort,
   lang,
 }: ListViewProps) {
   const allSelected = items.length > 0 && selected.size === items.length
@@ -50,13 +59,19 @@ export const ListView = memo(function ListView({
           </th>
           <th className="w-9"></th>
           <th className="px-2 py-2 font-medium">
-            <T name="name" />
+            <SortHeader k="name" sortKey={sortKey} sortDir={sortDir} onSort={onSort}>
+              <T name="name" />
+            </SortHeader>
           </th>
           <th className="hidden w-24 px-2 font-medium md:table-cell">
-            <T name="size" />
+            <SortHeader k="size" sortKey={sortKey} sortDir={sortDir} onSort={onSort}>
+              <T name="size" />
+            </SortHeader>
           </th>
           <th className="hidden w-44 px-2 font-medium md:table-cell">
-            <T name="modified" />
+            <SortHeader k="updated_at" sortKey={sortKey} sortDir={sortDir} onSort={onSort}>
+              <T name="modified" />
+            </SortHeader>
           </th>
           <th className="w-10"></th>
         </tr>
@@ -150,7 +165,12 @@ const ListRow = memo(function ListRow({
       <td className="text-muted-foreground hidden px-2 text-xs md:table-cell">
         {new Date(node.updated_at).toLocaleString()}
       </td>
-      <td className="px-1" onClick={(e) => e.stopPropagation()}>
+      <td
+        className="px-1"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <RowMenu node={node} onAction={onAction} lang={lang} />
       </td>
     </tr>
@@ -230,7 +250,12 @@ const GridCard = memo(function GridCard({
       title={node.name}
     >
       {/* hover-revealed kebab in top-right */}
-      <div className="absolute top-1.5 right-1.5" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="absolute top-1.5 right-1.5"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <RowMenu node={node} onAction={onAction} lang={lang} />
       </div>
       <div className="flex size-14 shrink-0 items-center justify-center">
@@ -295,6 +320,43 @@ export const TrashView = memo(function TrashView({
     </ul>
   )
 })
+
+// ---------- sort header ----------
+
+function SortHeader({
+  k,
+  sortKey,
+  sortDir,
+  onSort,
+  children,
+}: {
+  k: SortKey
+  sortKey: SortKey
+  sortDir: SortDir
+  onSort: (k: SortKey) => void
+  children: React.ReactNode
+}) {
+  const active = sortKey === k
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(k)}
+      className={cx(
+        'hover:text-foreground inline-flex items-center gap-1 transition-colors',
+        active ? 'text-foreground' : undefined,
+      )}
+    >
+      {children}
+      {active && (
+        sortDir === 'asc' ? (
+          <ArrowUpIcon className="size-3" />
+        ) : (
+          <ArrowDownIcon className="size-3" />
+        )
+      )}
+    </button>
+  )
+}
 
 // ---------- empty state ----------
 

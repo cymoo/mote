@@ -41,6 +41,11 @@ import { uploadManager } from './upload-manager'
 import { EmptyState, GridView, ListView, TrashView } from './views'
 
 type ViewMode = 'list' | 'grid'
+type SortKey = 'name' | 'size' | 'updated_at'
+type SortDir = 'asc' | 'desc'
+
+const SORT_KEY_STORE = 'drive_sort_key'
+const SORT_DIR_STORE = 'drive_sort_dir'
 
 // Downloads (`window.location.href = …`) and PhotoSwipe images depend on cookie
 // auth; sync from localStorage on mount in case the cookie has expired.
@@ -61,6 +66,12 @@ export function FilesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [view, setView] = useState<ViewMode>(
     (localStorage.getItem('drive_view') as ViewMode) || 'list',
+  )
+  const [sortKey, setSortKey] = useState<SortKey>(
+    (localStorage.getItem(SORT_KEY_STORE) as SortKey) || 'name',
+  )
+  const [sortDir, setSortDir] = useState<SortDir>(
+    (localStorage.getItem(SORT_DIR_STORE) as SortDir) || 'asc',
   )
   const [query, setQuery] = useState('')
   const [showTrash, setShowTrash] = useState(false)
@@ -86,11 +97,11 @@ export function FilesPage() {
     if (query.trim()) {
       setItems(await search(query.trim()))
     } else {
-      setItems(await list(parentID))
+      setItems(await list(parentID, sortKey, sortDir))
     }
     setCrumbs(parentID == null ? [] : await breadcrumbs(parentID))
     setSelected(new Set())
-  }, [parentID, query, showTrash])
+  }, [parentID, query, showTrash, sortKey, sortDir])
 
   useEffect(() => {
     void refresh().catch((err: Error) => toast.error(err.message))
@@ -99,6 +110,23 @@ export function FilesPage() {
   useEffect(() => {
     localStorage.setItem('drive_view', view)
   }, [view])
+
+  useEffect(() => {
+    localStorage.setItem(SORT_KEY_STORE, sortKey)
+    localStorage.setItem(SORT_DIR_STORE, sortDir)
+  }, [sortKey, sortDir])
+
+  const onSort = useCallback(
+    (k: SortKey) => {
+      if (k === sortKey) {
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        setSortKey(k)
+        setSortDir('asc')
+      }
+    },
+    [sortKey],
+  )
 
   // ---- selection ----------------------------------------------------------
 
@@ -465,6 +493,9 @@ export function FilesPage() {
             onOpen={open}
             onAction={onAction}
             onNavigateToParent={goTo}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={onSort}
             lang={lang}
           />
         ) : (

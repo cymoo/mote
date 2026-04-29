@@ -63,6 +63,11 @@ function ImageGallery({ items, index, onClose }: PreviewModalProps) {
 
   useEffect(() => {
     if (!galleryRef.current) return
+    // Don't open the lightbox until we have natural dimensions for every image —
+    // otherwise PhotoSwipe lays out with default 1600×1200 and the first frame
+    // is visibly stretched.
+    if (dims.size < imageNodes.length) return
+
     const lightbox = new PhotoSwipeLightbox({
       gallery: galleryRef.current,
       bgOpacity: 0.92,
@@ -73,8 +78,11 @@ function ImageGallery({ items, index, onClose }: PreviewModalProps) {
       data.src = linkEl.href
       const w = Number(linkEl.dataset.width)
       const h = Number(linkEl.dataset.height)
-      data.w = w > 0 ? w : 1600
-      data.h = h > 0 ? h : 1200
+      // Belt-and-suspenders: fall back to the preloaded <img>'s natural size
+      // when data attributes are missing for any reason.
+      const img = linkEl.querySelector('img') as HTMLImageElement | null
+      data.w = w > 0 ? w : img?.naturalWidth || 1600
+      data.h = h > 0 ? h : img?.naturalHeight || 1200
       return data
     })
     lightbox.on('close', onClose)
@@ -83,8 +91,6 @@ function ImageGallery({ items, index, onClose }: PreviewModalProps) {
     return () => {
       lightbox.destroy()
     }
-    // re-init only when dims map first becomes ready (reading current size at
-    // open time is enough for PhotoSwipe to lay out correctly)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dims])
 

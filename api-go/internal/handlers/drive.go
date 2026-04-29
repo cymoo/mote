@@ -49,6 +49,7 @@ func (h *DriveHandler) Routes(r chi.Router) {
 
 	r.Get("/download", h.Download)
 	r.Get("/preview", h.Preview)
+	r.Get("/thumb", h.Thumbnail)
 	r.Get("/download-zip", h.DownloadZip)
 
 	r.Post("/upload/init", m.H(h.UploadInit))
@@ -158,6 +159,41 @@ func (h *DriveHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 func (h *DriveHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	h.serveBlob(w, r, false)
+}
+
+// Thumbnail serves a 240px JPEG thumbnail for image nodes. Generated lazily
+// and cached on disk; returns 404 for non-image / missing nodes.
+func (h *DriveHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	id, _ := strconv.ParseInt(idStr, 10, 64)
+	if id <= 0 {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	path, err := h.drive.Thumbnail(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, services.ErrDriveNotFound) || errors.Is(err, services.ErrDriveNotImage) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("drive thumb: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	http.ServeContent(w, r, "thumb.jpg", st.ModTime(), f)
 }
 
 func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAttachment bool) {

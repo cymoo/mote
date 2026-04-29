@@ -72,11 +72,17 @@ async function jsonFetch<T>(method: string, url: string, body?: unknown): Promis
 
 export const driveFetcher = <T,>(url: string): Promise<T> => jsonFetch<T>('GET', url)
 
-export const list = (parentID: number | null) =>
-  jsonFetch<DriveNode[]>(
-    'GET',
-    `${BASE}/list${parentID == null ? '' : `?parent_id=${parentID}`}`,
-  )
+export const list = (
+  parentID: number | null,
+  orderBy: 'name' | 'size' | 'updated_at' | 'created_at' = 'name',
+  sort: 'asc' | 'desc' = 'asc',
+) => {
+  const params = new URLSearchParams()
+  if (parentID != null) params.set('parent_id', String(parentID))
+  params.set('order_by', orderBy)
+  params.set('sort', sort)
+  return jsonFetch<DriveNode[]>('GET', `${BASE}/list?${params.toString()}`)
+}
 
 export const search = (q: string) =>
   jsonFetch<DriveNode[]>('GET', `${BASE}/list?q=${encodeURIComponent(q)}`)
@@ -106,6 +112,7 @@ export const purgeNodes = (ids: number[]) =>
 
 export const downloadURL = (id: number) => `${BASE}/download?id=${id}`
 export const previewURL = (id: number) => `${BASE}/preview?id=${id}`
+export const thumbURL = (id: number) => `${BASE}/thumb?id=${id}`
 export const downloadZipURL = (id: number) => `${BASE}/download-zip?id=${id}`
 
 export const initUpload = (

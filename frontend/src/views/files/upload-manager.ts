@@ -43,8 +43,20 @@ class UploadManager {
   private update(id: string, patch: Partial<UploadItem>) {
     const cur = this.items.get(id)
     if (!cur) return
-    Object.assign(cur, patch)
+    const next = { ...cur, ...patch }
+    this.items.set(id, next)
     this.emit()
+    // Auto-dismiss successful uploads after a short delay so the dock empties.
+    if (next.status === 'done') {
+      setTimeout(() => {
+        const it = this.items.get(id)
+        if (it && it.status === 'done') {
+          this.items.delete(id)
+          this.uploadIDs.delete(id)
+          this.emit()
+        }
+      }, 2500)
+    }
   }
 
   async add(
