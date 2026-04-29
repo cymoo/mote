@@ -165,9 +165,20 @@ func (app *App) setupTasks() error {
 
 	tm.SetContextValue("db", app.db)
 	tm.SetContextValue("fts", app.fts)
+	tm.SetContextValue("upload_path", app.config.Upload.BasePath)
 
 	// delete old posts daily at 2:00 AM
 	if err := tm.AddTask("delete-old-posts", mita.Every().Day().At(2, 0), tasks.DeleteOldPosts); err != nil {
+		return err
+	}
+
+	// purge expired drive upload sessions hourly
+	if err := tm.AddTask("purge-drive-uploads", mita.Every().Hour(), tasks.PurgeExpiredDriveUploads); err != nil {
+		return err
+	}
+
+	// hard-delete drive trash older than 30 days, daily at 2:30 AM
+	if err := tm.AddTask("purge-drive-trash", mita.Every().Day().At(2, 30), tasks.PurgeOldDriveTrash); err != nil {
 		return err
 	}
 
@@ -224,12 +235,24 @@ func (app *App) setupRoutes() {
 	r.Mount("/api", NewApiRouter(app))
 	r.Mount("/shared", NewPageRouter(app))
 
+	// Mount public file-share router (no auth, no /api prefix).
+	driveSvc := services.NewDriveService(app.db, &app.config.Upload)
+	driveShareSvc := services.NewDriveShareService(app.db, driveSvc)
+	r.Mount("/shared-files", NewPublicShareRouter(driveSvc, driveShareSvc, app.redis))
+
+	// HTTP server: drive uploads/downloads can stream large files; use a
+	// generous WriteTimeout to avoid premature termination.
+	writeTimeout := app.config.HTTP.WriteTimeout
+	if writeTimeout < 5*time.Minute {
+		writeTimeout = 5 * time.Minute
+	}
+
 	// Create HTTP server
 	app.server = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", app.config.HTTP.IP, app.config.HTTP.Port),
 		Handler:      r,
 		ReadTimeout:  app.config.HTTP.ReadTimeout,
-		WriteTimeout: app.config.HTTP.WriteTimeout,
+		WriteTimeout: writeTimeout,
 		IdleTimeout:  app.config.HTTP.IdleTimeout,
 	}
 }

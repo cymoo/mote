@@ -11,6 +11,7 @@ import (
 	"github.com/cymoo/mote/internal/models"
 	"github.com/cymoo/mote/internal/services"
 	"github.com/go-chi/chi/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 // NewApiRouter creates and returns a router for API endpoints
@@ -71,6 +72,26 @@ func NewApiRouter(app *App) *chi.Mux {
 	r.Post("/upload", m.H(uploadHandler.UploadFile))
 	r.Get("/upload", m.H(uploadHandler.SimpleFileForm))
 
+	// Drive (mini cloud drive) endpoints — fully decoupled from the legacy upload.
+	driveSvc := services.NewDriveService(app.db, &app.config.Upload)
+	driveUploadSvc := services.NewDriveUploadService(app.db, driveSvc, &app.config.Upload)
+	driveShareSvc := services.NewDriveShareService(app.db, driveSvc)
+	driveHandler := handlers.NewDriveHandler(driveSvc, driveUploadSvc, driveShareSvc, app.config)
+	r.Route("/drive", driveHandler.Routes)
+
+	return r
+}
+
+// NewPublicShareRouter creates the unauthenticated /shared-files/* router used by
+// the drive's public file-share links.
+func NewPublicShareRouter(
+	drive *services.DriveService,
+	share *services.DriveShareService,
+	redis *redis.Client,
+) *chi.Mux {
+	r := chi.NewRouter()
+	h := handlers.NewDriveShareHandler(drive, share, redis)
+	h.Routes(r)
 	return r
 }
 
