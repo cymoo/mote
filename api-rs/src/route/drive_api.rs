@@ -6,7 +6,8 @@ use crate::AppState;
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::header::{
-    CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS,
+    CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH,
+    X_CONTENT_TYPE_OPTIONS,
 };
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -143,10 +144,33 @@ async fn preview(
 async fn thumb(
     State(state): State<AppState>,
     Query(q): Query<DriveIdQuery>,
+    headers: HeaderMap,
 ) -> ApiResult<Response> {
     if q.id <= 0 {
         return Err(bad_request("invalid id"));
     }
+    // ETag = node hash (when present) so browsers revalidate after overwrite.
+    let node = state.drive.find_by_id(q.id).await?;
+    let etag = node
+        .hash
+        .as_deref()
+        .filter(|h| !h.is_empty())
+        .map(|h| format!("\"{}\"", h));
+
+    if let (Some(et), Some(inm)) = (&etag, headers.get(IF_NONE_MATCH).and_then(|v| v.to_str().ok()))
+    {
+        if inm.split(',').any(|s| s.trim() == et) {
+            let mut resp = Response::new(Body::empty());
+            *resp.status_mut() = StatusCode::NOT_MODIFIED;
+            resp.headers_mut().insert(ETAG, HeaderValue::from_str(et).unwrap());
+            resp.headers_mut().insert(
+                CACHE_CONTROL,
+                HeaderValue::from_static("private, max-age=0, must-revalidate"),
+            );
+            return Ok(resp);
+        }
+    }
+
     let path = state.drive_thumb.thumbnail(q.id).await?;
     let f = tokio::fs::File::open(&path)
         .await
@@ -155,13 +179,18 @@ async fn thumb(
     let stream = ReaderStream::new(f);
     let body = Body::from_stream(stream);
     let mut resp = Response::new(body);
-    resp.headers_mut()
-        .insert(CONTENT_TYPE, HeaderValue::from_static("image/jpeg"));
-    resp.headers_mut().insert(
+    let h = resp.headers_mut();
+    h.insert(CONTENT_TYPE, HeaderValue::from_static("image/jpeg"));
+    h.insert(
         CACHE_CONTROL,
-        HeaderValue::from_static("private, max-age=86400"),
+        HeaderValue::from_static("private, max-age=0, must-revalidate"),
     );
-    resp.headers_mut().insert(
+    if let Some(et) = etag {
+        if let Ok(v) = HeaderValue::from_str(&et) {
+            h.insert(ETAG, v);
+        }
+    }
+    h.insert(
         CONTENT_LENGTH,
         HeaderValue::from_str(&st.len().to_string()).unwrap(),
     );
