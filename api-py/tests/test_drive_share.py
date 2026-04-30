@@ -22,14 +22,14 @@ def drive(app, clean_drive):
         yield current_app.drive_service
 
 
-def _make_file(drive, name='hello.txt'):
+def _make_file(drive, name='hello.txt', parent_id=None):
     import os
     blob_rel = os.path.join('drive', name + '.bin')
     abs_p = drive.blob_abs_path(blob_rel)
     os.makedirs(os.path.dirname(abs_p), exist_ok=True)
     with open(abs_p, 'wb') as f:
         f.write(b'hi')
-    return drive.create_file_node(None, name, blob_rel, 'aabbccdd', 2)
+    return drive.create_file_node(parent_id, name, blob_rel, 'aabbccdd', 2)
 
 
 def test_share_create_and_resolve(drive, shares):
@@ -99,9 +99,38 @@ def test_list_all(drive, shares):
 
     active = shares.list_all(include_expired=False)
     assert len(active) == 1
+    item = active[0]
+    # Frontend contract: name/size/path/parent_id (mirrors api-go ShareWithNode).
+    assert item['name'] == 'a.txt'
+    assert item['size'] >= 0
+    assert item['path'] == ''
+    assert item['parent_id'] is None
+    assert item['has_password'] is False
+    assert {'id', 'node_id', 'created_at', 'expires_at'} <= item.keys()
 
     everything = shares.list_all(include_expired=True)
     assert len(everything) == 2
+
+
+def test_list_all_excludes_deleted_nodes(drive, shares):
+    """Parity with api-go: shares of soft-deleted files are filtered out."""
+    n = _make_file(drive, 'gone.txt')
+    shares.create(n.id, None, None)
+    drive.soft_delete([n.id])
+    assert shares.list_all(include_expired=False) == []
+    assert shares.list_all(include_expired=True) == []
+
+
+def test_list_all_includes_path(drive, shares):
+    """Path is the parent folder breadcrumb chain joined by '/'."""
+    a = drive.create_folder(None, 'a')
+    b = drive.create_folder(a.id, 'b')
+    n = _make_file(drive, 'x.txt', parent_id=b.id)
+    shares.create(n.id, None, None)
+    items = shares.list_all(include_expired=False)
+    assert len(items) == 1
+    assert items[0]['path'] == 'a/b'
+    assert items[0]['parent_id'] == b.id
 
 
 def test_share_create_rejects_folder(drive, shares):

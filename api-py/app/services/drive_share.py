@@ -170,36 +170,47 @@ class DriveShareService:
         return [ShareRow.from_row(r) for r in rows]
 
     def list_all(self, include_expired: bool) -> List[dict]:
-        if include_expired:
-            where = '1=1'
-        else:
-            where = '(s.expires_at IS NULL OR s.expires_at > :now)'
-        rows = db.session.execute(
-            text(
-                f'SELECT s.*, n.name AS node_name, n.type AS node_type, '
-                f'  n.size AS node_size, n.deleted_at AS node_deleted_at '
-                f'FROM drive_shares s '
-                f'JOIN drive_nodes n ON n.id = s.node_id '
-                f'WHERE {where} '
-                f'ORDER BY s.created_at DESC'
-            ),
-            {'now': utc_now_ms()},
-        ).all()
-        out = []
+        # Mirrors api-go ListAll: shares joined with node name/size/parent_id,
+        # excludes shares whose underlying file has been soft-deleted, and
+        # denormalises the parent folder path via Breadcrumbs.
+        q = (
+            'SELECT s.*, n.name AS node_name, '
+            '  COALESCE(n.size, 0) AS node_size, '
+            '  n.parent_id AS node_parent_id '
+            'FROM drive_shares s '
+            'JOIN drive_nodes n ON n.id = s.node_id '
+            'WHERE n.deleted_at IS NULL'
+        )
+        params: dict = {}
+        if not include_expired:
+            q += ' AND (s.expires_at IS NULL OR s.expires_at > :now)'
+            params['now'] = utc_now_ms()
+        q += ' ORDER BY s.created_at DESC'
+        rows = db.session.execute(text(q), params).all()
+
+        path_cache: dict[int, str] = {}
+        out: list[dict] = []
         for r in rows:
+            path = ''
+            pid = r.node_parent_id
+            if pid is not None:
+                if pid in path_cache:
+                    path = path_cache[pid]
+                else:
+                    bcs = self.drive.breadcrumbs(pid)
+                    path = '/'.join(bc['name'] for bc in bcs)
+                    path_cache[pid] = path
             out.append(
                 {
                     'id': r.id,
                     'node_id': r.node_id,
-                    'node_name': r.node_name,
-                    'node_type': r.node_type,
-                    'node_size': r.node_size,
-                    'node_deleted': r.node_deleted_at is not None,
+                    'parent_id': pid,
                     'has_password': r.password_hash is not None,
                     'expires_at': r.expires_at,
                     'created_at': r.created_at,
-                    'expired': r.expires_at is not None
-                    and r.expires_at <= utc_now_ms(),
+                    'name': r.node_name,
+                    'size': r.node_size,
+                    'path': path,
                 }
             )
         return out
