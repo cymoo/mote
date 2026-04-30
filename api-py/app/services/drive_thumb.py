@@ -58,6 +58,8 @@ def make_thumbnail(service: DriveService, node_id: int) -> str:
         raise DriveNotImage('not an image')
 
     src_abs = service.blob_abs_path(n.blob_path)
+    if not os.path.exists(src_abs):
+        raise DriveNotFound('source file not found on disk')
     thumbs_dir = thumb_dir(service.base_path)
     os.makedirs(thumbs_dir, exist_ok=True)
     thumb_abs = os.path.join(thumbs_dir, os.path.basename(n.blob_path) + '.jpg')

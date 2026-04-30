@@ -61,3 +61,15 @@ def test_thumb_non_image_raises(drive):
     n = drive.create_file_node(None, 'doc.txt', blob_rel, 'x', 12)
     with pytest.raises(DriveNotImage):
         make_thumbnail(drive, n.id)
+
+
+def test_thumb_missing_source_blob_raises_not_found(drive):
+    """If the source blob is gone from disk (e.g. external cleanup), we must
+    surface a clean DriveNotFound -> 404, not a bare FileNotFoundError -> 500.
+    """
+    from app.services.drive import DriveNotFound
+
+    n = _make_image_node(drive, 'gone.jpg', size=(200, 200))
+    os.remove(drive.blob_abs_path(n.blob_path))
+    with pytest.raises(DriveNotFound):
+        make_thumbnail(drive, n.id)

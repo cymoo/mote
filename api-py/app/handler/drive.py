@@ -46,7 +46,12 @@ from ..services.drive import (
     DriveNotImage,
     must_force_attachment,
 )
-from ..services.drive_share import ShareExpired, ShareNotFound, ShareUnauthorized
+from ..services.drive_share import (
+    ShareExpired,
+    ShareInvalidNode,
+    ShareNotFound,
+    ShareUnauthorized,
+)
 from ..services.drive_thumb import make_thumbnail
 from ..services.drive_upload import (
     UploadCollision,
@@ -78,6 +83,7 @@ def _map_drive_err(err: Exception) -> NoReturn:
             DriveInvalidName,
             DriveInvalidParent,
             UploadInvalid,
+            ShareInvalidNode,
         ),
     ):
         abort(400, description=str(err))

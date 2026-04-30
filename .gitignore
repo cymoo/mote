@@ -80,3 +80,4 @@ backups/
 data/app.db
 uploads/
 web/
+api-py/instance/

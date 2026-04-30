@@ -7,7 +7,7 @@ import pytest
 from flask import current_app
 
 from app.services.drive import DriveNotFound
-from app.services.drive_share import ShareExpired, ShareNotFound
+from app.services.drive_share import ShareExpired, ShareInvalidNode, ShareNotFound
 
 
 @pytest.fixture()
@@ -69,7 +69,10 @@ def test_share_resolve_after_node_deleted(drive, shares):
     n = _make_file(drive)
     _, token = shares.create(n.id, None, None)
     drive.soft_delete([n.id])
-    with pytest.raises(DriveNotFound):
+    # Mirror api-go: deleted-node share resolves to ShareNotFound, not
+    # DriveNotFound, so anonymous viewers can't distinguish "wrong token"
+    # from "shared item was removed".
+    with pytest.raises(ShareNotFound):
         shares.resolve(token)
 
 
@@ -99,3 +102,10 @@ def test_list_all(drive, shares):
 
     everything = shares.list_all(include_expired=True)
     assert len(everything) == 2
+
+
+def test_share_create_rejects_folder(drive, shares):
+    """Parity with api-go: folders cannot be shared."""
+    folder = drive.create_folder(None, 'docs')
+    with pytest.raises(ShareInvalidNode):
+        shares.create(folder.id, None, None)

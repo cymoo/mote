@@ -35,6 +35,10 @@ class ShareUnauthorized(DriveError):
     pass
 
 
+class ShareInvalidNode(DriveError):
+    """Raised when attempting to share a non-file node (e.g. folder)."""
+
+
 def _hash_token(token: str) -> tuple[str, str]:
     h = hashlib.sha256(token.encode()).hexdigest()
     return h, h[:SHARE_TOKEN_PREFIX_LEN]
@@ -105,10 +109,13 @@ class DriveShareService:
         password: Optional[str],
         expires_at: Optional[int],
     ) -> tuple[ShareRow, str]:
-        # Verify node exists and isn't deleted.
+        # Verify node exists, isn't deleted, and is a file (parity with
+        # api-go: folder shares are not allowed).
         n = self.drive.find_by_id(node_id)
         if n.deleted_at is not None:
             raise DriveNotFound('drive node not found')
+        if n.type != 'file':
+            raise ShareInvalidNode('only files can be shared')
 
         token = secrets.token_urlsafe(SHARE_TOKEN_BYTES).rstrip('=')
         token_hash, prefix = _hash_token(token)
@@ -248,8 +255,8 @@ class DriveShareService:
         if share.expires_at is not None and share.expires_at <= utc_now_ms():
             raise ShareExpired('share has expired')
         node = self.drive.find_by_id(share.node_id)
-        if node.deleted_at is not None:
-            raise DriveNotFound('shared item is no longer available')
+        if node.deleted_at is not None or node.type != 'file':
+            raise ShareNotFound('share not found')
         return share, node
 
     def verify_password(self, share: ShareRow, password: str) -> bool:

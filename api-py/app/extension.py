@@ -3,7 +3,14 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData
 from redis import Redis
+from .config import PY_ROOT
 from .lib.search import FullTextSearch
+
+
+# Migrations live under the api-py project root. Anchor the path here so
+# `flask run` works regardless of the process CWD (a relative 'migrations'
+# string previously broke when invoked from outside api-py/).
+MIGRATIONS_DIR = os.path.join(PY_ROOT, 'migrations')
 
 
 # https://stackoverflow.com/questions/45527323
@@ -50,7 +57,7 @@ def run_migration(app: Flask, sa: SQLAlchemy) -> None:
     # for developers; we don't use any of its runtime helpers here.
     Migrate(app, sa)
 
-    if not os.path.exists('migrations'):
+    if not os.path.exists(MIGRATIONS_DIR):
         logger.warning(
             "Migrations folder not found; creating tables directly. "
             "Run `flask db init && flask db migrate && flask db upgrade` "
@@ -77,8 +84,8 @@ def run_migration(app: Flask, sa: SQLAlchemy) -> None:
 def _alembic_config():
     from alembic.config import Config as AlembicConfig
 
-    cfg = AlembicConfig(os.path.join('migrations', 'alembic.ini'))
-    cfg.set_main_option('script_location', 'migrations')
+    cfg = AlembicConfig(os.path.join(MIGRATIONS_DIR, 'alembic.ini'))
+    cfg.set_main_option('script_location', MIGRATIONS_DIR)
     return cfg
 
 
