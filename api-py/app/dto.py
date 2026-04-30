@@ -152,6 +152,75 @@ class DeletePostRequest(BaseModel):
     hard: bool = False
 
 
+# ============================================================================
+# Drive request DTOs (mirror api-go/internal/models/drive.go request shapes)
+# ============================================================================
+
+
+class DriveCreateFolderRequest(BaseModel):
+    parent_id: Optional[int] = None
+    name: str
+
+
+class DriveRenameRequest(BaseModel):
+    id: int
+    name: str
+
+
+class DriveMoveRequest(BaseModel):
+    ids: list[int]
+    new_parent_id: Optional[int] = None
+
+
+class DriveDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+class DriveRestoreRequest(BaseModel):
+    id: int
+
+
+class DrivePurgeRequest(BaseModel):
+    ids: list[int]
+
+
+class DriveUploadInitRequest(BaseModel):
+    parent_id: Optional[int] = None
+    name: str
+    size: int
+    chunk_size: Optional[int] = None
+
+
+class DriveUploadCompleteRequest(BaseModel):
+    upload_id: str
+    on_collision: Optional[str] = None  # "ask"|"overwrite"|"rename"|"skip"
+
+
+class DriveShareCreateRequest(BaseModel):
+    node_id: int
+    password: Optional[str] = None
+    expires_at: Optional[int] = None  # epoch ms; nil/0 = never
+
+
+class DriveShareRevokeRequest(BaseModel):
+    share_id: int
+
+
+class DriveListQuery(BaseModel):
+    parent_id: Optional[int] = None
+    q: Optional[str] = None
+    order_by: Optional[str] = None
+    sort: Optional[str] = None  # "asc" | "desc"
+
+
+class DriveIdQuery(BaseModel):
+    id: int
+
+
+class DriveSharesAllQuery(BaseModel):
+    include_expired: bool = False
+
+
 @dataclass
 class CreationDto:
     id: int

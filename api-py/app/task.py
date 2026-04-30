@@ -19,3 +19,39 @@ def clear_posts():
 
         if deleted_count:
             logger.info(f'[Daily] Deleted {deleted_count} posts.')
+
+
+@huey.task(crontab(minute='*/30'))
+def drive_purge_expired_uploads():
+    with db.app.app_context():
+        try:
+            n = db.app.drive_upload_service.purge_expired()
+            if n:
+                logger.info(f'[Drive] Purged {n} expired upload sessions.')
+        except Exception as e:
+            logger.error(f'[Drive] purge expired uploads failed: {e}')
+
+
+@huey.task(crontab(minute='*/30'))
+def drive_purge_expired_shares():
+    with db.app.app_context():
+        try:
+            n = db.app.drive_share_service.purge_expired()
+            if n:
+                logger.info(f'[Drive] Purged {n} expired shares.')
+        except Exception as e:
+            logger.error(f'[Drive] purge expired shares failed: {e}')
+
+
+@huey.task(crontab(minute='30', hour='3'))
+def drive_purge_old_trash():
+    with db.app.app_context():
+        try:
+            cutoff = int(
+                (datetime.now(UTC) - timedelta(days=30)).timestamp() * 1000
+            )
+            n = db.app.drive_service.purge_old_trash(cutoff)
+            if n:
+                logger.info(f'[Drive] Purged {n} old trash roots.')
+        except Exception as e:
+            logger.error(f'[Drive] purge old trash failed: {e}')
