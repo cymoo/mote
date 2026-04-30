@@ -17,6 +17,12 @@ class BadRequestException(message: String?) :
 class AuthenticationException(message: String?) :
     APIException(401, "Unauthorized", message)
 
+class ConflictException(message: String?) :
+    APIException(409, "Conflict", message)
+
+class GoneException(message: String?) :
+    APIException(410, "Gone", message)
+
 
 data class ErrorResponse(
     val code: Int,

@@ -52,4 +52,4 @@ def not_found(message: Optional[str] = None) -> NoReturn:
 
 
 def bad_request(message: Optional[str] = None) -> NoReturn:
-    abort(404, description=message)
+    abort(400, description=message)

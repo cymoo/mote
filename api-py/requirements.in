@@ -18,6 +18,7 @@ gunicorn
 
 pillow
 jieba
+bcrypt
 
 click
 python-dotenv

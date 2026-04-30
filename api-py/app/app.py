@@ -33,6 +33,7 @@ def create_app(config) -> Flask:
 
     setup_logger(app)
     init_extension(app)
+    register_drive_services(app)
     register_blueprints(app)
     register_cors_handlers(app)
     register_file_uploads(app)
@@ -86,9 +87,25 @@ def init_extension(app: Flask) -> None:
 def register_blueprints(app: Flask) -> None:
     from .handler.api import api
     from .handler.page import page
+    from .handler.drive import drive_bp
+    from .handler.shared_drive import shared_bp
 
     app.register_blueprint(api, url_prefix='/api')
     app.register_blueprint(page, url_prefix='/shared')
+    app.register_blueprint(drive_bp, url_prefix='/api/drive')
+    app.register_blueprint(shared_bp, url_prefix='/shared-files')
+
+
+def register_drive_services(app: Flask) -> None:
+    from .services.drive import DriveService
+    from .services.drive_share import DriveShareService
+    from .services.drive_upload import DriveUploadService
+
+    upload_path = app.config['UPLOAD_PATH']
+    drive = DriveService(upload_path)
+    app.drive_service = drive
+    app.drive_upload_service = DriveUploadService(drive)
+    app.drive_share_service = DriveShareService(drive)
 
 
 def register_file_uploads(app: Flask) -> None:

@@ -131,6 +131,9 @@ class Config:
         if not self.UPLOAD_PATH:
             errors.append("UPLOAD_PATH cannot be empty")
         else:
+            # Resolve to absolute path so downstream send_file / os.stat calls
+            # don't depend on the working directory at request time.
+            self.UPLOAD_PATH = os.path.abspath(self.UPLOAD_PATH)
             path = Path(self.UPLOAD_PATH)
             try:
                 # Try to create directory if it doesn't exist

@@ -2,7 +2,12 @@ use crate::config::db::DB;
 use crate::config::rd::RD;
 use crate::config::AppConfig;
 use crate::errors::{any_error, ApiError};
-use crate::route::{post_api, post_page};
+use crate::route::{drive_api, drive_share_page, post_api, post_page};
+use crate::service::drive_service::DriveService;
+use crate::service::drive_share_service::DriveShareService;
+use crate::service::drive_thumb_service::DriveThumbService;
+use crate::service::drive_upload_service::DriveUploadService;
+use crate::service::drive_zip_service::DriveZipService;
 use crate::service::search_service::FullTextSearch;
 use axum::extract::DefaultBodyLimit;
 use axum::handler::HandlerWithoutStateExt;
@@ -34,6 +39,11 @@ pub struct AppState {
     pub db: Arc<DB>,
     pub rd: Arc<RD>,
     pub fts: Arc<FullTextSearch>,
+    pub drive: Arc<DriveService>,
+    pub drive_upload: Arc<DriveUploadService>,
+    pub drive_share: Arc<DriveShareService>,
+    pub drive_thumb: Arc<DriveThumbService>,
+    pub drive_zip: Arc<DriveZipService>,
 }
 
 // Application router creation
@@ -57,8 +67,18 @@ pub async fn create_app(state: AppState) -> Router {
     // The order of the layers is important.
     // https://docs.rs/axum/latest/axum/middleware/index.html#ordering
     let mut app = Router::new()
-        .nest("/api", post_api::create_routes(state.rd.pool.clone()))
+        .nest(
+            "/api",
+            post_api::create_routes(state.rd.pool.clone()).merge(
+                Router::new().nest("/drive", drive_api::create_routes()).layer(
+                    axum::middleware::from_fn(|req, next| {
+                        crate::middleware::check_access::check_access(&[], req, next)
+                    }),
+                ),
+            ),
+        )
         .nest("/shared", post_page::create_routes())
+        .nest("/shared-files", drive_share_page::create_routes())
         .merge(static_route)
         .merge(uploads_route)
         .fallback(handle_404)
@@ -104,11 +124,23 @@ impl AppState {
             "fts:".to_string(),
         ));
 
+        let drive = DriveService::new(db.pool.clone(), config.upload.clone());
+        let drive_upload =
+            DriveUploadService::new(db.pool.clone(), drive.clone(), config.upload.clone());
+        let drive_share = DriveShareService::new(db.pool.clone(), drive.clone());
+        let drive_thumb = DriveThumbService::new(drive.clone());
+        let drive_zip = DriveZipService::new(drive.clone());
+
         AppState {
             config: Arc::new(config),
             db,
             fts,
             rd: rd.clone(),
+            drive,
+            drive_upload,
+            drive_share,
+            drive_thumb,
+            drive_zip,
         }
     }
 }

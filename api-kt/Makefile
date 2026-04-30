@@ -2,7 +2,7 @@
 
 # Default environment vars
 MOTE_PASSWORD ?= foobar
-DB_PATH ?= ../data/app-dev.db
+DB_PATH ?= ../samples/app-dev.db
 
 # Project settings
 JAR_NAME := target/mote.jar

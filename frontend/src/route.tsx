@@ -39,6 +39,18 @@ const swrOptions = {
 }
 
 const Play = lazy(() => import('./views/play.tsx'))
+const FilesLayout = lazy(() =>
+  import('./views/files/layout.tsx').then((m) => ({ default: m.FilesLayout })),
+)
+const MyDrivePage = lazy(() =>
+  import('./views/files/my-drive-page.tsx').then((m) => ({ default: m.MyDrivePage })),
+)
+const TrashPage = lazy(() =>
+  import('./views/files/trash-page.tsx').then((m) => ({ default: m.TrashPage })),
+)
+const SharedPage = lazy(() =>
+  import('./views/files/shared-page.tsx').then((m) => ({ default: m.SharedPage })),
+)
 
 export const App = () => {
   const location = useLocation()
@@ -80,6 +92,18 @@ export const App = () => {
         />
         <Route path="/login" element={<Login />} />
         <Route path="/play" element={<Play />} />
+        <Route
+          path="/files"
+          element={
+            <RequireAuth>
+              <FilesLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<MyDrivePage />} />
+          <Route path="trash" element={<TrashPage />} />
+          <Route path="shared" element={<SharedPage />} />
+        </Route>
         <Route
           path="*"
           element={

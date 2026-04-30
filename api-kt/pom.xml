@@ -32,7 +32,7 @@
   <properties>
     <kotlin.code.style>official</kotlin.code.style>
     <java.version>21</java.version>
-    <kotlin.version>2.0.20</kotlin.version>
+    <kotlin.version>2.1.10</kotlin.version>
     <exposed.version>0.56.0</exposed.version>
     <pebble-template.version>3.2.2</pebble-template.version>
     <metadata-extractor.version>2.19.0</metadata-extractor.version>
@@ -123,6 +123,12 @@
       <groupId>com.hankcs</groupId>
       <artifactId>hanlp</artifactId>
       <version>${hanlp.version}</version>
+    </dependency>
+
+    <!-- Password Hashing -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-crypto</artifactId>
     </dependency>
 
     <!-- Image -->
@@ -233,17 +239,21 @@
           <logging>WARN</logging>
           <jdbc>
             <driver>org.sqlite.JDBC</driver>
-            <url>jdbc:sqlite:${project.basedir}/../data/app-dev.db</url>
+            <url>jdbc:sqlite:${project.basedir}/../samples/app-dev.db</url>
           </jdbc>
           <generator>
             <database>
               <name>org.jooq.meta.sqlite.SQLiteDatabase</name>
-              <includes>tags|posts|tag_post_assoc</includes>
+              <includes>tags|posts|tag_post_assoc|drive_nodes|drive_uploads|drive_shares</includes>
               <forcedTypes>
                 <forcedType>
                   <name>BIGINT</name>
                   <!-- A Java regex matching fully-qualified columns, attributes, parameters. Use the pipe to separate several expressions. -->
-                  <includeExpression>.*(created_at|updated_at|deleted_at)</includeExpression>
+                  <includeExpression>.*(created_at|updated_at|deleted_at|expires_at)</includeExpression>
+                </forcedType>
+                <forcedType>
+                  <name>BIGINT</name>
+                  <includeExpression>drive_(nodes|uploads|shares)\.(id|parent_id|node_id|size|chunk_size)</includeExpression>
                 </forcedType>
               </forcedTypes>
             </database>
