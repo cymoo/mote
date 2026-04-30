@@ -28,6 +28,7 @@ interface ListViewProps {
   sortDir: SortDir
   onSort: (k: SortKey) => void
   lang: Lang
+  isMobile?: boolean
 }
 
 export const ListView = memo(function ListView({
@@ -42,6 +43,7 @@ export const ListView = memo(function ListView({
   sortDir,
   onSort,
   lang,
+  isMobile,
 }: ListViewProps) {
   const allSelected = items.length > 0 && selected.size === items.length
   const someSelected = selected.size > 0 && !allSelected
@@ -88,6 +90,7 @@ export const ListView = memo(function ListView({
             onAction={onAction}
             onNavigateToParent={onNavigateToParent}
             lang={lang}
+            isMobile={isMobile}
           />
         ))}
       </tbody>
@@ -104,6 +107,7 @@ interface ListRowProps {
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
   lang: Lang
+  isMobile?: boolean
 }
 
 const ListRow = memo(function ListRow({
@@ -115,6 +119,7 @@ const ListRow = memo(function ListRow({
   onAction,
   onNavigateToParent,
   lang,
+  isMobile,
 }: ListRowProps) {
   return (
     <tr
@@ -123,7 +128,20 @@ const ListRow = memo(function ListRow({
         'border-border/40',
         selected ? 'bg-accent' : undefined,
       )}
-      onClick={(e) => onToggle(node.id, e.shiftKey || e.metaKey || e.ctrlKey)}
+      onClick={(e) => {
+        if (isMobile) {
+          // On mobile, plain row click opens. Modifier-click still toggles
+          // selection (covers BT keyboards), and the checkbox handles the
+          // common "select" gesture. No double-click on touch.
+          if (e.shiftKey || e.metaKey || e.ctrlKey) {
+            onToggle(node.id, true)
+          } else {
+            onOpen(node, index)
+          }
+        } else {
+          onToggle(node.id, e.shiftKey || e.metaKey || e.ctrlKey)
+        }
+      }}
       onDoubleClick={() => onOpen(node, index)}
     >
       <td className="px-3" onClick={(e) => e.stopPropagation()}>
@@ -136,7 +154,7 @@ const ListRow = memo(function ListRow({
       <td className="px-1">
         <NodeIcon node={node} />
       </td>
-      <td className="min-w-0 py-2.5 pr-2 pl-1">
+      <td className="min-w-0 py-3 pr-2 pl-1 md:py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <button
             className="hover:text-primary min-w-0 truncate text-left font-medium transition-colors"
@@ -149,11 +167,7 @@ const ListRow = memo(function ListRow({
             {node.name}
           </button>
           {!!node.share_count && (
-            <ShareBadge
-              count={node.share_count}
-              onClick={() => onAction('share', node)}
-              lang={lang}
-            />
+            <ShareBadge count={node.share_count} lang={lang} />
           )}
           {node.path !== undefined && (
             <PathChip
@@ -245,7 +259,7 @@ const GridCard = memo(function GridCard({
       role="button"
       tabIndex={0}
       className={cx(
-        'group relative flex h-36 flex-col items-center justify-start gap-1.5 rounded-xl border p-3 text-center transition-all',
+        'group relative flex h-32 flex-col items-center justify-start gap-1.5 rounded-xl border p-3 text-center transition-all md:h-36',
         'hover:bg-accent/60 border-transparent hover:-translate-y-0.5 hover:shadow-sm',
         selected ? 'border-primary/40 bg-accent ring-primary/20 ring-2' : undefined,
       )}
@@ -262,11 +276,13 @@ const GridCard = memo(function GridCard({
       }}
       title={node.name}
     >
-      {/* hover-revealed checkbox in top-left */}
+      {/* hover-revealed checkbox in top-left (always visible on mobile) */}
       <div
         className={cx(
           'absolute top-1.5 left-1.5 transition-opacity',
-          selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          selected
+            ? 'opacity-100'
+            : 'opacity-100 md:opacity-0 md:group-hover:opacity-100',
         )}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
@@ -293,11 +309,7 @@ const GridCard = memo(function GridCard({
       <div className="flex w-full min-w-0 items-center justify-center gap-1">
         <span className="truncate text-xs leading-4">{node.name}</span>
         {!!node.share_count && (
-          <ShareBadge
-            count={node.share_count}
-            onClick={() => onAction('share', node)}
-            lang={lang}
-          />
+          <ShareBadge count={node.share_count} lang={lang} />
         )}
       </div>
       <div className="text-muted-foreground text-[10px] tabular-nums">
@@ -339,9 +351,12 @@ export const TrashView = memo(function TrashView({
             size="sm"
             onClick={() => void onRestore(n.id)}
             title={t('restore', lang)}
+            aria-label={t('restore', lang)}
           >
-            <RotateCcwIcon className="mr-1 size-4" />
-            <T name="restore" />
+            <RotateCcwIcon className="size-4 md:mr-1" />
+            <span className="hidden md:inline">
+              <T name="restore" />
+            </span>
           </Button>
           <Button
             variant="ghost"
@@ -349,9 +364,12 @@ export const TrashView = memo(function TrashView({
             className="text-destructive hover:text-destructive"
             onClick={() => onPurge(n.id)}
             title={t('delete', lang)}
+            aria-label={t('delete', lang)}
           >
-            <Trash2Icon className="mr-1 size-4" />
-            <T name="delete" />
+            <Trash2Icon className="size-4 md:mr-1" />
+            <span className="hidden md:inline">
+              <T name="delete" />
+            </span>
           </Button>
         </li>
       ))}
@@ -422,7 +440,8 @@ export const EmptyState = memo(function EmptyState({
       ) : (
         <>
           <UploadIcon className="size-12 opacity-30" strokeWidth={1.25} />
-          <span>{t('dropFiles', lang)}</span>
+          <span className="hidden md:inline">{t('dropFiles', lang)}</span>
+          <span className="md:hidden">{t('tapUpload', lang)}</span>
         </>
       )}
     </div>
@@ -504,9 +523,12 @@ export const SharedView = memo(function SharedView({
               className="text-destructive hover:text-destructive"
               onClick={() => void onRevoke(s.id)}
               title={t('revoke', lang)}
+              aria-label={t('revoke', lang)}
             >
-              <Trash2Icon className="mr-1 size-4" />
-              <T name="revoke" />
+              <Trash2Icon className="size-4 md:mr-1" />
+              <span className="hidden md:inline">
+                <T name="revoke" />
+              </span>
             </Button>
           </li>
         )

@@ -2,6 +2,7 @@ import {
   FolderPlusIcon,
   LayoutGridIcon,
   ListIcon,
+  SearchIcon,
   UploadIcon,
 } from 'lucide-react'
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -29,7 +30,7 @@ import {
   search,
 } from './api'
 import { MoveDialog, NameDialog, ShareDialog } from './dialogs'
-import { useRefreshOnUploadComplete, useSelection, useSort } from './hooks'
+import { useIsMobile, useRefreshOnUploadComplete, useSelection, useSort } from './hooks'
 import { TopBar } from './layout'
 import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
@@ -56,9 +57,11 @@ export function MyDrivePage() {
   const [query, setQuery] = useState('')
   const [previewIdx, setPreviewIdx] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const { sortKey, sortDir, onSort } = useSort()
   const { selected, toggle, toggleAll, clear } = useSelection(items)
+  const isMobile = useIsMobile()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -88,21 +91,58 @@ export function MyDrivePage() {
     localStorage.setItem('drive_view', view)
   }, [view])
 
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus()
+  }, [searchOpen])
+
   // ---- uploads ------------------------------------------------------------
 
-  const onUploadFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return
-    for (const f of Array.from(files)) {
-      await uploadManager.add(f, parentID, 'ask')
-    }
-    // The upload-completion hook handles refresh; nothing else to do here.
-  }
+  const onUploadFiles = useCallback(
+    async (files: FileList | File[] | null) => {
+      if (!files || files.length === 0) return
+      // Fire uploads concurrently so the dock reflects all queued files at
+      // once (the upload manager itself caps per-file chunk concurrency).
+      // Otherwise users see a permanent "uploading 1…" because await-in-loop
+      // serializes everything.
+      await Promise.all(
+        Array.from(files).map((f) => uploadManager.add(f, parentID, 'ask')),
+      )
+      // The upload-completion hook handles refresh; nothing else to do here.
+    },
+    [parentID],
+  )
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
     setDragOver(false)
     void onUploadFiles(e.dataTransfer.files)
   }
+
+  // Paste-to-upload: when the user pastes files (or images from the
+  // clipboard) anywhere on the page that isn't an editable field, treat the
+  // paste as an upload. Skips when the active element is an input/textarea/
+  // contenteditable so paste in the search box still works as expected.
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          target.isContentEditable
+        ) {
+          return
+        }
+      }
+      const files = e.clipboardData?.files
+      if (!files || files.length === 0) return
+      e.preventDefault()
+      void onUploadFiles(files)
+    }
+    document.addEventListener('paste', handler)
+    return () => document.removeEventListener('paste', handler)
+  }, [onUploadFiles])
 
   // ---- mutations ----------------------------------------------------------
 
@@ -332,11 +372,34 @@ export function MyDrivePage() {
         }
         extra={
           <>
+            {/* On mobile the search collapses behind an icon button to keep
+                the second header row compact; PC always shows the input.
+                Use conditional render rather than .hidden so the button is
+                fully removed (avoids subtle stacking with the input icon). */}
+            {!searchOpen && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-9 md:hidden"
+                onClick={() => setSearchOpen(true)}
+                aria-label={t('search', lang)}
+                title={t('search', lang)}
+              >
+                <SearchIcon className="size-4" />
+              </Button>
+            )}
             <SearchBox
               value={query}
               onChange={setQuery}
               placeholder={t('search', lang)}
               inputRef={searchRef}
+              className={cx(
+                'min-w-0 flex-1 md:flex-initial',
+                searchOpen ? '' : 'hidden md:block',
+              )}
+              onBlur={() => {
+                if (!query) setSearchOpen(false)
+              }}
             />
             <Button
               variant="ghost"
@@ -395,6 +458,7 @@ export function MyDrivePage() {
             onMove={() => handleMove([...selected])}
             onDelete={() => handleDelete([...selected])}
             lang={lang}
+            floating={isMobile}
           />
         )}
       </div>
@@ -415,6 +479,7 @@ export function MyDrivePage() {
             sortDir={sortDir}
             onSort={onSort}
             lang={lang}
+            isMobile={isMobile}
           />
         ) : (
           <GridView

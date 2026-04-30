@@ -17,7 +17,7 @@ export function FilesLayout() {
   useCookieAuthSync()
   const { lang } = useLang()
   return (
-    <div className="bg-background text-foreground flex h-screen flex-col">
+    <div className="bg-background text-foreground vh-full flex flex-col">
       <Outlet />
       <UploadDock lang={lang} />
     </div>
@@ -27,6 +27,11 @@ export function FilesLayout() {
 // Sticky top header used by all three /files pages. Pages compose their own
 // middle content (breadcrumbs, search, view toggle…) and the nav pills are
 // rendered consistently on the right.
+//
+// On <md the header is split into two rows: row 1 keeps the back/title/nav
+// pills; row 2 holds the page-supplied middle/extra slots. On ≥md `md:contents`
+// dissolves the row-2 wrapper so children flow back into row 1, preserving
+// the original PC layout exactly.
 export function TopBar({
   middle,
   extra,
@@ -37,26 +42,43 @@ export function TopBar({
   lang: Lang
 }) {
   const navigate = useStableNavigate()
+  const hasSecondRow = middle != null || extra != null
   return (
-    <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b px-4 py-3 backdrop-blur">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-9"
-        onClick={() => navigate('/')}
-        aria-label={t('back', lang)}
-        title={t('back', lang)}
-      >
-        <ArrowLeftIcon className="size-4" />
-      </Button>
-      <h1 className="text-base font-semibold tracking-tight">
-        <T name="files" />
-      </h1>
-      {middle}
-      <div className="ml-auto flex items-center gap-1.5">
-        {extra}
-        <FilesNavPills lang={lang} />
+    <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-20 flex flex-col gap-2 border-b px-4 py-3 backdrop-blur md:flex-row md:flex-wrap md:items-center md:gap-3">
+      <div className="flex items-center gap-3 md:contents">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-9"
+          onClick={() => navigate('/')}
+          aria-label={t('back', lang)}
+          title={t('back', lang)}
+        >
+          <ArrowLeftIcon className="size-4" />
+        </Button>
+        <h1 className="text-base font-semibold tracking-tight">
+          <T name="files" />
+        </h1>
+        <div className="ml-auto flex items-center gap-1.5 md:hidden">
+          <FilesNavPills lang={lang} />
+        </div>
       </div>
+      {hasSecondRow && (
+        <div className="flex min-w-0 items-center gap-2 md:contents">
+          {middle}
+          <div className="ml-auto flex items-center gap-1.5">
+            {extra}
+            <span className="hidden md:contents">
+              <FilesNavPills lang={lang} />
+            </span>
+          </div>
+        </div>
+      )}
+      {!hasSecondRow && (
+        <div className="ml-auto hidden items-center gap-1.5 md:flex">
+          <FilesNavPills lang={lang} />
+        </div>
+      )}
     </header>
   )
 }

@@ -34,7 +34,7 @@ export function UploadDock({ lang }: { lang: Lang }) {
   ).length
 
   return (
-    <div className="border-border bg-popover text-popover-foreground fixed right-4 bottom-4 z-30 w-80 animate-[fadeIn_160ms_ease-out] rounded-xl border shadow-xl">
+    <div className="border-border bg-popover text-popover-foreground fixed inset-x-2 bottom-2 z-30 w-auto animate-[fadeIn_160ms_ease-out] rounded-xl border shadow-xl md:inset-x-auto md:right-4 md:bottom-4 md:w-80">
       <div className="border-border/60 flex items-center justify-between border-b px-3 py-2">
         <span className="text-sm font-medium">
           {active > 0 ? t('uploading', lang, true, String(active)) : t('uploads', lang)}

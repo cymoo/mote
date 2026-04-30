@@ -1,8 +1,14 @@
 import 'photoswipe/style.css'
 
-import { DownloadIcon, XIcon } from 'lucide-react'
+import { DownloadIcon, ExternalLinkIcon, XIcon } from 'lucide-react'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
 import { ReactNode, useEffect, useRef, useState } from 'react'
+
+import { cx } from '@/utils/css.ts'
+
+import { useIsMobile } from './hooks'
+
+import { T, t, useLang } from '@/components/translation.tsx'
 
 import { DriveNode, previewURL } from './api'
 
@@ -119,6 +125,8 @@ function ImageGallery({ items, index, onClose }: PreviewModalProps) {
 
 function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
   const node = items[index]
+  const { lang } = useLang()
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -145,15 +153,33 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
   } else if (mt.startsWith('audio/')) {
     body = <audio src={url} controls autoPlay />
   } else if (mt === 'application/pdf') {
-    body = (
-      <iframe
-        src={url}
-        className="h-[85vh] w-[85vw] rounded-lg bg-white"
-        title={node.name}
-      />
-    )
-  } else {
+    // Mobile browsers (especially Android Chrome) won't render PDFs inside
+    // an iframe — and on iOS Safari the iframe only shows the first page.
+    // On mobile, offer an "open in browser" affordance so the OS native
+    // viewer takes over (where pagination & gestures work properly).
+    if (isMobile) {
+      body = (
+        <NoPreview
+          node={node}
+          onDownload={onDownload}
+          lang={lang}
+          openURL={url}
+          message={null}
+        />
+      )
+    } else {
+      body = (
+        <iframe
+          src={url}
+          className="h-[85vh] w-[85vw] rounded-lg bg-white"
+          title={node.name}
+        />
+      )
+    }
+  } else if (mt.startsWith('text/') || mt === 'application/json' || mt === 'application/xml') {
     body = <TextPreview url={url} />
+  } else {
+    body = <NoPreview node={node} onDownload={onDownload} lang={lang} />
   }
 
   return (
@@ -207,5 +233,66 @@ function TextPreview({ url }: { url: string }) {
     <pre className="bg-card text-foreground border-border max-h-[80vh] max-w-[80vw] overflow-auto rounded-lg border p-4 font-mono text-xs whitespace-pre-wrap shadow-xl">
       {text ?? 'Loading…'}
     </pre>
+  )
+}
+
+// Shown for mime types we don't know how to preview safely (e.g. office
+// documents, archives). Avoids dumping binary content as garbled text and
+// offers a one-click download instead.
+function NoPreview({
+  node,
+  onDownload,
+  lang,
+  openURL,
+  message,
+}: {
+  node: DriveNode
+  onDownload: (n: DriveNode) => void
+  lang: 'en' | 'zh'
+  // When provided, render an "open in browser" button alongside download —
+  // useful for PDFs on mobile, where the native viewer handles them better
+  // than an in-page iframe.
+  openURL?: string
+  message?: string | null
+}) {
+  return (
+    <div className="bg-card text-foreground border-border flex max-w-[90vw] flex-col items-center gap-3 rounded-lg border p-6 text-center shadow-xl">
+      <div className="text-sm font-medium break-all">{node.name}</div>
+      {message !== null && (
+        <div className="text-muted-foreground text-xs">
+          {message ?? t('noPreview', lang)}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {openURL && (
+          <a
+            href={openURL}
+            target="_blank"
+            rel="noreferrer"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLinkIcon className="size-4" />
+            <T name="open" />
+          </a>
+        )}
+        <button
+          type="button"
+          className={cx(
+            'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+            openURL
+              ? 'border border-input bg-background hover:bg-accent'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90',
+          )}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDownload(node)
+          }}
+        >
+          <DownloadIcon className="size-4" />
+          <T name="download" />
+        </button>
+      </div>
+    </div>
   )
 }

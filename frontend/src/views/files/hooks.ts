@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 
 import { uploadManager } from './upload-manager'
 
@@ -82,4 +82,31 @@ export function useCookieAuthSync() {
 
 export function useRefreshOnUploadComplete(refresh: () => void) {
   useEffect(() => uploadManager.onCompleted(() => refresh()), [refresh])
+}
+
+// Mobile breakpoint detection ---------------------------------------------
+
+// Aligned with Tailwind's `md` (768px). Pages branch a small number of
+// behaviors on this (e.g. ListRow click = open vs toggle). Visual styling
+// should still prefer responsive Tailwind classes over reading this hook.
+const MOBILE_QUERY = '(max-width: 767.98px)'
+
+function subscribeMobile(cb: () => void) {
+  if (typeof window === 'undefined') return () => {}
+  const mql = window.matchMedia(MOBILE_QUERY)
+  mql.addEventListener('change', cb)
+  return () => mql.removeEventListener('change', cb)
+}
+
+function getMobileSnapshot() {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia(MOBILE_QUERY).matches
+}
+
+export function useIsMobile(): boolean {
+  return useSyncExternalStore(
+    subscribeMobile,
+    getMobileSnapshot,
+    () => false,
+  )
 }

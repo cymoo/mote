@@ -46,10 +46,10 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   lang,
 }: BreadcrumbsProps) {
   return (
-    <nav className="text-muted-foreground flex items-center gap-0.5 text-sm">
+    <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
       <button
         type="button"
-        className="hover:bg-accent hover:text-accent-foreground inline-flex items-center gap-1 rounded-md px-2 py-1 transition-colors"
+        className="hover:bg-accent hover:text-accent-foreground inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 transition-colors"
         onClick={onRoot}
         title={t('myDrive', lang)}
       >
@@ -60,7 +60,7 @@ export const Breadcrumbs = memo(function Breadcrumbs({
         crumbs?.map((c, i) => {
           const last = i === crumbs.length - 1
           return (
-            <span key={c.id} className="flex items-center">
+            <span key={c.id} className="flex shrink-0 items-center">
               <ChevronRightIcon className="size-3.5 opacity-60" />
               <button
                 type="button"
@@ -79,7 +79,7 @@ export const Breadcrumbs = memo(function Breadcrumbs({
           )
         })}
       {isTrash && (
-        <span className="flex items-center">
+        <span className="flex shrink-0 items-center">
           <ChevronRightIcon className="size-3.5 opacity-60" />
           <span className="text-foreground rounded-md px-2 py-1 font-medium">
             <T name="trash" />
@@ -98,26 +98,31 @@ export const SearchBox = memo(function SearchBox({
   disabled,
   placeholder,
   inputRef,
+  className,
+  onBlur,
 }: {
   value: string
   onChange: (v: string) => void
   disabled?: boolean
   placeholder: string
   inputRef?: Ref<HTMLInputElement>
+  className?: string
+  onBlur?: () => void
 }) {
   return (
-    <div className="relative">
+    <div className={cx('relative', className)}>
       <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
       <input
         ref={inputRef}
         type="search"
         placeholder={placeholder}
         className={cx(
-          'border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring focus-visible:border-ring h-9 w-44 rounded-full border py-1 pr-3 pl-8 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:w-56',
+          'border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring focus-visible:border-ring h-9 w-full rounded-full border py-1 pr-3 pl-8 text-sm transition-colors outline-none focus-visible:ring-2 md:w-44 md:focus-visible:w-56',
           'disabled:cursor-not-allowed disabled:opacity-50',
         )}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         disabled={disabled}
       />
     </div>
@@ -133,6 +138,8 @@ interface SelectionBarProps {
   onMove: () => void
   onDelete: () => void
   lang: Lang
+  // When true, render as a fixed bottom bar (used on mobile).
+  floating?: boolean
 }
 
 export const SelectionBar = memo(function SelectionBar({
@@ -142,16 +149,29 @@ export const SelectionBar = memo(function SelectionBar({
   onMove,
   onDelete,
   lang,
+  floating,
 }: SelectionBarProps) {
+  // Touch targets need to be at least ~40×40 to avoid mistaps; PC keeps the
+  // tighter 28-px size to stay visually unobtrusive in the toolbar.
+  const btnSize = floating
+    ? 'size-10! gap-0! px-0!'
+    : 'size-7! px-0!'
   return (
-    <div className="bg-accent/70 text-accent-foreground ml-auto flex animate-[fadeIn_120ms_ease-out] items-center gap-0.5 rounded-full px-2 py-1 text-sm shadow-sm ring-1 ring-black/5 dark:ring-white/5">
+    <div
+      className={cx(
+        'bg-accent/70 text-accent-foreground flex animate-[fadeIn_120ms_ease-out] items-center text-sm shadow-sm ring-1 ring-black/5 dark:ring-white/5',
+        floating
+          ? 'fixed inset-x-2 bottom-2 z-30 justify-end gap-1 rounded-full px-2 py-1.5 backdrop-blur'
+          : 'ml-auto gap-0.5 rounded-full px-2 py-1',
+      )}
+    >
       <span className="px-2 text-xs tabular-nums">
         {count} <T name="selected" />
       </span>
       <Button
         variant="ghost"
         size="sm"
-        className="size-7! px-0!"
+        className={btnSize}
         onClick={onDownload}
         title={t('download', lang)}
         aria-label={t('download', lang)}
@@ -161,7 +181,7 @@ export const SelectionBar = memo(function SelectionBar({
       <Button
         variant="ghost"
         size="sm"
-        className="size-7! px-0!"
+        className={btnSize}
         onClick={onMove}
         title={t('move', lang)}
         aria-label={t('move', lang)}
@@ -171,7 +191,7 @@ export const SelectionBar = memo(function SelectionBar({
       <Button
         variant="ghost"
         size="sm"
-        className="text-destructive hover:text-destructive size-7! px-0!"
+        className={cx('text-destructive hover:text-destructive', btnSize)}
         onClick={onDelete}
         title={t('delete', lang)}
         aria-label={t('delete', lang)}
@@ -181,7 +201,7 @@ export const SelectionBar = memo(function SelectionBar({
       <Button
         variant="ghost"
         size="sm"
-        className="size-7! px-0!"
+        className={btnSize}
         onClick={onClear}
         title={t('clearSelection', lang)}
         aria-label={t('clearSelection', lang)}
@@ -313,7 +333,7 @@ export const RowMenu = memo(function RowMenu({ node, onAction, lang }: RowMenuPr
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
+          className="size-8 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:data-[state=open]:opacity-100"
           aria-label={t('more', lang)}
           title={t('more', lang)}
         >
@@ -387,26 +407,19 @@ function MenuItem({
 
 export const ShareBadge = memo(function ShareBadge({
   count,
-  onClick,
   lang,
 }: {
   count: number
-  onClick: () => void
   lang: Lang
 }) {
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
+    <span
       title={t('sharedCount', lang, true, String(count))}
       aria-label={t('sharedCount', lang, true, String(count))}
-      className="text-primary hover:bg-primary/10 inline-flex size-5 shrink-0 items-center justify-center rounded-full transition-colors"
+      className="text-primary inline-flex size-5 shrink-0 items-center justify-center rounded-full"
     >
       <Share2Icon className="size-3" />
-    </button>
+    </span>
   )
 })
 
