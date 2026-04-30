@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, RotateCcwIcon, Trash2Icon, UploadIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, RotateCcwIcon, Share2Icon, Trash2Icon, UploadIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -6,7 +6,7 @@ import { cx } from '@/utils/css.ts'
 import { Button } from '@/components/button.tsx'
 import { T, t } from '@/components/translation.tsx'
 
-import { DriveNode, humanSize } from './api'
+import { DriveNode, SharedItem, humanSize } from './api'
 import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu, ShareBadge } from './parts'
 
 type Lang = 'en' | 'zh'
@@ -400,14 +400,21 @@ function SortHeader({
 
 export const EmptyState = memo(function EmptyState({
   trash,
+  shared,
   lang,
 }: {
   trash: boolean
+  shared?: boolean
   lang: Lang
 }) {
   return (
     <div className="text-muted-foreground flex h-full animate-[fadeIn_200ms_ease-out] flex-col items-center justify-center gap-3 text-sm">
-      {trash ? (
+      {shared ? (
+        <>
+          <Share2Icon className="size-12 opacity-30" strokeWidth={1.25} />
+          <span>{t('noActiveShares', lang)}</span>
+        </>
+      ) : trash ? (
         <>
           <Trash2Icon className="size-12 opacity-30" strokeWidth={1.25} />
           <span>{t('trashEmpty', lang)}</span>
@@ -419,5 +426,91 @@ export const EmptyState = memo(function EmptyState({
         </>
       )}
     </div>
+  )
+})
+
+// ---------- shared view ----------
+
+function formatExpiry(expires_at: number | null, lang: Lang): string {
+  if (expires_at == null) return t('neverExpires', lang)
+  const now = Date.now()
+  const diffMs = expires_at - now
+  if (diffMs <= 0) return t('expires_short', lang, true, new Date(expires_at).toLocaleString())
+  const days = Math.floor(diffMs / 86_400_000)
+  const hours = Math.floor(diffMs / 3_600_000)
+  if (days >= 1) return t('expiresIn', lang, true, `${days}d`)
+  if (hours >= 1) return t('expiresIn', lang, true, `${hours}h`)
+  const mins = Math.max(1, Math.floor(diffMs / 60_000))
+  return t('expiresIn', lang, true, `${mins}m`)
+}
+
+interface SharedViewProps {
+  items: SharedItem[]
+  onOpenLocation: (parentID: number | null) => void
+  onRevoke: (shareID: number) => void | Promise<void>
+  lang: Lang
+}
+
+export const SharedView = memo(function SharedView({
+  items,
+  onOpenLocation,
+  onRevoke,
+  lang,
+}: SharedViewProps) {
+  return (
+    <ul className="divide-border/60 divide-y">
+      {items.map((s) => {
+        const expired = s.expires_at != null && s.expires_at <= Date.now()
+        return (
+          <li
+            key={s.id}
+            className={cx(
+              'hover:bg-accent/40 flex items-center gap-3 px-4 py-2.5 transition-colors',
+              expired ? 'opacity-60' : undefined,
+            )}
+          >
+            <FileIcon className="text-muted-foreground size-5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-medium">{s.name}</span>
+                {s.has_password && (
+                  <span
+                    className="text-muted-foreground inline-flex items-center gap-1 text-[11px]"
+                    title={t('passwordProtected', lang)}
+                  >
+                    <KeyIcon className="size-3" />
+                  </span>
+                )}
+              </div>
+              <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  className="hover:text-foreground inline-flex items-center gap-1 truncate transition-colors"
+                  onClick={() => onOpenLocation(s.parent_id)}
+                  title={t('openFolder', lang)}
+                >
+                  <FolderOpenIcon className="size-3 shrink-0" />
+                  <span className="truncate">{s.path || '/'}</span>
+                </button>
+                <span>·</span>
+                <span>{humanSize(s.size)}</span>
+                <span>·</span>
+                <span>{formatExpiry(s.expires_at, lang)}</span>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => void onRevoke(s.id)}
+              title={t('revoke', lang)}
+            >
+              <Trash2Icon className="mr-1 size-4" />
+              <T name="revoke" />
+            </Button>
+          </li>
+        )
+      })}
+    </ul>
   )
 })

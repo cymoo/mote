@@ -3,6 +3,7 @@ import {
   FolderPlusIcon,
   LayoutGridIcon,
   ListIcon,
+  Share2Icon,
   Trash2Icon,
   UploadIcon,
 } from 'lucide-react'
@@ -20,16 +21,19 @@ import { T, t, useLang } from '@/components/translation.tsx'
 import {
   DriveBreadcrumb,
   DriveNode,
+  SharedItem,
   breadcrumbs,
   createFolder,
   deleteNodes,
   downloadURL,
   downloadZipURL,
   list,
+  listAllShares,
   moveNodes,
   purgeNodes,
   renameNode,
   restoreNode,
+  revokeShare,
   search,
   trash,
 } from './api'
@@ -38,7 +42,7 @@ import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
 import { UploadDock } from './upload-dock'
 import { uploadManager } from './upload-manager'
-import { EmptyState, GridView, ListView, TrashView } from './views'
+import { EmptyState, GridView, ListView, SharedView, TrashView } from './views'
 
 type ViewMode = 'list' | 'grid'
 type SortKey = 'name' | 'size' | 'updated_at'
@@ -76,6 +80,8 @@ export function FilesPage() {
   const [query, setQuery] = useState('')
   const [showTrash, setShowTrash] = useState(false)
   const [trashItems, setTrashItems] = useState<DriveNode[]>([])
+  const [showShared, setShowShared] = useState(false)
+  const [sharedItems, setSharedItems] = useState<SharedItem[]>([])
   const [previewIdx, setPreviewIdx] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState(false)
 
@@ -90,6 +96,11 @@ export function FilesPage() {
   }, [])
 
   const refresh = useCallback(async () => {
+    if (showShared) {
+      setSharedItems(await listAllShares())
+      setSelected(new Set())
+      return
+    }
     if (showTrash) {
       setTrashItems(await trash())
       return
@@ -101,7 +112,7 @@ export function FilesPage() {
     }
     setCrumbs(parentID == null ? [] : await breadcrumbs(parentID))
     setSelected(new Set())
-  }, [parentID, query, showTrash, sortKey, sortDir])
+  }, [parentID, query, showTrash, showShared, sortKey, sortDir])
 
   useEffect(() => {
     void refresh().catch((err: Error) => toast.error(err.message))
@@ -305,6 +316,7 @@ export function FilesPage() {
 
   const goTo = useCallback((id: number | null) => {
     setShowTrash(false)
+    setShowShared(false)
     setQuery('')
     setParentID(id)
   }, [])
@@ -383,7 +395,7 @@ export function FilesPage() {
           <SearchBox
             value={query}
             onChange={setQuery}
-            disabled={showTrash}
+            disabled={showTrash || showShared}
             placeholder={t('search', lang)}
           />
           <Button
@@ -403,9 +415,25 @@ export function FilesPage() {
           <Button
             variant="ghost"
             size="icon"
+            className={cx('size-9', showShared ? 'text-primary' : undefined)}
+            onClick={() => {
+              setShowShared(!showShared)
+              setShowTrash(false)
+              setSelected(new Set())
+              setQuery('')
+            }}
+            aria-label={t('sharedFiles', lang)}
+            title={t('sharedFiles', lang)}
+          >
+            <Share2Icon className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             className={cx('size-9', showTrash ? 'text-destructive' : undefined)}
             onClick={() => {
               setShowTrash(!showTrash)
+              setShowShared(false)
               setSelected(new Set())
               setQuery('')
             }}
@@ -418,7 +446,7 @@ export function FilesPage() {
       </header>
 
       {/* Toolbar */}
-      {!showTrash && (
+      {!showTrash && !showShared && (
         <div className="border-border/60 flex items-center gap-2 border-b px-4 py-2">
           <Button
             variant="outline"
@@ -465,7 +493,36 @@ export function FilesPage() {
 
       {/* Listing */}
       <main className="flex-1 overflow-x-hidden overflow-y-auto">
-        {list_.length === 0 ? (
+        {showShared ? (
+          sharedItems.length === 0 ? (
+            <EmptyState trash={false} shared lang={lang} />
+          ) : (
+            <SharedView
+              items={sharedItems}
+              onOpenLocation={(pid) => {
+                setShowShared(false)
+                setQuery('')
+                setParentID(pid)
+              }}
+              onRevoke={(id) => {
+                confirm.open({
+                  heading: t('revokeConfirm', lang),
+                  okText: t('revoke', lang),
+                  cancelText: t('cancel', lang),
+                  onOk: async () => {
+                    try {
+                      await revokeShare(id)
+                      await refresh()
+                    } catch (err) {
+                      toast.error((err as Error).message)
+                    }
+                  },
+                })
+              }}
+              lang={lang}
+            />
+          )
+        ) : list_.length === 0 ? (
           <EmptyState trash={showTrash} lang={lang} />
         ) : showTrash ? (
           <TrashView

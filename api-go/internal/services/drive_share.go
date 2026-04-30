@@ -182,6 +182,84 @@ func (s *DriveShareService) VerifyPassword(share *models.DriveShare, password st
 	return nil
 }
 
+// ListAll returns all shares (optionally including expired ones), each
+// joined with the file's name + size and the parent path. Used by the
+// global "Shared" view. Shares whose underlying file has been
+// soft-deleted are excluded — they are unreachable anyway.
+func (s *DriveShareService) ListAll(ctx context.Context, includeExpired bool) ([]models.ShareWithNode, error) {
+	q := `
+SELECT s.*, n.name AS name, COALESCE(n.size, 0) AS size, n.parent_id AS node_parent_id
+FROM drive_shares s
+JOIN drive_nodes n ON n.id = s.node_id
+WHERE n.deleted_at IS NULL`
+	if !includeExpired {
+		q += ` AND (s.expires_at IS NULL OR s.expires_at > ?)`
+	}
+	q += ` ORDER BY s.created_at DESC`
+
+	type row struct {
+		models.DriveShare
+		Name         string           `db:"name"`
+		Size         int64            `db:"size"`
+		NodeParentID models.NullInt64 `db:"node_parent_id"`
+	}
+	var rows []row
+	var err error
+	if includeExpired {
+		err = s.db.SelectContext(ctx, &rows, q)
+	} else {
+		err = s.db.SelectContext(ctx, &rows, q, time.Now().UnixMilli())
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]models.ShareWithNode, 0, len(rows))
+	pathCache := map[int64]string{}
+	for i := range rows {
+		r := &rows[i]
+		r.HasPassword = r.PasswordHash.Valid
+		path := ""
+		if r.NodeParentID.Valid {
+			if p, ok := pathCache[r.NodeParentID.Int64]; ok {
+				path = p
+			} else {
+				bcs, err := s.drive.Breadcrumbs(ctx, r.NodeParentID.Int64)
+				if err != nil {
+					return nil, err
+				}
+				parts := make([]string, 0, len(bcs))
+				for _, bc := range bcs {
+					parts = append(parts, bc.Name)
+				}
+				path = strings.Join(parts, "/")
+				pathCache[r.NodeParentID.Int64] = path
+			}
+		}
+		out = append(out, models.ShareWithNode{
+			DriveShare: r.DriveShare,
+			Name:       r.Name,
+			Size:       r.Size,
+			ParentID:   r.NodeParentID,
+			Path:       path,
+		})
+	}
+	return out, nil
+}
+
+// PurgeExpired deletes share rows whose expiry has passed. Returns the
+// number of rows deleted.
+func (s *DriveShareService) PurgeExpired(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM drive_shares WHERE expires_at IS NOT NULL AND expires_at <= ?`,
+		time.Now().UnixMilli())
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 func newURLSafeToken(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)

@@ -78,10 +78,11 @@ func (n DriveNode) MarshalJSON() ([]byte, error) {
 // points to — used by the global "Shared" listing.
 type ShareWithNode struct {
 	DriveShare
-	Name string `json:"name" db:"name"`
-	Size int64  `json:"size" db:"size"`
-	Path string `json:"path" db:"-"`
-	URL  string `json:"url"`
+	Name     string    `json:"name" db:"name"`
+	Size     int64     `json:"size" db:"size"`
+	ParentID NullInt64 `json:"parent_id" db:"-"`
+	Path     string    `json:"path" db:"-"`
+	URL      string    `json:"url"`
 }
 
 // DriveUpload represents a resumable upload session.

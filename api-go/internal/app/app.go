@@ -184,6 +184,11 @@ func (app *App) setupTasks() error {
 		return err
 	}
 
+	// purge expired drive share links hourly
+	if err := tm.AddTask("purge-drive-shares", mita.Every().Hour(), tasks.PurgeExpiredDriveShares); err != nil {
+		return err
+	}
+
 	// hard-delete drive trash older than 30 days, daily at 2:30 AM
 	if err := tm.AddTask("purge-drive-trash", mita.Every().Day().At(2, 30), tasks.PurgeOldDriveTrash); err != nil {
 		return err

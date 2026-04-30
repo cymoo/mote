@@ -60,6 +60,7 @@ func (h *DriveHandler) Routes(r chi.Router) {
 
 	r.Post("/share", m.H(h.CreateShare))
 	r.Get("/shares", m.H(h.ListShares))
+	r.Get("/shares/all", m.H(h.ListAllShares))
 	r.Post("/share/revoke", m.H(h.RevokeShare))
 }
 
@@ -367,6 +368,56 @@ func (h *DriveHandler) RevokeShare(r *http.Request, body m.JSON[models.DriveShar
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
+}
+
+// sharedItemDTO is the row shape returned by /shares/all. The original public
+// URL is intentionally omitted: we only persist a hash of the token, so the
+// plaintext link is unrecoverable. The frontend surfaces this by offering
+// "revoke + create new link" rather than "copy link".
+type sharedItemDTO struct {
+	ID          int64  `json:"id"`
+	NodeID      int64  `json:"node_id"`
+	ParentID    *int64 `json:"parent_id"`
+	HasPassword bool   `json:"has_password"`
+	ExpiresAt   *int64 `json:"expires_at"`
+	CreatedAt   int64  `json:"created_at"`
+	Name        string `json:"name"`
+	Size        int64  `json:"size"`
+	Path        string `json:"path"`
+}
+
+type sharesAllQuery struct {
+	IncludeExpired bool `schema:"include_expired"`
+}
+
+func (h *DriveHandler) ListAllShares(r *http.Request, q m.Query[sharesAllQuery]) ([]sharedItemDTO, error) {
+	rows, err := h.share.ListAll(r.Context(), q.Value.IncludeExpired)
+	if err != nil {
+		return nil, mapDriveErr(err)
+	}
+	out := make([]sharedItemDTO, 0, len(rows))
+	for i := range rows {
+		row := &rows[i]
+		dto := sharedItemDTO{
+			ID:          row.ID,
+			NodeID:      row.NodeID,
+			HasPassword: row.HasPassword,
+			CreatedAt:   row.CreatedAt,
+			Name:        row.Name,
+			Size:        row.Size,
+			Path:        row.Path,
+		}
+		if row.ParentID.Valid {
+			v := row.ParentID.Int64
+			dto.ParentID = &v
+		}
+		if row.ExpiresAt.Valid {
+			v := row.ExpiresAt.Int64
+			dto.ExpiresAt = &v
+		}
+		out = append(out, dto)
+	}
+	return out, nil
 }
 
 func toShareDTO(sh *models.DriveShare) *shareDTO {

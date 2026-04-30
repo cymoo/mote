@@ -34,6 +34,22 @@ func PurgeExpiredDriveUploads(ctx context.Context) error {
 	return nil
 }
 
+// PurgeExpiredDriveShares deletes drive_shares rows whose expires_at has
+// passed. Active shares (NULL expiry) are kept indefinitely.
+func PurgeExpiredDriveShares(ctx context.Context) error {
+	db := ctx.Value(mita.CtxtKey("db")).(*sqlx.DB)
+	res, err := db.ExecContext(ctx,
+		`DELETE FROM drive_shares WHERE expires_at IS NOT NULL AND expires_at <= ?`,
+		time.Now().UnixMilli())
+	if err != nil {
+		return fmt.Errorf("purging expired drive shares: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[Hourly] purged %d expired drive shares", n)
+	}
+	return nil
+}
+
 // PurgeOldDriveTrash hard-deletes drive_nodes that have been in the recycle bin
 // for longer than 30 days and removes their blob files.
 func PurgeOldDriveTrash(ctx context.Context) error {

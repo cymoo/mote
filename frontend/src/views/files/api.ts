@@ -169,6 +169,24 @@ export const createShare = (
 export const listShares = (nodeID: number) =>
   jsonFetch<DriveShare[]>('GET', `${BASE}/shares?id=${nodeID}`)
 
+export interface SharedItem {
+  id: number
+  node_id: number
+  parent_id: number | null
+  has_password: boolean
+  expires_at: number | null
+  created_at: number
+  name: string
+  size: number
+  path: string
+}
+
+export const listAllShares = (includeExpired = false) =>
+  jsonFetch<SharedItem[]>(
+    'GET',
+    `${BASE}/shares/all${includeExpired ? '?include_expired=true' : ''}`,
+  )
+
 export const revokeShare = (shareID: number) =>
   jsonFetch<void>('POST', `${BASE}/share/revoke`, { share_id: shareID })
 

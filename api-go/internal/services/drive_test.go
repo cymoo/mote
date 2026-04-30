@@ -315,3 +315,112 @@ if n != 0 {
 t.Fatalf("expected drive_shares empty after purge, got %d rows", n)
 }
 }
+
+// ListAll returns every share joined with the file's name + path; expired
+// rows are filtered unless includeExpired is true. Shares whose underlying
+// file is soft-deleted are excluded.
+func TestDriveShare_ListAll(t *testing.T) {
+db, svc := setupDriveDB(t)
+ctx := context.Background()
+share := NewDriveShareService(db, svc)
+
+parent, _ := svc.CreateFolder(ctx, nil, "outer")
+inner, _ := svc.CreateFolder(ctx, &parent.ID, "inner")
+
+mk := func(parentID *int64, name string) *models.DriveNode {
+blob := filepath.Join("drive", name)
+_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+f, err := svc.CreateFileNode(ctx, parentID, name, blob, "", 1)
+if err != nil {
+t.Fatal(err)
+}
+return f
+}
+a := mk(&inner.ID, "a.txt")
+b := mk(nil, "b.txt")
+c := mk(nil, "c.txt") // will be soft-deleted
+
+now := int64(1_700_000_000_000)
+future := time.Now().Add(time.Hour).UnixMilli()
+past := time.Now().Add(-time.Hour).UnixMilli()
+_, err := db.Exec(`INSERT INTO drive_shares
+(node_id, token_hash, token_prefix, expires_at, created_at) VALUES
+(?, 'h1', 'h1', NULL,    ?),
+(?, 'h2', 'h2', ?,        ?),
+(?, 'h3', 'h3', ?,        ?),
+(?, 'h4', 'h4', NULL,    ?)`,
+a.ID, now,
+b.ID, future, now+1,
+b.ID, past, now+2, // expired
+c.ID, now+3,       // file will be soft-deleted
+)
+if err != nil {
+t.Fatal(err)
+}
+if err := svc.SoftDelete(ctx, []int64{c.ID}); err != nil {
+t.Fatal(err)
+}
+
+rows, err := share.ListAll(ctx, false)
+if err != nil {
+t.Fatal(err)
+}
+if len(rows) != 2 {
+t.Fatalf("active rows = %d, want 2 (got %+v)", len(rows), rows)
+}
+// rows are ordered by created_at DESC: b (future) first, a second
+if rows[0].Name != "b.txt" || rows[0].Path != "" {
+t.Errorf("row0 = %+v", rows[0])
+}
+if rows[1].Name != "a.txt" || rows[1].Path != "outer/inner" {
+t.Errorf("row1 = %+v", rows[1])
+}
+
+all, err := share.ListAll(ctx, true)
+if err != nil {
+t.Fatal(err)
+}
+if len(all) != 3 { // includes expired b-share, excludes c (deleted file)
+t.Fatalf("all rows = %d, want 3", len(all))
+}
+}
+
+// PurgeExpired removes only rows with expires_at <= now.
+func TestDriveShare_PurgeExpired(t *testing.T) {
+db, svc := setupDriveDB(t)
+ctx := context.Background()
+share := NewDriveShareService(db, svc)
+
+blob := filepath.Join("drive", "p.txt")
+_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+f, err := svc.CreateFileNode(ctx, nil, "p.txt", blob, "", 1)
+if err != nil {
+t.Fatal(err)
+}
+
+now := time.Now().UnixMilli()
+_, _ = db.Exec(`INSERT INTO drive_shares
+(node_id, token_hash, token_prefix, expires_at, created_at) VALUES
+(?, 'a', 'a', NULL,    ?),
+(?, 'b', 'b', ?,        ?),
+(?, 'c', 'c', ?,        ?)`,
+f.ID, now,
+f.ID, now-1, now,
+f.ID, now+3600_000, now,
+)
+
+n, err := share.PurgeExpired(ctx)
+if err != nil {
+t.Fatal(err)
+}
+if n != 1 {
+t.Fatalf("purged = %d, want 1", n)
+}
+var left int
+_ = db.Get(&left, `SELECT COUNT(*) FROM drive_shares`)
+if left != 2 {
+t.Fatalf("remaining = %d, want 2", left)
+}
+}
