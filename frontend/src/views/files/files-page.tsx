@@ -158,13 +158,10 @@ export function FilesPage() {
 
   const onUploadFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
+    // The dock surfaces per-file failures; we no longer toast on them.
     for (const f of Array.from(files)) {
-      try {
-        const r = await uploadManager.add(f, parentID, 'ask')
-        if (!r.conflict) await refresh()
-      } catch (err) {
-        toast.error((err as Error).message)
-      }
+      const r = await uploadManager.add(f, parentID, 'ask')
+      if (!r.conflict) await refresh()
     }
     await refresh()
   }
@@ -467,7 +464,7 @@ export function FilesPage() {
       )}
 
       {/* Listing */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-x-hidden overflow-y-auto">
         {list_.length === 0 ? (
           <EmptyState trash={showTrash} lang={lang} />
         ) : showTrash ? (

@@ -128,11 +128,17 @@ export const initUpload = (
     chunk_size: chunkSize,
   })
 
-export async function putChunk(uploadID: string, idx: number, blob: Blob): Promise<void> {
+export async function putChunk(
+  uploadID: string,
+  idx: number,
+  blob: Blob,
+  signal?: AbortSignal,
+): Promise<void> {
   const res = await fetch(`${BASE}/upload/chunk/${uploadID}/${idx}`, {
     method: 'PUT',
     headers: { ...authHeaders(), 'Content-Type': 'application/octet-stream' },
     body: blob,
+    signal,
   })
   if (!res.ok) throw new AppError(res.status, await res.text())
 }

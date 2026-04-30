@@ -90,8 +90,10 @@ class UploadManager {
       for (let i = 0; i < total; i++) if (!received.has(i)) queue.push(i)
 
       let cancelled = false
+      const ac = new AbortController()
       this.cancellers.set(localID, () => {
         cancelled = true
+        ac.abort()
       })
 
       let pos = 0
@@ -102,7 +104,7 @@ class UploadManager {
           const idx = queue[i]
           const start = idx * init.chunk_size
           const blob = file.slice(start, start + init.chunk_size)
-          await putChunkWithRetry(init.upload_id, idx, blob)
+          await putChunkWithRetry(init.upload_id, idx, blob, ac.signal)
           const cur = this.items.get(localID)
           if (cur) this.update(localID, { loaded: Math.min(cur.loaded + blob.size, file.size) })
         }
@@ -127,15 +129,20 @@ class UploadManager {
         throw err
       }
     } catch (err) {
-      this.update(localID, {
-        status: 'failed',
-        error: err instanceof Error ? err.message : String(err),
-      })
+      // If aborted by user, status is already 'cancelled' — don't overwrite it.
+      const aborted = (err as { name?: string }).name === 'AbortError'
+      if (!aborted) {
+        this.update(localID, {
+          status: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
       // Best-effort cleanup of server-side chunks so a failed upload does not
       // leave orphaned data behind.
       const uploadID = this.uploadIDs.get(localID)
       if (uploadID) void cancelUpload(uploadID).catch(() => {})
-      throw err
+      // Don't re-throw: the dock already surfaces the failure clearly.
+      return { id: localID, conflict: false }
     } finally {
       this.cancellers.delete(localID)
     }
@@ -200,13 +207,16 @@ async function putChunkWithRetry(
   uploadID: string,
   idx: number,
   blob: Blob,
+  signal: AbortSignal,
   attempts = 4,
 ): Promise<void> {
   for (let i = 0; i < attempts; i++) {
+    if (signal.aborted) throw new DOMException('aborted', 'AbortError')
     try {
-      await putChunk(uploadID, idx, blob)
+      await putChunk(uploadID, idx, blob, signal)
       return
     } catch (err) {
+      if ((err as { name?: string }).name === 'AbortError') throw err
       const code = (err as { code?: number }).code
       const transient = code === undefined || code >= 500
       if (!transient || i === attempts - 1) throw err

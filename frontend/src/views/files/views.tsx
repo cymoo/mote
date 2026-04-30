@@ -238,17 +238,39 @@ const GridCard = memo(function GridCard({
       role="button"
       tabIndex={0}
       className={cx(
-        'group relative flex h-36 flex-col items-center justify-start gap-2 rounded-xl border p-3 text-center transition-all',
+        'group relative flex h-36 flex-col items-center justify-start gap-1.5 rounded-xl border p-3 text-center transition-all',
         'hover:bg-accent/60 border-transparent hover:-translate-y-0.5 hover:shadow-sm',
         selected ? 'border-primary/40 bg-accent ring-primary/20 ring-2' : undefined,
       )}
-      onClick={(e) => onToggle(node.id, e.shiftKey || e.metaKey || e.ctrlKey)}
-      onDoubleClick={() => onOpen(node, index)}
+      onClick={(e) => {
+        // Modifier-click toggles selection; plain click opens.
+        if (e.shiftKey || e.metaKey || e.ctrlKey) {
+          onToggle(node.id, true)
+        } else {
+          onOpen(node, index)
+        }
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') onOpen(node, index)
       }}
       title={node.name}
     >
+      {/* hover-revealed checkbox in top-left */}
+      <div
+        className={cx(
+          'absolute top-1.5 left-1.5 transition-opacity',
+          selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+        )}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <Checkbox
+          checked={selected}
+          onChange={() => onToggle(node.id, true)}
+          title={node.name}
+        />
+      </div>
       {/* hover-revealed kebab in top-right */}
       <div
         className="absolute top-1.5 right-1.5"
@@ -261,8 +283,8 @@ const GridCard = memo(function GridCard({
       <div className="flex size-14 shrink-0 items-center justify-center">
         <NodeIcon node={node} large />
       </div>
-      <div className="line-clamp-2 h-8 text-xs leading-4 break-all">{node.name}</div>
-      <div className="text-muted-foreground mt-auto text-[10px] tabular-nums">
+      <div className="w-full truncate text-xs leading-4">{node.name}</div>
+      <div className="text-muted-foreground text-[10px] tabular-nums">
         {humanSize(node.size)}
       </div>
     </div>
