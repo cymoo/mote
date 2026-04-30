@@ -33,9 +33,7 @@ export function SharedPage() {
           <SharedView
             items={items}
             onOpenLocation={(pid) => {
-              // Navigate to my-drive route. parentID is in-page state, so we
-              // pass it via location state and the page picks it up on mount.
-              void navigate('/files', { state: { parentID: pid } })
+              void navigate(pid == null ? '/files' : `/files?p=${pid}`)
             }}
             onRevoke={(id) => {
               confirm.open({

@@ -4,9 +4,9 @@ import {
   ListIcon,
   UploadIcon,
 } from 'lucide-react'
-import { ChangeEvent, DragEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { useLocation } from 'react-router'
+import { useSearchParams } from 'react-router'
 
 import { cx } from '@/utils/css.ts'
 
@@ -34,15 +34,20 @@ import { TopBar } from './layout'
 import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
 import { uploadManager } from './upload-manager'
+import { useShortcuts } from './use-shortcuts'
 import { EmptyState, GridView, ListView } from './views'
 
 type ViewMode = 'list' | 'grid'
 
 export function MyDrivePage() {
-  const location = useLocation()
-  const initialParent =
-    (location.state as { parentID?: number | null } | null)?.parentID ?? null
-  const [parentID, setParentID] = useState<number | null>(initialParent)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const parentID = useMemo(() => {
+    const p = searchParams.get('p')
+    if (!p) return null
+    const n = Number(p)
+    return Number.isFinite(n) ? n : null
+  }, [searchParams])
+
   const [items, setItems] = useState<DriveNode[]>([])
   const [crumbs, setCrumbs] = useState<DriveBreadcrumb[]>([])
   const [view, setView] = useState<ViewMode>(
@@ -56,6 +61,7 @@ export function MyDrivePage() {
   const { selected, toggle, toggleAll, clear } = useSelection(items)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const confirm = useConfirm()
   const modal = useModal()
   const { lang } = useLang()
@@ -212,19 +218,24 @@ export function MyDrivePage() {
 
   // ---- navigation ---------------------------------------------------------
 
-  const goTo = useCallback((id: number | null) => {
-    setQuery('')
-    setParentID(id)
-  }, [])
-
-  const open = useCallback((n: DriveNode, idx: number) => {
-    if (n.type === 'folder') {
+  const goTo = useCallback(
+    (id: number | null) => {
       setQuery('')
-      setParentID(n.id)
-      return
-    }
-    setPreviewIdx(idx)
-  }, [])
+      setSearchParams(id == null ? {} : { p: String(id) })
+    },
+    [setSearchParams],
+  )
+
+  const open = useCallback(
+    (n: DriveNode, idx: number) => {
+      if (n.type === 'folder') {
+        goTo(n.id)
+        return
+      }
+      setPreviewIdx(idx)
+    },
+    [goTo],
+  )
 
   const onAction = useCallback(
     (action: RowAction, n: DriveNode) => {
@@ -237,6 +248,66 @@ export function MyDrivePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [parentID, lang],
   )
+
+  // ---- shortcuts ----------------------------------------------------------
+
+  // Parent of the current folder = next-to-last crumb (or root if at depth 1).
+  const parentOfCurrent = useMemo<number | null>(() => {
+    if (parentID == null || crumbs.length === 0) return null
+    return crumbs.length >= 2 ? crumbs[crumbs.length - 2].id : null
+  }, [parentID, crumbs])
+
+  useShortcuts({
+    'mod+ArrowUp': {
+      run: () => goTo(parentOfCurrent),
+      when: () => parentID != null,
+      desc: t('upOneLevel', lang),
+    },
+    enter: {
+      run: () => {
+        if (selected.size !== 1) return
+        const id = [...selected][0]
+        const idx = items.findIndex((n) => n.id === id)
+        if (idx >= 0) open(items[idx], idx)
+      },
+      when: () => selected.size === 1,
+      desc: t('openSelected', lang),
+    },
+    escape: {
+      run: () => {
+        // Cascade: blur search → clear query → clear selection.
+        if (document.activeElement === searchRef.current) {
+          searchRef.current?.blur()
+          return
+        }
+        if (query) {
+          setQuery('')
+          return
+        }
+        if (selected.size > 0) clear()
+      },
+      desc: t('clearSearchOrSelection', lang),
+    },
+    '/': {
+      run: () => searchRef.current?.focus(),
+      desc: t('focusSearch', lang),
+    },
+    'mod+a': {
+      run: () => toggleAll(),
+      when: () => items.length > 0,
+      desc: t('selectAll', lang),
+    },
+    backspace: {
+      run: () => handleDelete([...selected]),
+      when: () => selected.size > 0,
+      desc: t('moveToTrashShort', lang),
+    },
+    delete: {
+      run: () => handleDelete([...selected]),
+      when: () => selected.size > 0,
+      desc: t('moveToTrashShort', lang),
+    },
+  })
 
   return (
     <div
@@ -272,6 +343,7 @@ export function MyDrivePage() {
               value={query}
               onChange={setQuery}
               placeholder={t('search', lang)}
+              inputRef={searchRef}
             />
             <Button
               variant="ghost"

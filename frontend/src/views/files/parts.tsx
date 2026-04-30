@@ -16,7 +16,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { ReactNode, memo, useState } from 'react'
+import { ReactNode, Ref, memo, useState } from 'react'
 
 import { cx } from '@/utils/css.ts'
 
@@ -97,16 +97,19 @@ export const SearchBox = memo(function SearchBox({
   onChange,
   disabled,
   placeholder,
+  inputRef,
 }: {
   value: string
   onChange: (v: string) => void
   disabled?: boolean
   placeholder: string
+  inputRef?: Ref<HTMLInputElement>
 }) {
   return (
     <div className="relative">
       <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
       <input
+        ref={inputRef}
         type="search"
         placeholder={placeholder}
         className={cx(
