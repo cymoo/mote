@@ -76,11 +76,12 @@ function eventMatches(e: KeyboardEvent, p: Parsed): boolean {
     return false
   }
   if (p.ctrl && !e.ctrlKey) return false
-  if (p.shift !== e.shiftKey) return false
   if (p.alt !== e.altKey) return false
   const k = e.key.toLowerCase()
-  // "?" is shift+/, but we let users write '?' directly. Match either.
+  // "?" is shift+/ on most layouts. Match either form, ignoring the shift state
+  // since typing '?' inherently requires shift.
   if (p.key === '?') return k === '?' || (e.shiftKey && k === '/')
+  if (p.shift !== e.shiftKey) return false
   return k === p.key
 }
 
@@ -156,6 +157,10 @@ export function useShortcuts(map: BindingMap) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Don't fire shortcuts when a modal/dialog is open. This prevents Enter
+      // on a confirm button from also triggering page shortcuts (e.g. opening
+      // the file the user just chose to delete).
+      if (document.querySelector('[role="dialog"]')) return
       const typing = isTypingTarget(e.target)
       for (const [spec, b] of Object.entries(latest.current)) {
         const parsed = parseSpec(spec)

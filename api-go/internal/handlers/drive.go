@@ -499,5 +499,3 @@ func writeDriveErr(w http.ResponseWriter, err error) {
 	}
 }
 
-// readSeekCloser was an unused adapter; ServeContent works directly with *os.File.
-

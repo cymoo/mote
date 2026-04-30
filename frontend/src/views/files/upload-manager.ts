@@ -101,6 +101,11 @@ class UploadManager {
       const queue: number[] = []
       for (let i = 0; i < total; i++) if (!received.has(i)) queue.push(i)
 
+      // On resume, surface already-uploaded chunks in the progress bar so we
+      // don't show 0% → 100%.
+      const resumed = (total - queue.length) * init.chunk_size
+      if (resumed > 0) this.update(localID, { loaded: Math.min(resumed, file.size) })
+
       let cancelled = false
       const ac = new AbortController()
       this.cancellers.set(localID, () => {
