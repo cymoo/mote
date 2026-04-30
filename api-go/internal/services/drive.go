@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +17,16 @@ import (
 	"github.com/cymoo/mote/internal/models"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	sqlite "modernc.org/sqlite"
 )
+
+// likeEscape escapes user input for use inside a LIKE pattern. The caller
+// must use ESCAPE '\' on the SQL side. Without this, a query of "_" or "%"
+// would match every row.
+func likeEscape(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
 
 var (
 	ErrDriveNotFound      = errors.New("drive node not found")
@@ -78,23 +88,25 @@ func (s *DriveService) FindByID(ctx context.Context, id int64) (*models.DriveNod
 }
 
 // List returns immediate children of parentID (or root when nil), excluding deleted.
+// When query is non-empty, it performs a global name search (parentID is ignored).
 func (s *DriveService) List(ctx context.Context, parentID *int64, query *string, orderBy, sort string) ([]models.DriveNode, error) {
-	args := []any{}
+	hasQuery := query != nil && strings.TrimSpace(*query) != ""
+
 	var where string
-	if parentID == nil {
-		where = "parent_id IS NULL"
+	var args []any
+	if hasQuery {
+		// Global LIKE search; escape user wildcards.
+		pattern := "%" + strings.ToLower(likeEscape(strings.TrimSpace(*query))) + "%"
+		where = `deleted_at IS NULL AND LOWER(name) LIKE ? ESCAPE '\'`
+		args = []any{pattern}
+	} else if parentID == nil {
+		where = "parent_id IS NULL AND deleted_at IS NULL"
 	} else {
-		// Validate parent exists & is folder & not deleted.
 		if _, err := s.requireActiveFolder(ctx, *parentID); err != nil {
 			return nil, err
 		}
-		where = "parent_id = ?"
-		args = append(args, *parentID)
-	}
-	where += " AND deleted_at IS NULL"
-	if query != nil && strings.TrimSpace(*query) != "" {
-		where = "deleted_at IS NULL AND LOWER(name) LIKE ?"
-		args = []any{"%" + strings.ToLower(strings.TrimSpace(*query)) + "%"}
+		where = "parent_id = ? AND deleted_at IS NULL"
+		args = []any{*parentID}
 	}
 
 	col := "LOWER(name)"
@@ -113,15 +125,18 @@ func (s *DriveService) List(ctx context.Context, parentID *int64, query *string,
 		dir = "DESC"
 	}
 
+	// Folders before files: type='folder' < type='file' lexicographically, so
+	// CASE expression keeps intent clear regardless of future type values.
 	q := fmt.Sprintf(
-		`SELECT * FROM drive_nodes WHERE %s ORDER BY type DESC, %s %s, id ASC`,
+		`SELECT * FROM drive_nodes WHERE %s
+		 ORDER BY CASE WHEN type = 'folder' THEN 0 ELSE 1 END, %s %s, id ASC`,
 		where, col, dir,
 	)
 	var out []models.DriveNode
 	if err := s.db.SelectContext(ctx, &out, q, args...); err != nil {
 		return nil, err
 	}
-	if query != nil && strings.TrimSpace(*query) != "" && len(out) > 0 {
+	if hasQuery && len(out) > 0 {
 		if err := s.populatePaths(ctx, out); err != nil {
 			return nil, err
 		}
@@ -392,6 +407,9 @@ WHERE id IN (SELECT id FROM subtree)`, id, now, batch, now)
 }
 
 // Restore restores a node and all of its descendants that share the same delete_batch_id.
+// A batch may contain multiple roots (when SoftDelete was called with several ids);
+// we pre-check sibling-name conflicts for every root so the caller gets a clean
+// ErrDriveNameConflict instead of a low-level UNIQUE constraint error.
 func (s *DriveService) Restore(ctx context.Context, id int64) error {
 	n, err := s.FindByID(ctx, id)
 	if err != nil {
@@ -406,25 +424,50 @@ func (s *DriveService) Restore(ctx context.Context, id int64) error {
 			`UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE id = ?`, id)
 		return err
 	}
-	// Validate target name doesn't collide with an active sibling.
-	var conflict int
-	err = s.db.QueryRowxContext(ctx, `
-SELECT EXISTS(
-  SELECT 1 FROM drive_nodes
-  WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
-    AND LOWER(name) = ?
-    AND deleted_at IS NULL
-)`, n.ParentID, strings.ToLower(n.Name)).Scan(&conflict)
+
+	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	if conflict == 1 {
-		return ErrDriveNameConflict
+	defer tx.Rollback()
+
+	// All deleted roots in this batch (i.e. nodes whose parent isn't part of the same batch).
+	var roots []models.DriveNode
+	err = tx.SelectContext(ctx, &roots, `
+SELECT * FROM drive_nodes n
+WHERE n.delete_batch_id = ?
+  AND (
+    n.parent_id IS NULL
+    OR NOT EXISTS (
+      SELECT 1 FROM drive_nodes p
+      WHERE p.id = n.parent_id AND p.delete_batch_id = n.delete_batch_id
+    )
+  )`, n.DeleteBatchID.String)
+	if err != nil {
+		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	for _, r := range roots {
+		var hit int
+		err := tx.QueryRowxContext(ctx, `
+SELECT EXISTS(
+  SELECT 1 FROM drive_nodes
+  WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
+    AND LOWER(name) = LOWER(?)
+    AND deleted_at IS NULL
+)`, r.ParentID, r.Name).Scan(&hit)
+		if err != nil {
+			return err
+		}
+		if hit == 1 {
+			return ErrDriveNameConflict
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
 		`UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL
-		 WHERE delete_batch_id = ?`, n.DeleteBatchID.String)
-	return err
+		 WHERE delete_batch_id = ?`, n.DeleteBatchID.String); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Purge hard-deletes the given nodes and all their descendants, removing blob files.
@@ -635,20 +678,49 @@ WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
 
 // AutoRename returns a non-conflicting filename in `parentID` based on `name`.
 // "report.pdf" -> "report (1).pdf", "report (2).pdf", ...
+//
+// Single SQL pass: scan siblings whose name looks like "stem (N)ext" and pick
+// max(N)+1. If the original "stem.ext" itself isn't taken, returns it as is.
 func (s *DriveService) AutoRename(ctx context.Context, parentID *int64, name string) (string, error) {
+	if sib, err := s.FindActiveSibling(ctx, parentID, name); err != nil {
+		return "", err
+	} else if sib == nil {
+		return name, nil
+	}
 	ext := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, ext)
-	for i := 1; i < 1000; i++ {
-		cand := fmt.Sprintf("%s (%d)%s", stem, i, ext)
-		sib, err := s.FindActiveSibling(ctx, parentID, cand)
-		if err != nil {
-			return "", err
+
+	// Match the literal "stem (N)ext" — prefix/suffix LIKE with wildcard escape.
+	prefix := likeEscape(stem) + " (%"
+	suffix := `%)` + likeEscape(ext)
+
+	type row struct {
+		Name string `db:"name"`
+	}
+	var rows []row
+	err := s.db.SelectContext(ctx, &rows, `
+SELECT name FROM drive_nodes
+WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
+  AND deleted_at IS NULL
+  AND name LIKE ? ESCAPE '\'
+  AND name LIKE ? ESCAPE '\'`, parentID, prefix, suffix)
+	if err != nil {
+		return "", err
+	}
+	maxN := 0
+	for _, r := range rows {
+		// Extract the integer between the last "(" and ")" before ext.
+		mid := strings.TrimSuffix(r.Name, ext)
+		i := strings.LastIndex(mid, " (")
+		if i < 0 {
+			continue
 		}
-		if sib == nil {
-			return cand, nil
+		num := strings.TrimSuffix(mid[i+2:], ")")
+		if n, err := strconv.Atoi(num); err == nil && n > maxN {
+			maxN = n
 		}
 	}
-	return "", fmt.Errorf("could not allocate unique name for %q", name)
+	return fmt.Sprintf("%s (%d)%s", stem, maxN+1, ext), nil
 }
 
 // newToken returns a hex-encoded random token of n bytes.
@@ -669,11 +741,21 @@ func newBlobName(originalName string) string {
 }
 
 // isUniqueErr reports whether err is a SQLite unique-constraint violation.
+// Uses typed assertion against modernc.org/sqlite's *Error (extended codes
+// 1555 = CONSTRAINT_PRIMARYKEY, 2067 = CONSTRAINT_UNIQUE) and falls back to
+// a string match for safety across driver versions.
 func isUniqueErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	s := err.Error()
-	return strings.Contains(s, "UNIQUE constraint failed") ||
-		strings.Contains(s, "constraint failed: UNIQUE")
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		switch se.Code() {
+		case 1555, 2067:
+			return true
+		}
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "constraint failed: UNIQUE")
 }

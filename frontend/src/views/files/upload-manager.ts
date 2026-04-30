@@ -22,10 +22,12 @@ const CONCURRENCY = 3
 const MAX_SIZE = 4 * 1024 * 1024 * 1024
 
 type Listener = (items: UploadItem[]) => void
+type CompletedListener = (item: UploadItem) => void
 
 class UploadManager {
   private items = new Map<string, UploadItem>()
   private listeners = new Set<Listener>()
+  private completedListeners = new Set<CompletedListener>()
   private uploadIDs = new Map<string, string>() // local id -> server upload id
   private cancellers = new Map<string, () => void>()
 
@@ -33,6 +35,13 @@ class UploadManager {
     this.listeners.add(fn)
     fn([...this.items.values()])
     return () => this.listeners.delete(fn)
+  }
+
+  // Fires once whenever an item transitions to 'done'. Pages use this to
+  // refresh their listings without coupling to the upload trigger site.
+  onCompleted(fn: CompletedListener): () => void {
+    this.completedListeners.add(fn)
+    return () => this.completedListeners.delete(fn)
   }
 
   private emit() {
@@ -46,6 +55,9 @@ class UploadManager {
     const next = { ...cur, ...patch }
     this.items.set(id, next)
     this.emit()
+    if (cur.status !== 'done' && next.status === 'done') {
+      this.completedListeners.forEach((fn) => fn(next))
+    }
     // Auto-dismiss successful uploads after a short delay so the dock empties.
     if (next.status === 'done') {
       setTimeout(() => {

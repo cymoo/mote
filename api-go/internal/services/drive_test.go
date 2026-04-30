@@ -424,3 +424,118 @@ if left != 2 {
 t.Fatalf("remaining = %d, want 2", left)
 }
 }
+
+// LIKE wildcard escape: a query of "_" must not match every name.
+func TestDrive_SearchEscapesLikeWildcards(t *testing.T) {
+_, svc := setupDriveDB(t)
+ctx := context.Background()
+
+if _, err := svc.CreateFolder(ctx, nil, "alpha"); err != nil {
+t.Fatal(err)
+}
+if _, err := svc.CreateFolder(ctx, nil, "with_underscore"); err != nil {
+t.Fatal(err)
+}
+
+q := "_"
+rows, err := svc.List(ctx, nil, &q, "name", "asc")
+if err != nil {
+t.Fatal(err)
+}
+if len(rows) != 1 || rows[0].Name != "with_underscore" {
+t.Fatalf("expected 1 underscore match, got %+v", rows)
+}
+
+q = "%"
+rows, err = svc.List(ctx, nil, &q, "name", "asc")
+if err != nil {
+t.Fatal(err)
+}
+if len(rows) != 0 {
+t.Fatalf("percent should match nothing, got %+v", rows)
+}
+}
+
+// Search does not require parentID to be valid.
+func TestDrive_SearchIgnoresParent(t *testing.T) {
+_, svc := setupDriveDB(t)
+ctx := context.Background()
+
+if _, err := svc.CreateFolder(ctx, nil, "alpha"); err != nil {
+t.Fatal(err)
+}
+bogus := int64(9999)
+q := "alpha"
+rows, err := svc.List(ctx, &bogus, &q, "name", "asc")
+if err != nil {
+t.Fatalf("search with stale parent should not error: %v", err)
+}
+if len(rows) != 1 {
+t.Fatalf("got %d rows", len(rows))
+}
+}
+
+// Restore must check name conflicts for *every* root in the batch, and surface
+// ErrDriveNameConflict instead of a low-level UNIQUE error.
+func TestDrive_RestoreMultiRootConflict(t *testing.T) {
+_, svc := setupDriveDB(t)
+ctx := context.Background()
+
+a, _ := svc.CreateFolder(ctx, nil, "a")
+b, _ := svc.CreateFolder(ctx, nil, "b")
+if err := svc.SoftDelete(ctx, []int64{a.ID, b.ID}); err != nil {
+t.Fatal(err)
+}
+// Recreate "a" so restoring the batch will collide on b's sibling? No —
+// the conflict must be on one of the deleted roots' own name. Recreate "a":
+if _, err := svc.CreateFolder(ctx, nil, "a"); err != nil {
+t.Fatal(err)
+}
+
+// Even though the user asks to restore via b.ID (the non-conflicting root),
+// the whole batch would resurrect both, so the conflict on "a" must be caught.
+err := svc.Restore(ctx, b.ID)
+if !errors.Is(err, ErrDriveNameConflict) {
+t.Fatalf("expected ErrDriveNameConflict, got %v", err)
+}
+}
+
+// AutoRename picks max(N)+1 in a single pass (skips deleted and case-insens).
+func TestDrive_AutoRenameSkipsDeleted(t *testing.T) {
+_, svc := setupDriveDB(t)
+ctx := context.Background()
+parent, _ := svc.CreateFolder(ctx, nil, "p")
+
+mk := func(name string) int64 {
+blob := filepath.Join("drive", name)
+_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+n, err := svc.CreateFileNode(ctx, &parent.ID, name, blob, "", 1)
+if err != nil {
+t.Fatal(err)
+}
+return n.ID
+}
+mk("report.pdf")
+mk("report (1).pdf")
+id3 := mk("report (3).pdf")
+
+cand, err := svc.AutoRename(ctx, &parent.ID, "report.pdf")
+if err != nil {
+t.Fatal(err)
+}
+if cand != "report (4).pdf" {
+t.Fatalf("expected report (4).pdf, got %q", cand)
+}
+// Soft-delete the (3) and try again — should drop back to (2).
+if err := svc.SoftDelete(ctx, []int64{id3}); err != nil {
+t.Fatal(err)
+}
+cand, err = svc.AutoRename(ctx, &parent.ID, "report.pdf")
+if err != nil {
+t.Fatal(err)
+}
+if cand != "report (2).pdf" {
+t.Fatalf("after soft-delete expected report (2).pdf, got %q", cand)
+}
+}

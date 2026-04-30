@@ -24,13 +24,7 @@ function useUploads(): UploadItem[] {
   )
 }
 
-export function UploadDock({
-  onRefresh,
-  lang,
-}: {
-  onRefresh: () => Promise<void> | void
-  lang: Lang
-}) {
+export function UploadDock({ lang }: { lang: Lang }) {
   const items = useUploads()
   const [collapsed, setCollapsed] = useState(false)
   if (items.length === 0) return null
@@ -74,7 +68,7 @@ export function UploadDock({
       {!collapsed && (
         <ul className="max-h-72 overflow-auto">
           {items.map((it) => (
-            <UploadRow key={it.id} item={it} onRefresh={onRefresh} lang={lang} />
+            <UploadRow key={it.id} item={it} lang={lang} />
           ))}
         </ul>
       )}
@@ -84,11 +78,9 @@ export function UploadDock({
 
 const UploadRow = memo(function UploadRow({
   item,
-  onRefresh,
   lang,
 }: {
   item: UploadItem
-  onRefresh: () => Promise<void> | void
   lang: Lang
 }) {
   const pct = item.size > 0 ? Math.round((item.loaded / item.size) * 100) : 0
@@ -102,7 +94,6 @@ const UploadRow = memo(function UploadRow({
       item.id,
       policy === 'ask' ? 'rename' : (policy as 'overwrite' | 'rename' | 'skip'),
     )
-    await onRefresh()
   }
 
   return (

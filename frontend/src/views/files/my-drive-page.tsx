@@ -1,0 +1,376 @@
+import {
+  FolderPlusIcon,
+  LayoutGridIcon,
+  ListIcon,
+  UploadIcon,
+} from 'lucide-react'
+import { ChangeEvent, DragEvent, useCallback, useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
+import { useLocation } from 'react-router'
+
+import { cx } from '@/utils/css.ts'
+
+import { Button } from '@/components/button.tsx'
+import { useConfirm } from '@/components/confirm.tsx'
+import { useModal } from '@/components/modal.tsx'
+import { T, t, useLang } from '@/components/translation.tsx'
+
+import {
+  DriveBreadcrumb,
+  DriveNode,
+  breadcrumbs,
+  createFolder,
+  deleteNodes,
+  downloadURL,
+  downloadZipURL,
+  list,
+  moveNodes,
+  renameNode,
+  search,
+} from './api'
+import { MoveDialog, NameDialog, ShareDialog } from './dialogs'
+import { useRefreshOnUploadComplete, useSelection, useSort } from './hooks'
+import { TopBar } from './layout'
+import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
+import { PreviewModal } from './preview'
+import { uploadManager } from './upload-manager'
+import { EmptyState, GridView, ListView } from './views'
+
+type ViewMode = 'list' | 'grid'
+
+export function MyDrivePage() {
+  const location = useLocation()
+  const initialParent =
+    (location.state as { parentID?: number | null } | null)?.parentID ?? null
+  const [parentID, setParentID] = useState<number | null>(initialParent)
+  const [items, setItems] = useState<DriveNode[]>([])
+  const [crumbs, setCrumbs] = useState<DriveBreadcrumb[]>([])
+  const [view, setView] = useState<ViewMode>(
+    (localStorage.getItem('drive_view') as ViewMode) || 'list',
+  )
+  const [query, setQuery] = useState('')
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState(false)
+
+  const { sortKey, sortDir, onSort } = useSort()
+  const { selected, toggle, toggleAll, clear } = useSelection(items)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const confirm = useConfirm()
+  const modal = useModal()
+  const { lang } = useLang()
+
+  const refresh = useCallback(async () => {
+    if (query.trim()) {
+      setItems(await search(query.trim()))
+    } else {
+      setItems(await list(parentID, sortKey, sortDir))
+    }
+    setCrumbs(parentID == null ? [] : await breadcrumbs(parentID))
+    clear()
+  }, [parentID, query, sortKey, sortDir, clear])
+
+  useEffect(() => {
+    void refresh().catch((err: Error) => toast.error(err.message))
+  }, [refresh])
+
+  useRefreshOnUploadComplete(() => {
+    void refresh().catch(() => {})
+  })
+
+  useEffect(() => {
+    localStorage.setItem('drive_view', view)
+  }, [view])
+
+  // ---- uploads ------------------------------------------------------------
+
+  const onUploadFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    for (const f of Array.from(files)) {
+      await uploadManager.add(f, parentID, 'ask')
+    }
+    // The upload-completion hook handles refresh; nothing else to do here.
+  }
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    void onUploadFiles(e.dataTransfer.files)
+  }
+
+  // ---- mutations ----------------------------------------------------------
+
+  const handleNewFolder = () => {
+    modal.open({
+      heading: t('newFolder', lang),
+      headingVisible: true,
+      content: (
+        <NameDialog
+          placeholder={t('folderName', lang)}
+          submitLabel={t('create', lang)}
+          onSubmit={async (name) => {
+            try {
+              await createFolder(parentID, name)
+              modal.close()
+              await refresh()
+            } catch (err) {
+              toast.error((err as Error).message)
+            }
+          }}
+          onCancel={() => modal.close()}
+        />
+      ),
+    })
+  }
+
+  const handleRename = (n: DriveNode) => {
+    modal.open({
+      heading: t('rename', lang),
+      headingVisible: true,
+      content: (
+        <NameDialog
+          initial={n.name}
+          submitLabel={t('rename', lang)}
+          onSubmit={async (name) => {
+            try {
+              await renameNode(n.id, name)
+              modal.close()
+              await refresh()
+            } catch (err) {
+              toast.error((err as Error).message)
+            }
+          }}
+          onCancel={() => modal.close()}
+        />
+      ),
+    })
+  }
+
+  const handleShare = (n: DriveNode) => {
+    modal.open({
+      heading: `${t('shareLink', lang)} — ${n.name}`,
+      headingVisible: true,
+      content: <ShareDialog node={n} onClose={() => modal.close()} lang={lang} />,
+    })
+  }
+
+  const handleMove = (ids: number[]) => {
+    modal.open({
+      heading: t('moveTo', lang),
+      headingVisible: true,
+      content: (
+        <MoveDialog
+          movingIDs={new Set(ids)}
+          currentParentID={parentID}
+          onCancel={() => modal.close()}
+          onSelect={async (target) => {
+            try {
+              await moveNodes(ids, target)
+              modal.close()
+              await refresh()
+            } catch (err) {
+              toast.error((err as Error).message)
+            }
+          }}
+        />
+      ),
+    })
+  }
+
+  const handleDelete = (ids: number[]) => {
+    confirm.open({
+      heading: t('moveToTrash', lang, true, String(ids.length)),
+      okText: t('delete', lang),
+      cancelText: t('cancel', lang),
+      onOk: async () => {
+        try {
+          await deleteNodes(ids)
+          await refresh()
+        } catch (err) {
+          toast.error((err as Error).message)
+        }
+      },
+    })
+  }
+
+  const downloadOne = (n: DriveNode) => {
+    const url = n.type === 'folder' ? downloadZipURL(n.id) : downloadURL(n.id)
+    const a = document.createElement('a')
+    a.href = url
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }
+
+  const downloadSelected = () => {
+    selected.forEach((id) => {
+      const n = items.find((x) => x.id === id)
+      if (n) downloadOne(n)
+    })
+  }
+
+  // ---- navigation ---------------------------------------------------------
+
+  const goTo = useCallback((id: number | null) => {
+    setQuery('')
+    setParentID(id)
+  }, [])
+
+  const open = useCallback((n: DriveNode, idx: number) => {
+    if (n.type === 'folder') {
+      setQuery('')
+      setParentID(n.id)
+      return
+    }
+    setPreviewIdx(idx)
+  }, [])
+
+  const onAction = useCallback(
+    (action: RowAction, n: DriveNode) => {
+      if (action === 'download') downloadOne(n)
+      else if (action === 'rename') handleRename(n)
+      else if (action === 'share') handleShare(n)
+      else if (action === 'move') handleMove([n.id])
+      else if (action === 'delete') handleDelete([n.id])
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [parentID, lang],
+  )
+
+  return (
+    <div
+      className={cx(
+        'flex flex-1 flex-col',
+        dragOver
+          ? 'after:ring-primary/50 after:bg-primary/5 after:pointer-events-none after:absolute after:inset-2 after:rounded-2xl after:ring-2 after:ring-inset'
+          : undefined,
+      )}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragOver(true)
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragOver(false)
+      }}
+      onDrop={onDrop}
+    >
+      <TopBar
+        lang={lang}
+        middle={
+          <Breadcrumbs
+            crumbs={crumbs}
+            onRoot={() => goTo(null)}
+            onCrumb={goTo}
+            isTrash={false}
+            lang={lang}
+          />
+        }
+        extra={
+          <>
+            <SearchBox
+              value={query}
+              onChange={setQuery}
+              placeholder={t('search', lang)}
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9"
+              onClick={() => setView(view === 'list' ? 'grid' : 'list')}
+              aria-label={view === 'list' ? t('viewGrid', lang) : t('viewList', lang)}
+              title={view === 'list' ? t('viewGrid', lang) : t('viewList', lang)}
+            >
+              {view === 'list' ? (
+                <LayoutGridIcon className="size-4" />
+              ) : (
+                <ListIcon className="size-4" />
+              )}
+            </Button>
+          </>
+        }
+      />
+
+      <div className="border-border/60 flex items-center gap-2 border-b px-4 py-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          title={t('upload', lang)}
+          className="gap-1.5"
+        >
+          <UploadIcon className="size-4" />
+          <T name="upload" />
+        </Button>
+        <input
+          type="file"
+          multiple
+          hidden
+          ref={fileInputRef}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            void onUploadFiles(e.target.files)
+            e.target.value = ''
+          }}
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleNewFolder}
+          title={t('newFolder', lang)}
+          className="gap-1.5"
+        >
+          <FolderPlusIcon className="size-4" />
+          <T name="newFolder" />
+        </Button>
+        {selected.size > 0 && (
+          <SelectionBar
+            count={selected.size}
+            onClear={clear}
+            onDownload={downloadSelected}
+            onMove={() => handleMove([...selected])}
+            onDelete={() => handleDelete([...selected])}
+            lang={lang}
+          />
+        )}
+      </div>
+
+      <main className="flex-1 overflow-x-hidden overflow-y-auto">
+        {items.length === 0 ? (
+          <EmptyState trash={false} lang={lang} />
+        ) : view === 'list' ? (
+          <ListView
+            items={items}
+            selected={selected}
+            onToggle={toggle}
+            onToggleAll={toggleAll}
+            onOpen={open}
+            onAction={onAction}
+            onNavigateToParent={goTo}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={onSort}
+            lang={lang}
+          />
+        ) : (
+          <GridView
+            items={items}
+            selected={selected}
+            onToggle={toggle}
+            onOpen={open}
+            onAction={onAction}
+            lang={lang}
+          />
+        )}
+      </main>
+
+      {previewIdx != null && (
+        <PreviewModal
+          items={items}
+          index={previewIdx}
+          onClose={() => setPreviewIdx(null)}
+          onDownload={downloadOne}
+        />
+      )}
+    </div>
+  )
+}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -161,24 +162,44 @@ func (s *DriveUploadService) PutChunk(ctx context.Context, id string, idx int, b
 		return err
 	}
 
-	// Update bitmap atomically.
-	tx, err := s.db.BeginTxx(ctx, nil)
+	// Update bitmap atomically. We use BEGIN IMMEDIATE to acquire the
+	// reserved lock up-front: a deferred transaction (the default) starts
+	// with a SHARED lock on SELECT and then upgrades on UPDATE, which can
+	// deadlock when multiple chunk uploads race for the same row and one
+	// returns SQLITE_BUSY despite busy_timeout.
+	conn, err := s.db.Connx(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
-	var mask []byte
-	if err := tx.GetContext(ctx, &mask, `SELECT received_mask FROM drive_uploads WHERE id = ?`, id); err != nil {
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
+		}
+	}()
+	var mask []byte
+	if err := conn.GetContext(ctx, &mask, `SELECT received_mask FROM drive_uploads WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if idx/8 >= len(mask) {
+		return ErrUploadInvalidRequest
 	}
 	mask[idx/8] |= 1 << (idx % 8)
 	now := time.Now().UnixMilli()
-	if _, err := tx.ExecContext(ctx,
+	if _, err := conn.ExecContext(ctx,
 		`UPDATE drive_uploads SET received_mask = ?, updated_at = ? WHERE id = ?`,
 		mask, now, id); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 // Complete assembles all chunks into the final blob and inserts a drive_nodes row.
@@ -206,8 +227,10 @@ func (s *DriveUploadService) Complete(
 	defer func() {
 		// On error, allow the client to retry.
 		if r := recover(); r != nil {
-			s.db.ExecContext(context.Background(),
-				`UPDATE drive_uploads SET status = 'uploading' WHERE id = ?`, id)
+			if _, err := s.db.ExecContext(context.Background(),
+				`UPDATE drive_uploads SET status = 'uploading' WHERE id = ?`, id); err != nil {
+				log.Printf("drive upload: revert status after panic failed: %v", err)
+			}
 			panic(r)
 		}
 	}()
@@ -217,6 +240,10 @@ func (s *DriveUploadService) Complete(
 	if err := s.db.GetContext(ctx, &mask, `SELECT received_mask FROM drive_uploads WHERE id = ?`, id); err != nil {
 		s.markUploading(id)
 		return nil, err
+	}
+	if len(mask)*8 < u.TotalChunks {
+		s.markUploading(id)
+		return nil, ErrUploadInvalidRequest
 	}
 	for i := 0; i < u.TotalChunks; i++ {
 		if mask[i/8]&(1<<(i%8)) == 0 {
@@ -230,6 +257,13 @@ func (s *DriveUploadService) Complete(
 	if u.ParentID.Valid {
 		v := u.ParentID.Int64
 		parentID = &v
+	}
+	// Re-validate parent: it may have been (soft-)deleted between Init and now.
+	if parentID != nil {
+		if _, err := s.drive.requireActiveFolder(ctx, *parentID); err != nil {
+			s.markUploading(id)
+			return nil, err
+		}
 	}
 	finalName := u.Name
 	if existing, err := s.drive.FindActiveSibling(ctx, parentID, finalName); err != nil {
@@ -293,9 +327,19 @@ func (s *DriveUploadService) Complete(
 	return node, nil
 }
 
-// Cancel aborts a session and removes its chunks.
+// Cancel aborts a session and removes its chunks. It only operates on
+// 'uploading' sessions to avoid racing the assemble phase of Complete.
 func (s *DriveUploadService) Cancel(ctx context.Context, id string) error {
-	return s.deleteSession(id)
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM drive_uploads WHERE id = ? AND status = 'uploading'`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Either gone already, or in 'assembling' — leave Complete to finish.
+		return nil
+	}
+	return os.RemoveAll(s.chunksDir(id))
 }
 
 // PurgeExpired removes upload sessions past their expires_at.
@@ -355,6 +399,9 @@ func (s *DriveUploadService) assemble(u *models.DriveUpload, outPath string) (st
 func decodeMask(mask []byte, total int) []int {
 	out := make([]int, 0, total)
 	for i := 0; i < total; i++ {
+		if i/8 >= len(mask) {
+			break
+		}
 		if mask[i/8]&(1<<(i%8)) != 0 {
 			out = append(out, i)
 		}

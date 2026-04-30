@@ -216,8 +216,7 @@ func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAt
 		return
 	}
 	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
+	if _, err := f.Stat(); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -230,7 +229,6 @@ func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAt
 		fmt.Sprintf("%s; filename*=UTF-8''%s", disp, url.PathEscape(node.Name)))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, node.Name, time.UnixMilli(node.UpdatedAt), f)
-	_ = st
 }
 
 func (h *DriveHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
