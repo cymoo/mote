@@ -128,5 +128,15 @@
   "selectAll": "全选",
   "clearSelection": "取消选择",
   "in": "位于",
-  "back": "返回"
+  "back": "返回",
+  "sharedCount": "已分享 {0} 次 — 点击管理",
+  "sharedFiles": "已分享的文件",
+  "noActiveShares": "暂无活跃的分享链接",
+  "expires_short": "{0} 过期",
+  "expiresIn": "{0} 后过期",
+  "neverExpires": "永不过期",
+  "passwordProtected": "密码",
+  "openLink": "打开链接",
+  "revoke": "撤销",
+  "revokeConfirm": "确定要撤销该分享链接吗？"
 }

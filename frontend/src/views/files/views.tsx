@@ -7,7 +7,7 @@ import { Button } from '@/components/button.tsx'
 import { T, t } from '@/components/translation.tsx'
 
 import { DriveNode, humanSize } from './api'
-import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu } from './parts'
+import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu, ShareBadge } from './parts'
 
 type Lang = 'en' | 'zh'
 
@@ -148,6 +148,13 @@ const ListRow = memo(function ListRow({
           >
             {node.name}
           </button>
+          {!!node.share_count && (
+            <ShareBadge
+              count={node.share_count}
+              onClick={() => onAction('share', node)}
+              lang={lang}
+            />
+          )}
           {node.path !== undefined && (
             <PathChip
               path={node.path}
@@ -283,7 +290,16 @@ const GridCard = memo(function GridCard({
       <div className="flex size-14 shrink-0 items-center justify-center">
         <NodeIcon node={node} large />
       </div>
-      <div className="w-full truncate text-xs leading-4">{node.name}</div>
+      <div className="flex w-full min-w-0 items-center justify-center gap-1">
+        <span className="truncate text-xs leading-4">{node.name}</span>
+        {!!node.share_count && (
+          <ShareBadge
+            count={node.share_count}
+            onClick={() => onAction('share', node)}
+            lang={lang}
+          />
+        )}
+      </div>
       <div className="text-muted-foreground text-[10px] tabular-nums">
         {humanSize(node.size)}
       </div>

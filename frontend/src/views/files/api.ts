@@ -15,6 +15,9 @@ export interface DriveNode {
   // node's parents (e.g. "Photos/2024"). Empty string means the hit lives at
   // the drive root.
   path?: string
+  // Number of currently-active public shares for this node. Omitted by the
+  // server when zero — undefined / 0 means "not shared".
+  share_count?: number
 }
 
 export interface DriveBreadcrumb {

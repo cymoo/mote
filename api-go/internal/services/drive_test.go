@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cymoo/mote/internal/config"
 	"github.com/cymoo/mote/internal/models"
@@ -41,6 +42,16 @@ CREATE UNIQUE INDEX drive_nodes_unique_active
   ON drive_nodes(COALESCE(parent_id, 0), LOWER(name))
   WHERE deleted_at IS NULL;
 CREATE INDEX drive_nodes_parent ON drive_nodes(parent_id, deleted_at);
+CREATE TABLE drive_shares (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  node_id INTEGER NOT NULL REFERENCES drive_nodes(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  token_prefix TEXT NOT NULL,
+  password_hash TEXT,
+  expires_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX drive_shares_node ON drive_shares(node_id);
 `
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("schema: %v", err)
@@ -231,4 +242,76 @@ func TestDrive_SearchPopulatesPath(t *testing.T) {
 	if !sawLeaf || !sawRoot {
 		t.Fatalf("missing search hits: leaf=%v root=%v results=%+v", sawLeaf, sawRoot, out)
 	}
+}
+
+// List should populate ShareCount with the number of currently-active shares.
+func TestDrive_ListPopulatesShareCount(t *testing.T) {
+db, svc := setupDriveDB(t)
+ctx := context.Background()
+parent, _ := svc.CreateFolder(ctx, nil, "p")
+
+blob := filepath.Join("drive", "y.txt")
+_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("hi"), 0644)
+
+f, err := svc.CreateFileNode(ctx, &parent.ID, "doc.txt", blob, "", 2)
+if err != nil {
+t.Fatal(err)
+}
+
+now := int64(1_700_000_000_000)
+// 1 active (no expiry) + 1 active (future) + 1 expired
+_, _ = db.Exec(
+`INSERT INTO drive_shares (node_id, token_hash, token_prefix, expires_at, created_at) VALUES
+ (?, ?, ?, NULL, ?),
+ (?, ?, ?, ?, ?),
+ (?, ?, ?, ?, ?)`,
+f.ID, "h1", "h1", now,
+f.ID, "h2", "h2", time.Now().Add(time.Hour).UnixMilli(), now,
+f.ID, "h3", "h3", time.Now().Add(-time.Hour).UnixMilli(), now,
+)
+
+out, err := svc.List(ctx, &parent.ID, nil, "", "")
+if err != nil {
+t.Fatal(err)
+}
+var got int
+for _, n := range out {
+if n.ID == f.ID {
+got = n.ShareCount
+}
+}
+if got != 2 {
+t.Fatalf("ShareCount = %d, want 2", got)
+}
+}
+
+// Hard-deleting a node should cascade-delete its drive_shares rows.
+func TestDrive_PurgeCascadesShares(t *testing.T) {
+db, svc := setupDriveDB(t)
+ctx := context.Background()
+parent, _ := svc.CreateFolder(ctx, nil, "p")
+
+blob := filepath.Join("drive", "z.txt")
+_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("hi"), 0644)
+f, err := svc.CreateFileNode(ctx, &parent.ID, "z.txt", blob, "", 2)
+if err != nil {
+t.Fatal(err)
+}
+if _, err := db.Exec(
+`INSERT INTO drive_shares (node_id, token_hash, token_prefix, expires_at, created_at)
+ VALUES (?, 'tk', 'tk', NULL, 1)`, f.ID); err != nil {
+t.Fatal(err)
+}
+
+// Purge the parent folder; child file row + its share should be gone.
+if err := svc.Purge(ctx, []int64{parent.ID}); err != nil {
+t.Fatal(err)
+}
+var n int
+_ = db.Get(&n, `SELECT COUNT(*) FROM drive_shares`)
+if n != 0 {
+t.Fatalf("expected drive_shares empty after purge, got %d rows", n)
+}
 }

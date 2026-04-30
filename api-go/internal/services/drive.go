@@ -126,7 +126,52 @@ func (s *DriveService) List(ctx context.Context, parentID *int64, query *string,
 			return nil, err
 		}
 	}
+	if len(out) > 0 {
+		if err := s.populateShareCounts(ctx, out); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
+}
+
+// populateShareCounts fills DriveNode.ShareCount with the number of currently
+// active (non-expired) shares per file node. Folders always remain 0.
+func (s *DriveService) populateShareCounts(ctx context.Context, nodes []models.DriveNode) error {
+	ids := make([]int64, 0, len(nodes))
+	idx := make(map[int64]int, len(nodes))
+	for i, n := range nodes {
+		if n.Type != "file" {
+			continue
+		}
+		ids = append(ids, n.ID)
+		idx[n.ID] = i
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	q, args, err := sqlx.In(`
+SELECT node_id, COUNT(*) AS c FROM drive_shares
+WHERE node_id IN (?) AND (expires_at IS NULL OR expires_at > ?)
+GROUP BY node_id`, ids, time.Now().UnixMilli())
+	if err != nil {
+		return err
+	}
+	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(q), args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var nid int64
+		var c int
+		if err := rows.Scan(&nid, &c); err != nil {
+			return err
+		}
+		if i, ok := idx[nid]; ok {
+			nodes[i].ShareCount = c
+		}
+	}
+	return rows.Err()
 }
 
 // populatePaths fills DriveNode.Path with the slash-joined ancestor names

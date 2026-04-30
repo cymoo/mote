@@ -128,5 +128,15 @@
   "selectAll": "select all",
   "clearSelection": "clear selection",
   "in": "in",
-  "back": "back"
+  "back": "back",
+  "sharedCount": "{0} active share(s) — click to manage",
+  "sharedFiles": "shared files",
+  "noActiveShares": "no active shares",
+  "expires_short": "expires {0}",
+  "expiresIn": "expires in {0}",
+  "neverExpires": "never expires",
+  "passwordProtected": "password",
+  "openLink": "open link",
+  "revoke": "revoke",
+  "revokeConfirm": "revoke this share link?"
 }

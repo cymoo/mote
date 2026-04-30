@@ -380,6 +380,33 @@ function MenuItem({
   )
 }
 
+// ---------- share badge ----------
+
+export const ShareBadge = memo(function ShareBadge({
+  count,
+  onClick,
+  lang,
+}: {
+  count: number
+  onClick: () => void
+  lang: Lang
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      title={t('sharedCount', lang, true, String(count))}
+      aria-label={t('sharedCount', lang, true, String(count))}
+      className="text-primary hover:bg-primary/10 inline-flex size-5 shrink-0 items-center justify-center rounded-full transition-colors"
+    >
+      <Share2Icon className="size-3" />
+    </button>
+  )
+})
+
 // ---------- path chip (used by search results) ----------
 
 export const PathChip = memo(function PathChip({

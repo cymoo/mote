@@ -29,6 +29,10 @@ type DriveNode struct {
 	// itself), populated only by search responses so the UI can show the full
 	// directory structure of each hit. Empty for items at the drive root.
 	Path string `json:"path,omitempty" db:"-"`
+	// ShareCount is the number of currently-active (non-expired) public shares
+	// for this node. Populated only by directory/search listings; emitted only
+	// when > 0 so the frontend can show a "shared" badge.
+	ShareCount int `json:"share_count,omitempty" db:"-"`
 }
 
 // Ext returns the lower-cased filename extension (including the leading dot)
@@ -68,6 +72,16 @@ func (n DriveNode) MarshalJSON() ([]byte, error) {
 		Ext      *string `json:"ext"`
 		MimeType *string `json:"mime_type"`
 	}{alias(n), ext, mt})
+}
+
+// ShareWithNode bundles a share row with denormalised info about the file it
+// points to — used by the global "Shared" listing.
+type ShareWithNode struct {
+	DriveShare
+	Name string `json:"name" db:"name"`
+	Size int64  `json:"size" db:"size"`
+	Path string `json:"path" db:"-"`
+	URL  string `json:"url"`
 }
 
 // DriveUpload represents a resumable upload session.
