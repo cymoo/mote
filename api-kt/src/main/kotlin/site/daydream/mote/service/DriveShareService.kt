@@ -1,24 +1,24 @@
 package site.daydream.mote.service
 
-import org.springframework.dao.support.DataAccessUtils
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.jooq.DSLContext
+import org.jooq.Record
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.stereotype.Service
 import site.daydream.mote.exception.AuthenticationException
 import site.daydream.mote.exception.BadRequestException
 import site.daydream.mote.exception.GoneException
 import site.daydream.mote.exception.NotFoundException
+import site.daydream.mote.generated.Tables.DRIVE_SHARES
 import site.daydream.mote.model.DriveNode
 import site.daydream.mote.model.DriveShare
 import site.daydream.mote.model.ShareWithNode
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.sql.ResultSet
 import java.util.Base64
 
 @Service
 class DriveShareService(
-    private val jdbc: NamedParameterJdbcTemplate,
+    private val dsl: DSLContext,
     private val driveService: DriveService,
 ) {
     private val bcrypt = BCryptPasswordEncoder()
@@ -35,31 +35,31 @@ class DriveShareService(
         val exp = if (expiresAt != null && expiresAt > 0) expiresAt else null
         val now = System.currentTimeMillis()
 
-        val id = jdbc.queryForObject(
-            """
-            INSERT INTO drive_shares (node_id, token_hash, token_prefix, password_hash, expires_at, created_at)
-            VALUES (:nid, :h, :p, :pw, :exp, :now) RETURNING id
-            """.trimIndent(),
-            mapOf(
-                "nid" to nodeId, "h" to hash, "p" to prefix,
-                "pw" to pwHash, "exp" to exp, "now" to now,
-            ),
-            Long::class.java,
-        )!!
+        val id = dsl.insertInto(DRIVE_SHARES)
+            .set(DRIVE_SHARES.NODE_ID, nodeId)
+            .set(DRIVE_SHARES.TOKEN_HASH, hash)
+            .set(DRIVE_SHARES.TOKEN_PREFIX, prefix)
+            .set(DRIVE_SHARES.PASSWORD_HASH, pwHash)
+            .set(DRIVE_SHARES.EXPIRES_AT, exp)
+            .set(DRIVE_SHARES.CREATED_AT, now)
+            .returningResult(DRIVE_SHARES.ID)
+            .fetchOne()!!.value1()
         return findById(id) to token
     }
 
-    fun findById(id: Long): DriveShare = DataAccessUtils.singleResult(
-        jdbc.query("SELECT * FROM drive_shares WHERE id = :id", mapOf("id" to id), ::mapShare)
-    ) ?: throw NotFoundException("share not found")
+    fun findById(id: Long): DriveShare =
+        dsl.selectFrom(DRIVE_SHARES).where(DRIVE_SHARES.ID.eq(id)).fetchOne()
+            ?.let { mapShareRecord(it) }
+            ?: throw NotFoundException("share not found")
 
-    fun listByNode(nodeId: Long): List<DriveShare> = jdbc.query(
-        "SELECT * FROM drive_shares WHERE node_id = :nid ORDER BY created_at DESC",
-        mapOf("nid" to nodeId), ::mapShare,
-    )
+    fun listByNode(nodeId: Long): List<DriveShare> =
+        dsl.selectFrom(DRIVE_SHARES)
+            .where(DRIVE_SHARES.NODE_ID.eq(nodeId))
+            .orderBy(DRIVE_SHARES.CREATED_AT.desc())
+            .fetch { mapShareRecord(it) }
 
     fun revoke(id: Long) {
-        val n = jdbc.update("DELETE FROM drive_shares WHERE id = :id", mapOf("id" to id))
+        val n = dsl.deleteFrom(DRIVE_SHARES).where(DRIVE_SHARES.ID.eq(id)).execute()
         if (n == 0) throw NotFoundException("share not found")
     }
 
@@ -69,9 +69,9 @@ class DriveShareService(
         val hash = sha256Hex(token)
         val prefix = hash.substring(0, 8)
 
-        val candidates = jdbc.query(
-            "SELECT * FROM drive_shares WHERE token_prefix = :p", mapOf("p" to prefix), ::mapShare,
-        )
+        val candidates = dsl.selectFrom(DRIVE_SHARES)
+            .where(DRIVE_SHARES.TOKEN_PREFIX.eq(prefix))
+            .fetch { mapShareRecord(it) }
         val match = candidates.firstOrNull { constantTimeEquals(it.tokenHash, hash) }
             ?: throw NotFoundException("share not found")
 
@@ -92,6 +92,7 @@ class DriveShareService(
 
     fun listAll(includeExpired: Boolean): List<ShareWithNode> {
         val now = System.currentTimeMillis()
+        // Keep as raw SQL because of the JOIN across two tables with aliased columns.
         val sql = buildString {
             append(
                 """
@@ -101,23 +102,33 @@ class DriveShareService(
                 WHERE n.deleted_at IS NULL
                 """.trimIndent(),
             )
-            if (!includeExpired) append(" AND (s.expires_at IS NULL OR s.expires_at > :now)")
+            if (!includeExpired) append(" AND (s.expires_at IS NULL OR s.expires_at > ?)")
             append(" ORDER BY s.created_at DESC")
         }
-        val params = if (includeExpired) emptyMap<String, Any>() else mapOf("now" to now)
         data class Row(
             val share: DriveShare,
             val name: String,
             val size: Long,
             val parentId: Long?,
         )
-        val rows = jdbc.query(sql, params) { rs, _ ->
-            Row(
-                share = mapShare(rs, 0),
-                name = rs.getString("n_name"),
-                size = rs.getLong("n_size"),
-                parentId = rs.getObject("n_parent_id")?.let { (it as Number).toLong() },
-            )
+        val rows = if (includeExpired) {
+            dsl.resultQuery(sql).fetch { rec ->
+                Row(
+                    share = mapShareFromRawRecord(rec),
+                    name = rec.get("n_name", String::class.java),
+                    size = rec.get("n_size", Long::class.java),
+                    parentId = rec.get("n_parent_id", Long::class.javaObjectType),
+                )
+            }
+        } else {
+            dsl.resultQuery(sql, now).fetch { rec ->
+                Row(
+                    share = mapShareFromRawRecord(rec),
+                    name = rec.get("n_name", String::class.java),
+                    size = rec.get("n_size", Long::class.java),
+                    parentId = rec.get("n_parent_id", Long::class.javaObjectType),
+                )
+            }
         }
         val pathCache = HashMap<Long, String>()
         return rows.map { r ->
@@ -128,23 +139,33 @@ class DriveShareService(
         }
     }
 
-    fun purgeExpired(): Int = jdbc.update(
-        "DELETE FROM drive_shares WHERE expires_at IS NOT NULL AND expires_at <= :now",
-        mapOf("now" to System.currentTimeMillis()),
-    )
+    fun purgeExpired(): Int = dsl.deleteFrom(DRIVE_SHARES)
+        .where(DRIVE_SHARES.EXPIRES_AT.isNotNull)
+        .and(DRIVE_SHARES.EXPIRES_AT.lessOrEqual(System.currentTimeMillis()))
+        .execute()
 
     // ---------- helpers ----------
 
-    private fun mapShare(rs: ResultSet, @Suppress("UNUSED_PARAMETER") rowNum: Int): DriveShare =
-        DriveShare(
-            id = rs.getLong("id"),
-            nodeId = rs.getLong("node_id"),
-            tokenHash = rs.getString("token_hash"),
-            tokenPrefix = rs.getString("token_prefix"),
-            passwordHash = rs.getString("password_hash"),
-            expiresAt = rs.getObject("expires_at")?.let { (it as Number).toLong() },
-            createdAt = rs.getLong("created_at"),
-        )
+    private fun mapShareRecord(rec: Record): DriveShare = DriveShare(
+        id = rec.get(DRIVE_SHARES.ID)!!,
+        nodeId = rec.get(DRIVE_SHARES.NODE_ID)!!,
+        tokenHash = rec.get(DRIVE_SHARES.TOKEN_HASH)!!,
+        tokenPrefix = rec.get(DRIVE_SHARES.TOKEN_PREFIX)!!,
+        passwordHash = rec.get(DRIVE_SHARES.PASSWORD_HASH),
+        expiresAt = rec.get(DRIVE_SHARES.EXPIRES_AT),
+        createdAt = rec.get(DRIVE_SHARES.CREATED_AT)!!,
+    )
+
+    /** Maps a record from a raw JOIN query where share columns are not aliased. */
+    private fun mapShareFromRawRecord(rec: Record): DriveShare = DriveShare(
+        id = rec.get("id", Long::class.java),
+        nodeId = rec.get("node_id", Long::class.java),
+        tokenHash = rec.get("token_hash", String::class.java),
+        tokenPrefix = rec.get("token_prefix", String::class.java),
+        passwordHash = rec.get("password_hash", String::class.java),
+        expiresAt = rec.get("expires_at", Long::class.javaObjectType),
+        createdAt = rec.get("created_at", Long::class.java),
+    )
 
     private fun constantTimeEquals(a: String, b: String): Boolean {
         if (a.length != b.length) return false

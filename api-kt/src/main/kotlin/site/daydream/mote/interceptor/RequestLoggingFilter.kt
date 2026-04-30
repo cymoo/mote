@@ -9,7 +9,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.stereotype.Component
 import org.springframework.util.AntPathMatcher
 import org.springframework.web.filter.OncePerRequestFilter
-import org.springframework.web.util.ContentCachingResponseWrapper
 import kotlin.math.log10
 import kotlin.math.pow
 
@@ -51,19 +50,20 @@ class RequestLoggingFilter(
         filterChain: FilterChain
     ) {
         val startTime = System.nanoTime()
-        val responseWrapper = ContentCachingResponseWrapper(response)
-
         try {
-            filterChain.doFilter(request, responseWrapper)
+            filterChain.doFilter(request, response)
         } finally {
-            logRequest(request, responseWrapper, startTime)
-            responseWrapper.copyBodyToResponse()
+            // Skip access-log line on async-dispatch hand-off; a final pass will run
+            // when async completes (or for sync responses, this branch is the only pass).
+            if (!request.isAsyncStarted) {
+                logRequest(request, response, startTime)
+            }
         }
     }
 
     private fun logRequest(
         request: HttpServletRequest,
-        response: ContentCachingResponseWrapper,
+        response: HttpServletResponse,
         startTime: Long
     ) {
         val duration = System.nanoTime() - startTime
@@ -73,7 +73,9 @@ class RequestLoggingFilter(
         val remoteAddr = getRemoteAddress(request)
         val remotePort = request.remotePort
         val status = response.status
-        val contentLength = response.contentSize.toLong()
+        // For streaming/async responses we don't know the final body size at this point.
+        // Use the Content-Length header if present, else 0.
+        val contentLength = response.getHeader("Content-Length")?.toLongOrNull() ?: 0L
 
         val formattedSize = formatBytes(contentLength)
         val formattedDuration = formatDuration(duration)
