@@ -261,7 +261,6 @@ export function MyDrivePage() {
     'mod+ArrowUp': {
       run: () => goTo(parentOfCurrent),
       when: () => parentID != null,
-      desc: t('upOneLevel', lang),
     },
     enter: {
       run: () => {
@@ -271,7 +270,6 @@ export function MyDrivePage() {
         if (idx >= 0) open(items[idx], idx)
       },
       when: () => selected.size === 1,
-      desc: t('openSelected', lang),
     },
     escape: {
       run: () => {
@@ -286,26 +284,21 @@ export function MyDrivePage() {
         }
         if (selected.size > 0) clear()
       },
-      desc: t('clearSearchOrSelection', lang),
     },
     '/': {
       run: () => searchRef.current?.focus(),
-      desc: t('focusSearch', lang),
     },
     'mod+a': {
       run: () => toggleAll(),
       when: () => items.length > 0,
-      desc: t('selectAll', lang),
     },
     backspace: {
       run: () => handleDelete([...selected]),
       when: () => selected.size > 0,
-      desc: t('moveToTrashShort', lang),
     },
     delete: {
       run: () => handleDelete([...selected]),
       when: () => selected.size > 0,
-      desc: t('moveToTrashShort', lang),
     },
   })
 

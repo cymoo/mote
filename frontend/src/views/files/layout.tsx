@@ -5,14 +5,11 @@ import { NavLink, Outlet } from 'react-router'
 import { cx } from '@/utils/css.ts'
 
 import { Button } from '@/components/button.tsx'
-import { useModal } from '@/components/modal.tsx'
 import { useStableNavigate } from '@/components/router.tsx'
 import { T, t, useLang } from '@/components/translation.tsx'
 
 import { useCookieAuthSync } from './hooks'
-import { ShortcutsCheatsheet } from './shortcuts-cheatsheet'
 import { UploadDock } from './upload-dock'
-import { ShortcutsProvider, useShortcuts } from './use-shortcuts'
 
 type Lang = 'en' | 'zh'
 
@@ -20,29 +17,11 @@ export function FilesLayout() {
   useCookieAuthSync()
   const { lang } = useLang()
   return (
-    <ShortcutsProvider>
-      <div className="bg-background text-foreground flex h-screen flex-col">
-        <GlobalShortcuts lang={lang} />
-        <Outlet />
-        <UploadDock lang={lang} />
-      </div>
-    </ShortcutsProvider>
+    <div className="bg-background text-foreground flex h-screen flex-col">
+      <Outlet />
+      <UploadDock lang={lang} />
+    </div>
   )
-}
-
-function GlobalShortcuts({ lang }: { lang: Lang }) {
-  const modal = useModal()
-  const open = () => {
-    modal.open({
-      heading: t('shortcuts', lang),
-      headingVisible: true,
-      content: <ShortcutsCheatsheet lang={lang} />,
-    })
-  }
-  useShortcuts({
-    '?': { run: open, desc: t('shortcuts', lang) },
-  })
-  return null
 }
 
 // Sticky top header used by all three /files pages. Pages compose their own
