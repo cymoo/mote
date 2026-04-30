@@ -1,4 +1,9 @@
 pub mod auth_service;
+pub mod drive_service;
+pub mod drive_share_service;
+pub mod drive_thumb_service;
+pub mod drive_upload_service;
+pub mod drive_zip_service;
 pub mod post_service;
 pub mod redis_service;
 pub mod search_service;

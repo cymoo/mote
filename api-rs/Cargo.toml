@@ -55,4 +55,16 @@ futures-util = "0.3"
 
 jieba-rs = "0.7"
 
+# Drive feature
+bcrypt = "0.15"
+sha2 = "0.10"
+hex = "0.4"
+subtle = "2"
+async_zip = { version = "0.0.17", features = ["tokio", "deflate"] }
+rand = "0.8"
+base64 = "0.22"
+thiserror = "2"
+urlencoding = "2.1.3"
+
 [dev-dependencies]
+tempfile = "3"

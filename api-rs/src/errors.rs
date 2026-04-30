@@ -217,3 +217,33 @@ pub fn any_error(code: u16, error: &str, message: Option<&str>) -> ApiError {
         message: message.map(String::from),
     })
 }
+
+impl From<crate::service::drive_service::DriveError> for ApiError {
+    fn from(err: crate::service::drive_service::DriveError) -> Self {
+        use crate::service::drive_service::DriveError as D;
+        match err {
+            D::NotFound | D::UploadNotFound | D::ShareNotFound => {
+                ApiError::NotFound(err.to_string())
+            }
+            D::NameConflict => any_error(409, "Conflict", Some(&err.to_string())),
+            D::ShareExpired => any_error(410, "Gone", Some(&err.to_string())),
+            D::ShareWrongPassword => ApiError::Unauthorized(err.to_string()),
+            D::ShareNoPassword => ApiError::BadRequest(err.to_string()),
+            D::Cycle
+            | D::NotFolder
+            | D::InvalidName
+            | D::InvalidParent
+            | D::ShareInvalidNode
+            | D::NotImage
+            | D::UploadInvalidRequest
+            | D::UploadChunkSize
+            | D::UploadChunkOOR
+            | D::UploadIncomplete
+            | D::UploadFinalSize
+            | D::UploadTooLarge => ApiError::BadRequest(err.to_string()),
+            D::Io(e) => ApiError::ServerError(format!("io: {}", e)),
+            D::Sqlx(e) => ApiError::Sqlx(e),
+            D::Other(e) => ApiError::Anyhow(e),
+        }
+    }
+}
