@@ -204,7 +204,10 @@ class DriveController(
         shareService.listByNode(id).map { toShareDto(it, null, null) }
 
     @GetMapping("/shares/all")
-    fun listAllShares(@RequestParam(name = "include_expired", defaultValue = "false") includeExpired: Boolean):
+    fun listAllShares(
+        @RequestParam(name = "include_expired", defaultValue = "false") includeExpired: Boolean,
+        request: HttpServletRequest,
+    ):
             List<DriveSharedItemDto> = shareService.listAll(includeExpired).map {
         DriveSharedItemDto(
             id = it.share.id,
@@ -216,6 +219,7 @@ class DriveController(
             name = it.name,
             size = it.size,
             path = it.path,
+            url = it.share.storedToken?.let { token -> shareUrl(request, token) },
         )
     }
 

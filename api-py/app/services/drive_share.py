@@ -54,6 +54,7 @@ class ShareRow:
     node_id: int
     token_hash: str
     token_prefix: str
+    stored_token: Optional[str]
     password_hash: Optional[str]
     expires_at: Optional[int]
     created_at: int
@@ -65,6 +66,7 @@ class ShareRow:
             node_id=r.node_id,
             token_hash=r.token_hash,
             token_prefix=r.token_prefix,
+            stored_token=getattr(r, 'token', None),
             password_hash=r.password_hash,
             expires_at=r.expires_at,
             created_at=r.created_at,
@@ -130,13 +132,14 @@ class DriveShareService:
             new_id = db.session.execute(
                 text(
                     'INSERT INTO drive_shares '
-                    '(node_id, token_hash, token_prefix, password_hash, expires_at, created_at) '
-                    'VALUES (:nid, :h, :p, :pw, :exp, :now) RETURNING id'
+                    '(node_id, token_hash, token_prefix, token, password_hash, expires_at, created_at) '
+                    'VALUES (:nid, :h, :p, :token, :pw, :exp, :now) RETURNING id'
                 ),
                 {
                     'nid': node_id,
                     'h': token_hash,
                     'p': prefix,
+                    'token': token,
                     'pw': pw_hash,
                     'exp': expires_at if expires_at else None,
                     'now': now,
@@ -151,6 +154,7 @@ class DriveShareService:
             node_id=node_id,
             token_hash=token_hash,
             token_prefix=prefix,
+            stored_token=token,
             password_hash=pw_hash,
             expires_at=expires_at if expires_at else None,
             created_at=now,
@@ -211,6 +215,7 @@ class DriveShareService:
                     'name': r.node_name,
                     'size': r.node_size,
                     'path': path,
+                    'token': r.token,
                 }
             )
         return out

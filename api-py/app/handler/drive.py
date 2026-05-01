@@ -413,7 +413,12 @@ def list_shares(payload: DriveIdQuery):
 @drive_bp.get('/shares/all')
 @validate(type='query')
 def list_all_shares(payload: DriveSharesAllQuery):
-    return _share().list_all(payload.include_expired)
+    rows = _share().list_all(payload.include_expired)
+    for row in rows:
+        token = row.pop('token', None)
+        if token:
+            row['url'] = _share_url(token)
+    return rows
 
 
 @drive_bp.post('/share/revoke')

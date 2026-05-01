@@ -98,6 +98,7 @@ data class DriveShare(
     val nodeId: Long = 0,
     val tokenHash: String = "",
     val tokenPrefix: String = "",
+    val storedToken: String? = null,
     val passwordHash: String? = null,
     val expiresAt: Long? = null,
     val createdAt: Long = 0,
@@ -228,4 +229,6 @@ data class DriveSharedItemDto(
     val name: String,
     val size: Long,
     val path: String,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val url: String? = null,
 )

@@ -142,5 +142,9 @@
   "passwordProtected": "密码",
   "openLink": "打开链接",
   "revoke": "撤销",
-  "revokeConfirm": "确定要撤销该分享链接吗？"
+  "revokeConfirm": "确定要撤销该分享链接吗？",
+  "emptyTrash": "清空回收站",
+  "clearTrashConfirm": "永久删除回收站中的所有项目？此操作无法撤销。",
+  "viewShareLink": "查看分享链接",
+  "shareLinkUnavailable": "该分享创建于支持查看链接之前，无法还原原始链接。请撤销后重新创建分享链接。"
 }

@@ -446,6 +446,19 @@ class DriveService:
         if n.deleted_at is None:
             return
         if not n.delete_batch_id:
+            hit = db.session.execute(
+                text(
+                    'SELECT EXISTS('
+                    '  SELECT 1 FROM drive_nodes '
+                    '  WHERE COALESCE(parent_id, 0) = COALESCE(:pid, 0) '
+                    '    AND LOWER(name) = LOWER(:name) '
+                    '    AND deleted_at IS NULL'
+                    ')'
+                ),
+                {'pid': n.parent_id, 'name': n.name},
+            ).scalar()
+            if hit:
+                raise DriveNameConflict('name already exists in this folder')
             db.session.execute(
                 text(
                     'UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL '
@@ -457,41 +470,41 @@ class DriveService:
             return
 
         try:
-            roots = db.session.execute(
+            conflicts = db.session.execute(
                 text(
-                    'SELECT * FROM drive_nodes n '
-                    'WHERE n.delete_batch_id = :batch '
-                    '  AND ('
-                    '    n.parent_id IS NULL '
-                    '    OR NOT EXISTS ('
-                    '      SELECT 1 FROM drive_nodes p '
-                    '      WHERE p.id = n.parent_id '
-                    '        AND p.delete_batch_id = n.delete_batch_id'
-                    '    )'
+                    'WITH RECURSIVE subtree(id) AS ('
+                    '  SELECT id FROM drive_nodes WHERE id = :id AND deleted_at IS NOT NULL '
+                    '  UNION ALL '
+                    '  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id '
+                    '  WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = :batch'
+                    ') '
+                    'SELECT COUNT(*) FROM drive_nodes r '
+                    'WHERE r.id IN (SELECT id FROM subtree) '
+                    '  AND EXISTS ('
+                    '    SELECT 1 FROM drive_nodes a '
+                    '    WHERE COALESCE(a.parent_id, 0) = COALESCE(r.parent_id, 0) '
+                    '      AND LOWER(a.name) = LOWER(r.name) '
+                    '      AND a.deleted_at IS NULL '
+                    '      AND a.id NOT IN (SELECT id FROM subtree)'
                     '  )'
                 ),
-                {'batch': n.delete_batch_id},
-            ).all()
-            for r in roots:
-                hit = db.session.execute(
-                    text(
-                        'SELECT EXISTS('
-                        '  SELECT 1 FROM drive_nodes '
-                        '  WHERE COALESCE(parent_id, 0) = COALESCE(:pid, 0) '
-                        '    AND LOWER(name) = LOWER(:name) '
-                        '    AND deleted_at IS NULL'
-                        ')'
-                    ),
-                    {'pid': r.parent_id, 'name': r.name},
-                ).scalar()
-                if hit:
-                    raise DriveNameConflict('name already exists in this folder')
+                {'id': node_id, 'batch': n.delete_batch_id},
+            ).scalar()
+            if conflicts:
+                raise DriveNameConflict('name already exists in this folder')
+
             db.session.execute(
                 text(
+                    'WITH RECURSIVE subtree(id) AS ('
+                    '  SELECT id FROM drive_nodes WHERE id = :id AND deleted_at IS NOT NULL '
+                    '  UNION ALL '
+                    '  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id '
+                    '  WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = :batch'
+                    ') '
                     'UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL '
-                    'WHERE delete_batch_id = :batch'
+                    'WHERE id IN (SELECT id FROM subtree)'
                 ),
-                {'batch': n.delete_batch_id},
+                {'id': node_id, 'batch': n.delete_batch_id},
             )
             db.session.commit()
         except Exception:

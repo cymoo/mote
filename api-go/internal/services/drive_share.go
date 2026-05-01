@@ -35,7 +35,8 @@ func NewDriveShareService(db *sqlx.DB, drive *DriveService) *DriveShareService {
 	return &DriveShareService{db: db, drive: drive}
 }
 
-// Create issues a new share. The plaintext token is returned only once via DriveShare.Token.
+// Create issues a new share. The plaintext token is persisted so authenticated
+// owners can view/copy existing share links later.
 func (s *DriveShareService) Create(
 	ctx context.Context, nodeID int64, password *string, expiresAt *int64,
 ) (*models.DriveShare, error) {
@@ -71,9 +72,9 @@ func (s *DriveShareService) Create(
 	now := time.Now().UnixMilli()
 	var id int64
 	err = s.db.QueryRowxContext(ctx, `
-INSERT INTO drive_shares (node_id, token_hash, token_prefix, password_hash, expires_at, created_at)
-VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
-		nodeID, hash, prefix, pwHash, exp, now).Scan(&id)
+INSERT INTO drive_shares (node_id, token_hash, token_prefix, token, password_hash, expires_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+		nodeID, hash, prefix, token, pwHash, exp, now).Scan(&id)
 	if err != nil {
 		return nil, err
 	}

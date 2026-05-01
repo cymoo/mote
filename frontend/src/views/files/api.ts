@@ -179,6 +179,7 @@ export interface SharedItem {
   name: string
   size: number
   path: string
+  url?: string
 }
 
 export const listAllShares = (includeExpired = false) =>

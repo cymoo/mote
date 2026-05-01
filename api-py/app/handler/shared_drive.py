@@ -5,6 +5,8 @@ Mirrors api-go/internal/handlers/drive_share.go.
 from __future__ import annotations
 
 import os
+import hashlib
+import hmac
 from urllib.parse import quote
 
 from flask import (
@@ -49,9 +51,12 @@ _LANDING_HTML = r"""<!doctype html>
   h1 { font-size:18px; margin:0 0 4px; word-break:break-all; }
   p.size { color:#888; margin:0 0 24px; font-size:13px; }
   a.btn, button { display:inline-block; padding:10px 18px; border-radius:8px; background:#111;
-          color:#fff; text-decoration:none; border:0; cursor:pointer; font-size:14px; }
+           color:#fff; text-decoration:none; border:0; cursor:pointer; font-size:14px; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .preview { display:block; width:100%; max-height:60vh; margin:0 0 16px; border-radius:10px; background:#000; }
+  audio.preview { background:transparent; }
   input[type=password] { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px;
-          font-size:14px; box-sizing:border-box; margin-bottom:12px; }
+           font-size:14px; box-sizing:border-box; margin-bottom:12px; }
   form { margin-top:8px; }
   .meta { color:#666; font-size:13px; margin-top:18px; }
 </style>
@@ -66,7 +71,14 @@ _LANDING_HTML = r"""<!doctype html>
         <button type="submit">Unlock</button>
       </form>
     {% else %}
-      <a class="btn" href="/shared-files/{{ token }}/download">Download</a>
+      {% if mime_type.startswith('video/') %}
+        <video class="preview" src="/shared-files/{{ token }}/preview" controls preload="metadata"></video>
+      {% elif mime_type.startswith('audio/') %}
+        <audio class="preview" src="/shared-files/{{ token }}/preview" controls preload="metadata"></audio>
+      {% endif %}
+      <div class="actions">
+        <a class="btn" href="/shared-files/{{ token }}/download">Download</a>
+      </div>
     {% endif %}
     <p class="meta">Shared via Mote Drive</p>
   </div>
@@ -107,7 +119,19 @@ def _password_ok(share, token: str) -> bool:
     if share.password_hash is None:
         return True
     cookie = request.cookies.get(share_password_cookie_name(token))
-    return cookie == '1'
+    return bool(cookie) and hmac.compare_digest(
+        cookie, _share_password_cookie_value(share, token)
+    )
+
+
+def _share_password_cookie_value(share, token: str) -> str:
+    if share.password_hash is None:
+        abort(400, description='share has no password')
+    return hmac.new(
+        share.password_hash.encode(),
+        token.encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def _client_ip() -> str:
@@ -157,6 +181,7 @@ def landing(token: str):
         _LANDING_HTML,
         name=node.name,
         size=_human_size(node.size or 0),
+        mime_type=node.mime_type(),
         has_password=has_password,
         authed=authed,
         token=token,
@@ -174,7 +199,7 @@ def auth(token: str):
     resp = make_response(redirect(f'/shared-files/{token}', code=303))
     resp.set_cookie(
         share_password_cookie_name(token),
-        '1',
+        _share_password_cookie_value(share, token),
         path=f'/shared-files/{token}',
         max_age=60 * 60 * 24,
         httponly=True,

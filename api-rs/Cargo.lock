@@ -1816,6 +1816,7 @@ dependencies = [
  "futures",
  "futures-util",
  "hex",
+ "hmac",
  "image",
  "include_dir",
  "jieba-rs",

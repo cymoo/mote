@@ -79,9 +79,13 @@ function isTypingTarget(t: EventTarget | null): boolean {
 }
 
 export function useShortcuts(map: BindingMap) {
-  // Capture latest map in a ref so the effect doesn't re-bind every render.
-  const latest = useRef(map)
-  latest.current = map
+  // Capture latest pre-parsed bindings in a ref so the effect doesn't re-bind
+  // and keydown handling doesn't allocate on every keystroke.
+  const latest = useRef<{ parsed: Parsed; binding: Binding }[]>([])
+  latest.current = Object.entries(map).map(([spec, binding]) => ({
+    parsed: parseSpec(spec),
+    binding,
+  }))
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -89,14 +93,13 @@ export function useShortcuts(map: BindingMap) {
       // the keyboard.
       if (document.querySelector('[role="dialog"]')) return
       const typing = isTypingTarget(e.target)
-      for (const [spec, b] of Object.entries(latest.current)) {
-        const parsed = parseSpec(spec)
+      for (const { parsed, binding } of latest.current) {
         if (typing && parsed.key !== 'escape') continue
         if (!eventMatches(e, parsed)) continue
-        if (b.when && !b.when()) continue
+        if (binding.when && !binding.when()) continue
         e.preventDefault()
         e.stopPropagation()
-        b.run(e)
+        binding.run(e)
         return
       }
     }

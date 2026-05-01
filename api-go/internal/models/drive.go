@@ -106,6 +106,7 @@ type DriveShare struct {
 	NodeID       int64      `json:"node_id" db:"node_id"`
 	TokenHash    string     `json:"-" db:"token_hash"`
 	TokenPrefix  string     `json:"-" db:"token_prefix"`
+	StoredToken  NullString `json:"-" db:"token"`
 	PasswordHash NullString `json:"-" db:"password_hash"`
 	HasPassword  bool       `json:"has_password"`
 	ExpiresAt    NullInt64  `json:"expires_at" db:"expires_at"`

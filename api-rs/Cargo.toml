@@ -58,6 +58,7 @@ jieba-rs = "0.7"
 # Drive feature
 bcrypt = "0.15"
 sha2 = "0.10"
+hmac = "0.12"
 hex = "0.4"
 subtle = "2"
 async_zip = { version = "0.0.17", features = ["tokio", "deflate"] }

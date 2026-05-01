@@ -368,10 +368,6 @@ func (h *DriveHandler) RevokeShare(r *http.Request, body m.JSON[models.DriveShar
 	return http.StatusNoContent, nil
 }
 
-// sharedItemDTO is the row shape returned by /shares/all. The original public
-// URL is intentionally omitted: we only persist a hash of the token, so the
-// plaintext link is unrecoverable. The frontend surfaces this by offering
-// "revoke + create new link" rather than "copy link".
 type sharedItemDTO struct {
 	ID          int64  `json:"id"`
 	NodeID      int64  `json:"node_id"`
@@ -382,6 +378,7 @@ type sharedItemDTO struct {
 	Name        string `json:"name"`
 	Size        int64  `json:"size"`
 	Path        string `json:"path"`
+	URL         string `json:"url,omitempty"`
 }
 
 type sharesAllQuery struct {
@@ -404,6 +401,9 @@ func (h *DriveHandler) ListAllShares(r *http.Request, q m.Query[sharesAllQuery])
 			Name:        row.Name,
 			Size:        row.Size,
 			Path:        row.Path,
+		}
+		if row.StoredToken.Valid {
+			dto.URL = h.shareURL(r, row.StoredToken.String)
 		}
 		if row.ParentID.Valid {
 			v := row.ParentID.Int64
@@ -498,4 +498,3 @@ func writeDriveErr(w http.ResponseWriter, err error) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
 }
-

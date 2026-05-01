@@ -2,6 +2,10 @@ package handlers
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
@@ -66,12 +70,16 @@ func (h *DriveShareHandler) Landing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpl, _ := template.New("share").Parse(landingHTML)
+	mimeType := node.MimeType()
 	_ = tmpl.Execute(w, map[string]any{
 		"Name":        node.Name,
 		"Size":        humanSize(node.Size.Int64),
 		"HasPassword": share.HasPassword,
 		"Authed":      authed,
 		"Token":       token,
+		"MimeType":    mimeType,
+		"CanVideo":    strings.HasPrefix(mimeType, "video/"),
+		"CanAudio":    strings.HasPrefix(mimeType, "audio/"),
 	})
 }
 
@@ -95,10 +103,15 @@ func (h *DriveShareHandler) Auth(w http.ResponseWriter, r *http.Request) {
 		writeShareErr(w, err)
 		return
 	}
+	cookieValue, ok := sharePasswordCookieValue(share, token)
+	if !ok {
+		writeShareErr(w, services.ErrShareNoPassword)
+		return
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sharePasswordCookieName(token),
-		Value:    "1",
+		Value:    cookieValue,
 		Path:     "/shared-files/" + token,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
@@ -154,7 +167,11 @@ func (h *DriveShareHandler) passwordOK(r *http.Request, share *models.DriveShare
 		return true
 	}
 	c, err := r.Cookie(sharePasswordCookieName(token))
-	return err == nil && c.Value == "1"
+	if err != nil {
+		return false
+	}
+	want, ok := sharePasswordCookieValue(share, token)
+	return ok && subtle.ConstantTimeCompare([]byte(c.Value), []byte(want)) == 1
 }
 
 // rateLimit allows up to 10 attempts per 5 minutes per (token, IP).
@@ -176,6 +193,15 @@ func (h *DriveShareHandler) rateLimit(ctx context.Context, token, ip string) boo
 func sharePasswordCookieName(token string) string {
 	// Cookie names cannot contain certain chars; token is URL-safe base64.
 	return sharePasswordCookiePrefix + strings.NewReplacer("-", "_").Replace(token[:min(8, len(token))])
+}
+
+func sharePasswordCookieValue(share *models.DriveShare, token string) (string, bool) {
+	if !share.PasswordHash.Valid {
+		return "", false
+	}
+	mac := hmac.New(sha256.New, []byte(share.PasswordHash.String))
+	_, _ = mac.Write([]byte(token))
+	return hex.EncodeToString(mac.Sum(nil)), true
 }
 
 func writeShareErr(w http.ResponseWriter, err error) {
@@ -254,9 +280,12 @@ const landingHTML = `<!doctype html>
   h1 { font-size:18px; margin:0 0 4px; word-break:break-all; }
   p.size { color:#888; margin:0 0 24px; font-size:13px; }
   a.btn, button { display:inline-block; padding:10px 18px; border-radius:8px; background:#111;
-          color:#fff; text-decoration:none; border:0; cursor:pointer; font-size:14px; }
+           color:#fff; text-decoration:none; border:0; cursor:pointer; font-size:14px; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .preview { display:block; width:100%; max-height:60vh; margin:0 0 16px; border-radius:10px; background:#000; }
+  audio.preview { background:transparent; }
   input[type=password] { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px;
-          font-size:14px; box-sizing:border-box; margin-bottom:12px; }
+           font-size:14px; box-sizing:border-box; margin-bottom:12px; }
   form { margin-top:8px; }
   .meta { color:#666; font-size:13px; margin-top:18px; }
 </style>
@@ -271,7 +300,14 @@ const landingHTML = `<!doctype html>
         <button type="submit">Unlock</button>
       </form>
     {{else}}
-      <a class="btn" href="/shared-files/{{.Token}}/download">Download</a>
+      {{if .CanVideo}}
+        <video class="preview" src="/shared-files/{{.Token}}/preview" controls preload="metadata"></video>
+      {{else if .CanAudio}}
+        <audio class="preview" src="/shared-files/{{.Token}}/preview" controls preload="metadata"></audio>
+      {{end}}
+      <div class="actions">
+        <a class="btn" href="/shared-files/{{.Token}}/download">Download</a>
+      </div>
     {{end}}
     <p class="meta">Shared via Mote Drive</p>
   </div>

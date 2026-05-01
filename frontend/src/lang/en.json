@@ -142,5 +142,9 @@
   "passwordProtected": "password",
   "openLink": "open link",
   "revoke": "revoke",
-  "revokeConfirm": "revoke this share link?"
+  "revokeConfirm": "revoke this share link?",
+  "emptyTrash": "empty trash",
+  "clearTrashConfirm": "permanently delete everything in trash? This cannot be undone.",
+  "viewShareLink": "view share link",
+  "shareLinkUnavailable": "This share was created before link viewing was available. Revoke it and create a new share link to view or copy it here."
 }
