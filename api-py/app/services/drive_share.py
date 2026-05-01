@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import mimetypes
+import os
 import secrets
 from dataclasses import dataclass
 from typing import List, Optional
@@ -21,6 +23,25 @@ from .drive import DriveError, DriveNotFound, DriveService
 SHARE_TOKEN_BYTES = 32
 SHARE_TOKEN_PREFIX_LEN = 8
 SHARE_PASSWORD_COOKIE_PREFIX = 'drive_share_pw_'
+
+_MIME_STATIC: dict[str, str] = {
+    '.mp4': 'video/mp4', '.m4v': 'video/x-m4v', '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska',
+    '.wmv': 'video/x-ms-wmv', '.webm': 'video/webm',
+    '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
+    '.flac': 'audio/flac', '.wav': 'audio/wav',
+    '.ogg': 'audio/ogg', '.opus': 'audio/ogg',
+}
+
+
+def _mime_for_name(node_type: str, name: str) -> str:
+    """Compute MIME type from node type and filename. Mirrors DriveNodeRow.mime_type()."""
+    if node_type != 'file':
+        return ''
+    ext = os.path.splitext(name)[1].lower()
+    if ext in _MIME_STATIC:
+        return _MIME_STATIC[ext]
+    return mimetypes.guess_type(name)[0] or 'application/octet-stream'
 
 
 class ShareNotFound(DriveError):
@@ -180,7 +201,8 @@ class DriveShareService:
         q = (
             'SELECT s.*, n.name AS node_name, '
             '  COALESCE(n.size, 0) AS node_size, '
-            '  n.parent_id AS node_parent_id '
+            '  n.parent_id AS node_parent_id, '
+            '  n.type AS node_type '
             'FROM drive_shares s '
             'JOIN drive_nodes n ON n.id = s.node_id '
             'WHERE n.deleted_at IS NULL'
@@ -216,6 +238,8 @@ class DriveShareService:
                     'size': r.node_size,
                     'path': path,
                     'token': r.token,
+                    'node_type': r.node_type,
+                    'mime_type': _mime_for_name(r.node_type, r.node_name),
                 }
             )
         return out

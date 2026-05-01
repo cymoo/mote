@@ -34,7 +34,8 @@ interface BreadcrumbsProps {
   crumbs: DriveBreadcrumb[] | null
   onRoot: () => void
   onCrumb: (id: number) => void
-  isTrash: boolean
+  isTrash?: boolean
+  label?: string
   lang: Lang
 }
 
@@ -43,20 +44,20 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   onRoot,
   onCrumb,
   isTrash,
+  label,
   lang,
 }: BreadcrumbsProps) {
   return (
-    <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
+    <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:[mask-image:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
       <button
         type="button"
-        className="hover:bg-accent hover:text-accent-foreground inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 transition-colors"
+        className="hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md px-2 py-1 transition-colors"
         onClick={onRoot}
         title={t('myDrive', lang)}
       >
-        <FolderIcon className="size-3.5" />
         <T name="myDrive" />
       </button>
-      {!isTrash &&
+      {!isTrash && !label &&
         crumbs?.map((c, i) => {
           const last = i === crumbs.length - 1
           return (
@@ -78,11 +79,11 @@ export const Breadcrumbs = memo(function Breadcrumbs({
             </span>
           )
         })}
-      {isTrash && (
+      {(isTrash || label) && (
         <span className="flex shrink-0 items-center">
           <ChevronRightIcon className="size-3.5 opacity-60" />
           <span className="text-foreground rounded-md px-2 py-1 font-medium">
-            <T name="trash" />
+            {label ?? <T name="trash" />}
           </span>
         </span>
       )}

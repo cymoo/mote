@@ -10,6 +10,7 @@ import { useIsMobile } from './hooks'
 
 import { T, t, useLang } from '@/components/translation.tsx'
 
+import { NodeIcon } from './parts'
 import { DriveNode, previewURL } from './api'
 
 const isImage = (n: DriveNode | undefined) =>
@@ -188,8 +189,8 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
             e.stopPropagation()
             onDownload(node)
           }}
-          title="download"
-          aria-label="download"
+          title={t('download', lang)}
+          aria-label={t('download', lang)}
         >
           <DownloadIcon className="size-4" />
         </button>
@@ -197,8 +198,8 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
           type="button"
           className="hover:bg-white/20 rounded-full bg-white/10 p-2 text-white transition-colors"
           onClick={onClose}
-          title="close"
-          aria-label="close"
+          title={t('close', lang)}
+          aria-label={t('close', lang)}
         >
           <XIcon className="size-4" />
         </button>
@@ -309,7 +310,8 @@ function NoPreview({
   message?: string | null
 }) {
   return (
-    <div className="bg-card text-foreground border-border flex max-w-[90vw] flex-col items-center gap-3 rounded-lg border p-6 text-center shadow-xl">
+    <div className="bg-card text-foreground border-border flex w-80 max-w-[90vw] flex-col items-center gap-3 rounded-lg border p-6 text-center shadow-xl">
+      <NodeIcon node={node} large />
       <div className="text-sm font-medium break-all">{node.name}</div>
       {message !== null && (
         <div className="text-muted-foreground text-xs">

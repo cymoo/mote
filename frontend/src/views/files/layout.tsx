@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, FolderIcon, Share2Icon, Trash2Icon } from 'lucide-react'
+import { FolderIcon, HomeIcon, Share2Icon, Trash2Icon } from 'lucide-react'
 import { ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router'
 
@@ -54,11 +54,8 @@ export function TopBar({
           aria-label={t('back', lang)}
           title={t('back', lang)}
         >
-          <ArrowLeftIcon className="size-4" />
+          <HomeIcon className="size-4" />
         </Button>
-        <h1 className="text-base font-semibold tracking-tight">
-          <T name="files" />
-        </h1>
         <div className="ml-auto flex items-center gap-1.5 md:hidden">
           <FilesNavPills lang={lang} />
         </div>

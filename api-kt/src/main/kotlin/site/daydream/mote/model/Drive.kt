@@ -119,6 +119,7 @@ data class ShareWithNode(
     val size: Long,
     val parentId: Long?,
     val path: String,
+    val nodeType: String,
 )
 
 data class DriveBreadcrumb(
@@ -238,6 +239,9 @@ data class DriveSharedItemDto(
     val name: String,
     val size: Long,
     val path: String,
+    @JsonProperty("node_type") val nodeType: String,
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonProperty("mime_type") val mimeType: String? = null,
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val url: String? = null,
 )

@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -218,7 +218,7 @@ export const GridView = memo(function GridView({
   lang,
 }: GridViewProps) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 p-4">
+    <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {items.map((n, idx) => (
         <GridCard
           key={n.id}
@@ -453,6 +453,23 @@ export const EmptyState = memo(function EmptyState({
   )
 })
 
+// ---------- search empty state ----------
+
+export const SearchEmptyState = memo(function SearchEmptyState({
+  query,
+  lang,
+}: {
+  query: string
+  lang: Lang
+}) {
+  return (
+    <div className="text-muted-foreground flex h-full animate-[fadeIn_200ms_ease-out] flex-col items-center justify-center gap-3 text-sm">
+      <SearchIcon className="size-12 opacity-30" strokeWidth={1.25} />
+      <span>{t('searchNoResults', lang, true, query)}</span>
+    </div>
+  )
+})
+
 // ---------- shared view ----------
 
 function formatExpiry(expires_at: number | null, lang: Lang): string {
@@ -495,7 +512,20 @@ export const SharedView = memo(function SharedView({
               expired ? 'opacity-60' : undefined,
             )}
           >
-            <FileIcon className="text-muted-foreground size-5 shrink-0" />
+            <span className="shrink-0">
+              <NodeIcon
+                node={{
+                  id: s.node_id,
+                  parent_id: s.parent_id,
+                  type: s.node_type,
+                  name: s.name,
+                  size: s.size,
+                  mime_type: s.mime_type ?? null,
+                  created_at: s.created_at,
+                  updated_at: s.created_at,
+                }}
+              />
+            </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium">{s.name}</span>
@@ -516,7 +546,11 @@ export const SharedView = memo(function SharedView({
                   title={t('openFolder', lang)}
                 >
                   <FolderOpenIcon className="size-3 shrink-0" />
-                  <span className="min-w-0 truncate">{s.path || '/'}</span>
+                  <span className="min-w-0 truncate">
+                    {s.path
+                      ? `${t('myDrive', lang)} > ${s.path.replace(/\//g, ' > ')}`
+                      : t('myDrive', lang)}
+                  </span>
                 </button>
                 <span className="shrink-0 opacity-40">·</span>
                 <span className="shrink-0 whitespace-nowrap">{formatExpiry(s.expires_at, lang)}</span>

@@ -102,7 +102,8 @@ class DriveShareService(
         val sql = buildString {
             append(
                 """
-                SELECT s.*, n.name AS n_name, COALESCE(n.size, 0) AS n_size, n.parent_id AS n_parent_id
+                SELECT s.*, n.name AS n_name, COALESCE(n.size, 0) AS n_size,
+                       n.parent_id AS n_parent_id, n.type AS n_type
                 FROM drive_shares s
                 JOIN drive_nodes n ON n.id = s.node_id
                 WHERE n.deleted_at IS NULL
@@ -116,6 +117,7 @@ class DriveShareService(
             val name: String,
             val size: Long,
             val parentId: Long?,
+            val nodeType: String,
         )
         val rows = if (includeExpired) {
             dsl.resultQuery(sql).fetch { rec ->
@@ -124,6 +126,7 @@ class DriveShareService(
                     name = rec.get("n_name", String::class.java),
                     size = rec.get("n_size", Long::class.java),
                     parentId = rec.get("n_parent_id", Long::class.javaObjectType),
+                    nodeType = rec.get("n_type", String::class.java),
                 )
             }
         } else {
@@ -133,6 +136,7 @@ class DriveShareService(
                     name = rec.get("n_name", String::class.java),
                     size = rec.get("n_size", Long::class.java),
                     parentId = rec.get("n_parent_id", Long::class.javaObjectType),
+                    nodeType = rec.get("n_type", String::class.java),
                 )
             }
         }
@@ -141,7 +145,7 @@ class DriveShareService(
             val path = if (r.parentId == null) "" else pathCache.getOrPut(r.parentId) {
                 driveService.breadcrumbs(r.parentId).joinToString("/") { it.name }
             }
-            ShareWithNode(r.share, r.name, r.size, r.parentId, path)
+            ShareWithNode(r.share, r.name, r.size, r.parentId, path, r.nodeType)
         }
     }
 

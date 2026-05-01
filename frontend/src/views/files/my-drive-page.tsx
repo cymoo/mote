@@ -36,7 +36,7 @@ import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
 import { uploadManager } from './upload-manager'
 import { useShortcuts } from './use-shortcuts'
-import { EmptyState, GridView, ListView } from './views'
+import { EmptyState, GridView, ListView, SearchEmptyState } from './views'
 
 type ViewMode = 'list' | 'grid'
 
@@ -250,9 +250,12 @@ export function MyDrivePage() {
   }
 
   const downloadSelected = () => {
+    let delay = 0
     selected.forEach((id) => {
       const n = items.find((x) => x.id === id)
-      if (n) downloadOne(n)
+      if (!n) return
+      setTimeout(() => downloadOne(n), delay)
+      delay += 300
     })
   }
 
@@ -463,9 +466,13 @@ export function MyDrivePage() {
         )}
       </div>
 
-      <main className="flex-1 overflow-x-hidden overflow-y-auto">
+      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {items.length === 0 ? (
-          <EmptyState trash={false} lang={lang} />
+          query.trim() ? (
+            <SearchEmptyState query={query.trim()} lang={lang} />
+          ) : (
+            <EmptyState trash={false} lang={lang} />
+          )
         ) : view === 'list' ? (
           <ListView
             items={items}

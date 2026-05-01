@@ -180,6 +180,8 @@ export interface SharedItem {
   size: number
   path: string
   url?: string
+  node_type: 'file' | 'folder'
+  mime_type?: string
 }
 
 export const listAllShares = (includeExpired = false) =>

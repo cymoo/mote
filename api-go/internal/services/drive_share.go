@@ -189,7 +189,7 @@ func (s *DriveShareService) VerifyPassword(share *models.DriveShare, password st
 // soft-deleted are excluded — they are unreachable anyway.
 func (s *DriveShareService) ListAll(ctx context.Context, includeExpired bool) ([]models.ShareWithNode, error) {
 	q := `
-SELECT s.*, n.name AS name, COALESCE(n.size, 0) AS size, n.parent_id AS node_parent_id
+SELECT s.*, n.name AS name, COALESCE(n.size, 0) AS size, n.parent_id AS node_parent_id, n.type AS node_type
 FROM drive_shares s
 JOIN drive_nodes n ON n.id = s.node_id
 WHERE n.deleted_at IS NULL`
@@ -202,6 +202,7 @@ WHERE n.deleted_at IS NULL`
 		models.DriveShare
 		Name         string           `db:"name"`
 		Size         int64            `db:"size"`
+		NodeType     string           `db:"node_type"`
 		NodeParentID models.NullInt64 `db:"node_parent_id"`
 	}
 	var rows []row
@@ -241,6 +242,7 @@ WHERE n.deleted_at IS NULL`
 			DriveShare: r.DriveShare,
 			Name:       r.Name,
 			Size:       r.Size,
+			NodeType:   r.NodeType,
 			ParentID:   r.NodeParentID,
 			Path:       path,
 		})
