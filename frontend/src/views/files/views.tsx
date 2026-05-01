@@ -546,7 +546,11 @@ export const SharedView = memo(function SharedView({
                   title={t('openFolder', lang)}
                 >
                   <FolderOpenIcon className="size-3 shrink-0" />
-                  <span className="min-w-0 truncate">{s.path || '/'}</span>
+                  <span className="min-w-0 truncate">
+                    {s.path
+                      ? `${t('myDrive', lang)} > ${s.path.replace(/\//g, ' > ')}`
+                      : t('myDrive', lang)}
+                  </span>
                 </button>
                 <span className="shrink-0 opacity-40">·</span>
                 <span className="shrink-0 whitespace-nowrap">{formatExpiry(s.expires_at, lang)}</span>

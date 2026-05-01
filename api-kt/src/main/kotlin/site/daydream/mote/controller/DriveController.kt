@@ -219,6 +219,8 @@ class DriveController(
             name = it.name,
             size = it.size,
             path = it.path,
+            nodeType = it.nodeType,
+            mimeType = DriveNode(type = it.nodeType, name = it.name).mimeType,
             url = it.share.storedToken?.let { token -> shareUrl(request, token) },
         )
     }

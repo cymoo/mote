@@ -10,6 +10,7 @@ import { T, t, useLang } from '@/components/translation.tsx'
 
 import { SharedItem, listAllShares, revokeShare } from './api'
 import { TopBar } from './layout'
+import { Breadcrumbs } from './parts'
 import { EmptyState, SharedView } from './views'
 
 export function SharedPage() {
@@ -29,7 +30,18 @@ export function SharedPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <TopBar lang={lang} middle={<span className="text-sm font-medium"><T name="sharedFiles" /></span>} />
+      <TopBar
+        lang={lang}
+        middle={
+          <Breadcrumbs
+            crumbs={[]}
+            onRoot={() => void navigate('/files')}
+            onCrumb={() => {}}
+            label={t('sharedFiles', lang)}
+            lang={lang}
+          />
+        }
+      />
       <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {items.length === 0 ? (
           <EmptyState trash={false} shared lang={lang} />

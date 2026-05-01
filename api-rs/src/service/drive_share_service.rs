@@ -1,4 +1,4 @@
-use crate::model::drive::{DriveNode, DriveShareRow, DriveSharedItemDTO};
+use crate::model::drive::{ext_of, mime_for_ext, DriveNode, DriveShareRow, DriveSharedItemDTO};
 use crate::service::drive_service::{
     new_url_safe_token, sha256_hex, DriveError, DriveResult, DriveService,
 };
@@ -136,7 +136,8 @@ impl DriveShareService {
         let now = Utc::now().timestamp_millis();
         let sql_base = r#"
 SELECT s.id, s.node_id, s.token, s.password_hash, s.expires_at, s.created_at,
-       n.name AS name, COALESCE(n.size, 0) AS size, n.parent_id AS node_parent_id
+       n.name AS name, COALESCE(n.size, 0) AS size, n.parent_id AS node_parent_id,
+       n.type AS node_type
 FROM drive_shares s
 JOIN drive_nodes n ON n.id = s.node_id
 WHERE n.deleted_at IS NULL"#;
@@ -180,9 +181,15 @@ WHERE n.deleted_at IS NULL"#;
                 has_password: r.password_hash.is_some(),
                 expires_at: r.expires_at,
                 created_at: r.created_at,
-                name: r.name,
+                name: r.name.clone(),
                 size: r.size,
                 path,
+                node_type: r.node_type.clone(),
+                mime_type: if r.node_type == "file" {
+                    mime_for_ext(&ext_of(&r.name))
+                } else {
+                    String::new()
+                },
                 url: None,
                 token: r.token,
             });
@@ -213,4 +220,5 @@ struct ShareJoinRow {
     name: String,
     size: i64,
     node_parent_id: Option<i64>,
+    node_type: String,
 }

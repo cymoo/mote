@@ -34,7 +34,8 @@ interface BreadcrumbsProps {
   crumbs: DriveBreadcrumb[] | null
   onRoot: () => void
   onCrumb: (id: number) => void
-  isTrash: boolean
+  isTrash?: boolean
+  label?: string
   lang: Lang
 }
 
@@ -43,6 +44,7 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   onRoot,
   onCrumb,
   isTrash,
+  label,
   lang,
 }: BreadcrumbsProps) {
   return (
@@ -53,9 +55,9 @@ export const Breadcrumbs = memo(function Breadcrumbs({
         onClick={onRoot}
         title={t('myDrive', lang)}
       >
-        /
+        <T name="myDrive" />
       </button>
-      {!isTrash &&
+      {!isTrash && !label &&
         crumbs?.map((c, i) => {
           const last = i === crumbs.length - 1
           return (
@@ -77,11 +79,11 @@ export const Breadcrumbs = memo(function Breadcrumbs({
             </span>
           )
         })}
-      {isTrash && (
+      {(isTrash || label) && (
         <span className="flex shrink-0 items-center">
           <ChevronRightIcon className="size-3.5 opacity-60" />
           <span className="text-foreground rounded-md px-2 py-1 font-medium">
-            <T name="trash" />
+            {label ?? <T name="trash" />}
           </span>
         </span>
       )}

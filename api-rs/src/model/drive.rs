@@ -306,6 +306,9 @@ pub struct DriveSharedItemDTO {
     pub name: String,
     pub size: i64,
     pub path: String,
+    pub node_type: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub mime_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     #[serde(skip)]
