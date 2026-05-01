@@ -86,6 +86,7 @@ def upgrade():
     sa.Column('node_id', sa.Integer(), nullable=False),
     sa.Column('token_hash', sa.Text(), nullable=False),
     sa.Column('token_prefix', sa.Text(), nullable=False),
+    sa.Column('token', sa.Text(), nullable=True),
     sa.Column('password_hash', sa.Text(), nullable=True),
     sa.Column('expires_at', sa.BigInteger(), nullable=True),
     sa.Column('created_at', sa.BigInteger(), nullable=False),

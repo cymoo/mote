@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS drive_shares
   node_id       INTEGER NOT NULL,
   token_hash    TEXT    NOT NULL UNIQUE,
   token_prefix  TEXT    NOT NULL,
+  token         TEXT,
   password_hash TEXT,
   expires_at    BIGINT,
   created_at    BIGINT  NOT NULL,
