@@ -1,1 +1,1 @@
-ALTER TABLE drive_shares ADD COLUMN token TEXT;
+ALTER TABLE drive_shares ADD COLUMN token TEXT IF NOT EXISTS;

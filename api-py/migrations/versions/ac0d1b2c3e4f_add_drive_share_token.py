@@ -17,6 +17,11 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_cols = {c['name'] for c in inspector.get_columns('drive_shares')}
+    if 'token' in existing_cols:
+        return
     op.add_column('drive_shares', sa.Column('token', sa.Text(), nullable=True))
 
 
