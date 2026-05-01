@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { EraserIcon, InfoIcon } from 'lucide-react'
+import { useNavigate } from 'react-router'
 
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
@@ -8,6 +9,7 @@ import { t, T, useLang } from '@/components/translation.tsx'
 
 import { DriveNode, purgeNodes, restoreNode, trash } from './api'
 import { TopBar } from './layout'
+import { Breadcrumbs } from './parts'
 import { EmptyState, TrashView } from './views'
 
 export function TrashPage() {
@@ -15,6 +17,7 @@ export function TrashPage() {
   const confirm = useConfirm()
   const { lang } = useLang()
 
+  const navigate = useNavigate()
   const refresh = useCallback(async () => {
     setItems(await trash())
   }, [])
@@ -62,24 +65,33 @@ export function TrashPage() {
     <div className="flex flex-1 flex-col">
       <TopBar
         lang={lang}
-        extra={
-          items.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-muted-foreground hover:text-foreground"
-              onClick={handleClearTrash}
-              title={t('emptyTrash', lang)}
-            >
-              <EraserIcon className="size-4" />
-              <span className="hidden sm:inline">{t('emptyTrash', lang)}</span>
-            </Button>
-          )
+        middle={
+          <Breadcrumbs
+            crumbs={[]}
+            onRoot={() => void navigate('/files')}
+            onCrumb={() => {}}
+            isTrash
+            lang={lang}
+          />
         }
       />
       <div className="border-border/40 flex items-center gap-2 border-b px-4 py-2 text-xs text-muted-foreground">
         <InfoIcon className="size-3.5 shrink-0 opacity-60" />
-        <T name="driveTrashRetention" capitalized={false} />
+        <span className="flex-1">
+          <T name="driveTrashRetention" capitalized={false} />
+        </span>
+        {items.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-my-1 -mr-2 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={handleClearTrash}
+            title={t('emptyTrash', lang)}
+          >
+            <EraserIcon className="size-3.5" />
+            <T name="clear" />
+          </Button>
+        )}
       </div>
       <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {items.length === 0 ? (

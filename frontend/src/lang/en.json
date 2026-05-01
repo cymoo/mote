@@ -134,7 +134,7 @@
   "in": "in",
   "back": "back",
   "sharedCount": "{0} active share(s) — click to manage",
-  "sharedFiles": "shared files",
+  "sharedFiles": "shared",
   "noActiveShares": "no active shares",
   "expires_short": "expires {0}",
   "expiresIn": "expires in {0}",

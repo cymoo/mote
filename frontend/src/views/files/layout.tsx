@@ -56,9 +56,13 @@ export function TopBar({
         >
           <HomeIcon className="size-4" />
         </Button>
-        <h1 className="text-base font-semibold tracking-tight">
+        <button
+          type="button"
+          className="text-base font-semibold tracking-tight hover:text-primary transition-colors"
+          onClick={() => navigate('/files')}
+        >
           <T name="myDrive" />
-        </h1>
+        </button>
         <div className="ml-auto flex items-center gap-1.5 md:hidden">
           <FilesNavPills lang={lang} />
         </div>

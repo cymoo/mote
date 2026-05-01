@@ -106,6 +106,7 @@ type ShareWithNode struct {
 	DriveShare
 	Name     string    `json:"name" db:"name"`
 	Size     int64     `json:"size" db:"size"`
+	NodeType string    `json:"node_type" db:"-"`
 	ParentID NullInt64 `json:"parent_id" db:"-"`
 	Path     string    `json:"path" db:"-"`
 	URL      string    `json:"url"`

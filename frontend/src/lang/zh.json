@@ -134,7 +134,7 @@
   "in": "位于",
   "back": "返回",
   "sharedCount": "已分享 {0} 次 — 点击管理",
-  "sharedFiles": "已分享的文件",
+  "sharedFiles": "已分享",
   "noActiveShares": "暂无活跃的分享链接",
   "expires_short": "{0} 过期",
   "expiresIn": "{0} 后过期",

@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -512,7 +512,20 @@ export const SharedView = memo(function SharedView({
               expired ? 'opacity-60' : undefined,
             )}
           >
-            <FileIcon className="text-muted-foreground size-5 shrink-0" />
+            <span className="shrink-0">
+              <NodeIcon
+                node={{
+                  id: s.node_id,
+                  parent_id: s.parent_id,
+                  type: s.node_type,
+                  name: s.name,
+                  size: s.size,
+                  mime_type: s.mime_type ?? null,
+                  created_at: s.created_at,
+                  updated_at: s.created_at,
+                }}
+              />
+            </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium">{s.name}</span>

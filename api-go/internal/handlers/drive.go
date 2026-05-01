@@ -379,6 +379,8 @@ type sharedItemDTO struct {
 	Size        int64  `json:"size"`
 	Path        string `json:"path"`
 	URL         string `json:"url,omitempty"`
+	NodeType    string `json:"node_type"`
+	MimeType    string `json:"mime_type,omitempty"`
 }
 
 type sharesAllQuery struct {
@@ -401,7 +403,10 @@ func (h *DriveHandler) ListAllShares(r *http.Request, q m.Query[sharesAllQuery])
 			Name:        row.Name,
 			Size:        row.Size,
 			Path:        row.Path,
+			NodeType:    row.NodeType,
 		}
+		n := models.DriveNode{Type: row.NodeType, Name: row.Name}
+		dto.MimeType = n.MimeType()
 		if row.StoredToken.Valid {
 			dto.URL = h.shareURL(r, row.StoredToken.String)
 		}

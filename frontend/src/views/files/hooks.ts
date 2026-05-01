@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from 'react'
 
 import { uploadManager } from './upload-manager'
 
@@ -38,28 +38,27 @@ export function useSelection<T extends { id: number }>(items: readonly T[]) {
 
 // Sort ---------------------------------------------------------------------
 
+type SortState = { sortKey: SortKey; sortDir: SortDir }
+
+function sortReducer(state: SortState, key: SortKey): SortState {
+  if (key === state.sortKey) {
+    return { sortKey: key, sortDir: state.sortDir === 'asc' ? 'desc' : 'asc' }
+  }
+  return { sortKey: key, sortDir: 'asc' }
+}
+
 export function useSort() {
-  const [sortKey, setSortKey] = useState<SortKey>(
-    (localStorage.getItem(SORT_KEY_STORE) as SortKey) || 'name',
-  )
-  const [sortDir, setSortDir] = useState<SortDir>(
-    (localStorage.getItem(SORT_DIR_STORE) as SortDir) || 'asc',
-  )
+  const [{ sortKey, sortDir }, dispatch] = useReducer(sortReducer, {
+    sortKey: (localStorage.getItem(SORT_KEY_STORE) as SortKey) || 'name',
+    sortDir: (localStorage.getItem(SORT_DIR_STORE) as SortDir) || 'asc',
+  })
+
   useEffect(() => {
     localStorage.setItem(SORT_KEY_STORE, sortKey)
     localStorage.setItem(SORT_DIR_STORE, sortDir)
   }, [sortKey, sortDir])
 
-  const onSort = useCallback((k: SortKey) => {
-    setSortKey((cur) => {
-      if (k === cur) {
-        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-        return cur
-      }
-      setSortDir('asc')
-      return k
-    })
-  }, [])
+  const onSort = useCallback((k: SortKey) => dispatch(k), [])
 
   return { sortKey, sortDir, onSort }
 }
