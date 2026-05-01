@@ -406,10 +406,9 @@ WHERE id IN (SELECT id FROM subtree)`, id, now, batch, now)
 	return tx.Commit()
 }
 
-// Restore restores a node and all of its descendants that share the same delete_batch_id.
-// A batch may contain multiple roots (when SoftDelete was called with several ids);
-// we pre-check sibling-name conflicts for every root so the caller gets a clean
-// ErrDriveNameConflict instead of a low-level UNIQUE constraint error.
+// Restore restores a node and its descendants from trash. Multi-select deletes
+// can put several roots in one delete_batch_id; restoring one trash entry must
+// not resurrect its sibling roots from the same batch.
 func (s *DriveService) Restore(ctx context.Context, id int64) error {
 	n, err := s.FindByID(ctx, id)
 	if err != nil {
@@ -418,35 +417,13 @@ func (s *DriveService) Restore(ctx context.Context, id int64) error {
 	if !n.DeletedAt.Valid {
 		return nil
 	}
-	if !n.DeleteBatchID.Valid {
-		// Unknown batch — restore just this node.
-		_, err := s.db.ExecContext(ctx,
-			`UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE id = ?`, id)
-		return err
-	}
-
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// All deleted roots in this batch (i.e. nodes whose parent isn't part of the same batch).
-	var roots []models.DriveNode
-	err = tx.SelectContext(ctx, &roots, `
-SELECT * FROM drive_nodes n
-WHERE n.delete_batch_id = ?
-  AND (
-    n.parent_id IS NULL
-    OR NOT EXISTS (
-      SELECT 1 FROM drive_nodes p
-      WHERE p.id = n.parent_id AND p.delete_batch_id = n.delete_batch_id
-    )
-  )`, n.DeleteBatchID.String)
-	if err != nil {
-		return err
-	}
-	for _, r := range roots {
+	if !n.DeleteBatchID.Valid {
 		var hit int
 		err := tx.QueryRowxContext(ctx, `
 SELECT EXISTS(
@@ -454,17 +431,55 @@ SELECT EXISTS(
   WHERE COALESCE(parent_id, 0) = COALESCE(?, 0)
     AND LOWER(name) = LOWER(?)
     AND deleted_at IS NULL
-)`, r.ParentID, r.Name).Scan(&hit)
+)`, n.ParentID, n.Name).Scan(&hit)
 		if err != nil {
 			return err
 		}
 		if hit == 1 {
 			return ErrDriveNameConflict
 		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE id = ?`, id); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL
-		 WHERE delete_batch_id = ?`, n.DeleteBatchID.String); err != nil {
+
+	var conflicts int
+	err = tx.QueryRowxContext(ctx, `
+WITH RECURSIVE subtree(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NOT NULL
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = ?
+)
+SELECT COUNT(*)
+FROM drive_nodes r
+WHERE r.id IN (SELECT id FROM subtree)
+  AND EXISTS (
+    SELECT 1 FROM drive_nodes a
+    WHERE COALESCE(a.parent_id, 0) = COALESCE(r.parent_id, 0)
+      AND LOWER(a.name) = LOWER(r.name)
+      AND a.deleted_at IS NULL
+      AND a.id NOT IN (SELECT id FROM subtree)
+  )`, id, n.DeleteBatchID.String).Scan(&conflicts)
+	if err != nil {
+		return err
+	}
+	if conflicts > 0 {
+		return ErrDriveNameConflict
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+WITH RECURSIVE subtree(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NOT NULL
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = ?
+)
+UPDATE drive_nodes
+SET deleted_at = NULL, delete_batch_id = NULL
+WHERE id IN (SELECT id FROM subtree)`, id, n.DeleteBatchID.String); err != nil {
 		return err
 	}
 	return tx.Commit()

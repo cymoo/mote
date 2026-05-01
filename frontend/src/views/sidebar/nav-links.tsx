@@ -1,4 +1,4 @@
-import { CircleIcon, ExternalLinkIcon, FolderIcon, LayoutGrid as GridIcon, Share2Icon } from 'lucide-react'
+import { CircleIcon, ExternalLinkIcon, CloudUploadIcon, LayoutGrid as GridIcon, Share2Icon } from 'lucide-react'
 import { ComponentProps } from 'react'
 import { useSearchParams } from 'react-router'
 
@@ -83,7 +83,7 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
           window.toggleSidebar()
         }}
       >
-        <FolderIcon className="mr-3 size-5" aria-hidden="true" />
+        <CloudUploadIcon className="mr-3 size-5" aria-hidden="true" />
         <T name="files" />
       </Button>
     </nav>

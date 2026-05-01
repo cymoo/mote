@@ -49,12 +49,13 @@ impl DriveShareService {
         let exp = expires_at.filter(|v| *v > 0);
         let now = Utc::now().timestamp_millis();
         let id: i64 = sqlx::query_scalar(
-            "INSERT INTO drive_shares (node_id, token_hash, token_prefix, password_hash, expires_at, created_at)
-             VALUES (?, ?, ?, ?, ?, ?) RETURNING id",
+            "INSERT INTO drive_shares (node_id, token_hash, token_prefix, token, password_hash, expires_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
         )
         .bind(node_id)
         .bind(&hash)
         .bind(prefix)
+        .bind(&token)
         .bind(&pw_hash)
         .bind(exp)
         .bind(now)
@@ -65,7 +66,11 @@ impl DriveShareService {
             .fetch_one(&self.pool)
             .await?;
         let has_password = row.password_hash.is_some();
-        Ok(CreatedShare { row, token, has_password })
+        Ok(CreatedShare {
+            row,
+            token,
+            has_password,
+        })
     }
 
     pub async fn list_by_node(&self, node_id: i64) -> DriveResult<Vec<DriveShareRow>> {
@@ -95,12 +100,11 @@ impl DriveShareService {
         }
         let hash = sha256_hex(token);
         let prefix = &hash[..8];
-        let candidates = sqlx::query_as::<_, DriveShareRow>(
-            "SELECT * FROM drive_shares WHERE token_prefix = ?",
-        )
-        .bind(prefix)
-        .fetch_all(&self.pool)
-        .await?;
+        let candidates =
+            sqlx::query_as::<_, DriveShareRow>("SELECT * FROM drive_shares WHERE token_prefix = ?")
+                .bind(prefix)
+                .fetch_all(&self.pool)
+                .await?;
         let h_bytes = hash.as_bytes();
         let m = candidates
             .into_iter()
@@ -128,13 +132,10 @@ impl DriveShareService {
         }
     }
 
-    pub async fn list_all(
-        &self,
-        include_expired: bool,
-    ) -> DriveResult<Vec<DriveSharedItemDTO>> {
+    pub async fn list_all(&self, include_expired: bool) -> DriveResult<Vec<DriveSharedItemDTO>> {
         let now = Utc::now().timestamp_millis();
         let sql_base = r#"
-SELECT s.id, s.node_id, s.password_hash, s.expires_at, s.created_at,
+SELECT s.id, s.node_id, s.token, s.password_hash, s.expires_at, s.created_at,
        n.name AS name, COALESCE(n.size, 0) AS size, n.parent_id AS node_parent_id
 FROM drive_shares s
 JOIN drive_nodes n ON n.id = s.node_id
@@ -161,7 +162,11 @@ WHERE n.deleted_at IS NULL"#;
                     p.clone()
                 } else {
                     let bcs = self.drive.breadcrumbs(pid).await?;
-                    let p = bcs.into_iter().map(|b| b.name).collect::<Vec<_>>().join("/");
+                    let p = bcs
+                        .into_iter()
+                        .map(|b| b.name)
+                        .collect::<Vec<_>>()
+                        .join("/");
                     path_cache.insert(pid, p.clone());
                     p
                 }
@@ -178,6 +183,8 @@ WHERE n.deleted_at IS NULL"#;
                 name: r.name,
                 size: r.size,
                 path,
+                url: None,
+                token: r.token,
             });
         }
         Ok(out)
@@ -199,6 +206,7 @@ WHERE n.deleted_at IS NULL"#;
 struct ShareJoinRow {
     id: i64,
     node_id: i64,
+    token: Option<String>,
     password_hash: Option<String>,
     expires_at: Option<i64>,
     created_at: i64,

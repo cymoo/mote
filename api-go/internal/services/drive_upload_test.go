@@ -63,6 +63,7 @@ CREATE TABLE drive_shares (
   node_id INTEGER NOT NULL REFERENCES drive_nodes(id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL UNIQUE,
   token_prefix TEXT NOT NULL,
+  token TEXT,
   password_hash TEXT,
   expires_at INTEGER,
   created_at INTEGER NOT NULL
@@ -290,6 +291,9 @@ func TestShare_CreateAndResolve(t *testing.T) {
 	if sh.Token == "" {
 		t.Fatal("token not returned")
 	}
+	if !sh.StoredToken.Valid || sh.StoredToken.String != sh.Token {
+		t.Fatal("token should be stored for owner-visible share links")
+	}
 	if sh.HasPassword {
 		t.Fatal("should not require password")
 	}
@@ -402,43 +406,43 @@ func TestShare_ListByNode(t *testing.T) {
 // Complete must re-validate the parent folder; if it was soft-deleted between
 // Init and Complete, we should refuse rather than orphan the file.
 func TestUpload_CompleteRefusesDeletedParent(t *testing.T) {
-_, drive, upload, _ := setupDriveFullDB(t)
-ctx := context.Background()
-parent, _ := drive.CreateFolder(ctx, nil, "p")
+	_, drive, upload, _ := setupDriveFullDB(t)
+	ctx := context.Background()
+	parent, _ := drive.CreateFolder(ctx, nil, "p")
 
-body := []byte("payload")
-u, err := upload.Init(ctx, models.DriveUploadInitRequest{
-ParentID: &parent.ID, Name: "x.txt", Size: int64(len(body)), ChunkSize: 1 << 20,
-})
-if err != nil {
-t.Fatal(err)
-}
-if err := upload.PutChunk(ctx, u.ID, 0, bytes.NewReader(body)); err != nil {
-t.Fatal(err)
-}
-// Soft-delete the parent before completing.
-if err := drive.SoftDelete(ctx, []int64{parent.ID}); err != nil {
-t.Fatal(err)
-}
-if _, err := upload.Complete(ctx, u.ID, "ask"); !errors.Is(err, ErrDriveNotFound) {
-t.Fatalf("expected ErrDriveNotFound, got %v", err)
-}
+	body := []byte("payload")
+	u, err := upload.Init(ctx, models.DriveUploadInitRequest{
+		ParentID: &parent.ID, Name: "x.txt", Size: int64(len(body)), ChunkSize: 1 << 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := upload.PutChunk(ctx, u.ID, 0, bytes.NewReader(body)); err != nil {
+		t.Fatal(err)
+	}
+	// Soft-delete the parent before completing.
+	if err := drive.SoftDelete(ctx, []int64{parent.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := upload.Complete(ctx, u.ID, "ask"); !errors.Is(err, ErrDriveNotFound) {
+		t.Fatalf("expected ErrDriveNotFound, got %v", err)
+	}
 }
 
 // Concurrent chunk uploads of the same session must not deadlock with
 // SQLITE_BUSY. The test uses real disk + real connection pool to expose
 // the deferred-tx upgrade hazard fixed by BEGIN IMMEDIATE in PutChunk.
 func TestUpload_ConcurrentChunksNoBusy(t *testing.T) {
-t.Helper()
-dsn := "file:" + t.Name() + "?mode=memory&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(2000)&_pragma=journal_mode(WAL)"
-db, err := sqlx.Open("sqlite", dsn)
-if err != nil {
-t.Fatalf("open: %v", err)
-}
-t.Cleanup(func() { db.Close() })
-db.SetMaxOpenConns(8)
+	t.Helper()
+	dsn := "file:" + t.Name() + "?mode=memory&cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(2000)&_pragma=journal_mode(WAL)"
+	db, err := sqlx.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	db.SetMaxOpenConns(8)
 
-schema := `
+	schema := `
 CREATE TABLE drive_nodes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   parent_id INTEGER REFERENCES drive_nodes(id) ON DELETE CASCADE,
@@ -460,44 +464,44 @@ CREATE TABLE drive_shares (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   node_id INTEGER NOT NULL REFERENCES drive_nodes(id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL UNIQUE, token_prefix TEXT NOT NULL,
-  password_hash TEXT, expires_at INTEGER, created_at INTEGER NOT NULL
+  token TEXT, password_hash TEXT, expires_at INTEGER, created_at INTEGER NOT NULL
 );`
-if _, err := db.Exec(schema); err != nil {
-t.Fatalf("schema: %v", err)
-}
-tmp := t.TempDir()
-cfg := &config.UploadConfig{BaseURL: "/uploads", BasePath: tmp}
-drive := NewDriveService(db, cfg)
-upload := NewDriveUploadService(db, drive, cfg)
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+	tmp := t.TempDir()
+	cfg := &config.UploadConfig{BaseURL: "/uploads", BasePath: tmp}
+	drive := NewDriveService(db, cfg)
+	upload := NewDriveUploadService(db, drive, cfg)
 
-ctx := context.Background()
-const chunk = int64(1 << 20)
-const n = 16
-body := bytes.Repeat([]byte{'x'}, int(chunk)*n)
-u, err := upload.Init(ctx, models.DriveUploadInitRequest{
-Name: "concur.bin", Size: int64(len(body)), ChunkSize: chunk,
-})
-if err != nil {
-t.Fatal(err)
-}
+	ctx := context.Background()
+	const chunk = int64(1 << 20)
+	const n = 16
+	body := bytes.Repeat([]byte{'x'}, int(chunk)*n)
+	u, err := upload.Init(ctx, models.DriveUploadInitRequest{
+		Name: "concur.bin", Size: int64(len(body)), ChunkSize: chunk,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-errs := make(chan error, n)
-for i := 0; i < n; i++ {
-i := i
-go func() {
-start := int64(i) * chunk
-end := start + chunk
-errs <- upload.PutChunk(ctx, u.ID, i, bytes.NewReader(body[start:end]))
-}()
-}
-for i := 0; i < n; i++ {
-if err := <-errs; err != nil {
-t.Fatalf("chunk %d: %v", i, err)
-}
-}
-// After all chunks land, complete should succeed.
-if _, err := upload.Complete(ctx, u.ID, "ask"); err != nil {
-t.Fatalf("complete: %v", err)
-}
-_ = strings.ToUpper
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			start := int64(i) * chunk
+			end := start + chunk
+			errs <- upload.PutChunk(ctx, u.ID, i, bytes.NewReader(body[start:end]))
+		}()
+	}
+	for i := 0; i < n; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("chunk %d: %v", i, err)
+		}
+	}
+	// After all chunks land, complete should succeed.
+	if _, err := upload.Complete(ctx, u.ID, "ask"); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	_ = strings.ToUpper
 }

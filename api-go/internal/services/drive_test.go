@@ -47,6 +47,7 @@ CREATE TABLE drive_shares (
   node_id INTEGER NOT NULL REFERENCES drive_nodes(id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL UNIQUE,
   token_prefix TEXT NOT NULL,
+  token TEXT,
   password_hash TEXT,
   expires_at INTEGER,
   created_at INTEGER NOT NULL
@@ -246,296 +247,299 @@ func TestDrive_SearchPopulatesPath(t *testing.T) {
 
 // List should populate ShareCount with the number of currently-active shares.
 func TestDrive_ListPopulatesShareCount(t *testing.T) {
-db, svc := setupDriveDB(t)
-ctx := context.Background()
-parent, _ := svc.CreateFolder(ctx, nil, "p")
+	db, svc := setupDriveDB(t)
+	ctx := context.Background()
+	parent, _ := svc.CreateFolder(ctx, nil, "p")
 
-blob := filepath.Join("drive", "y.txt")
-_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
-_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("hi"), 0644)
+	blob := filepath.Join("drive", "y.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("hi"), 0644)
 
-f, err := svc.CreateFileNode(ctx, &parent.ID, "doc.txt", blob, "", 2)
-if err != nil {
-t.Fatal(err)
-}
+	f, err := svc.CreateFileNode(ctx, &parent.ID, "doc.txt", blob, "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-now := int64(1_700_000_000_000)
-// 1 active (no expiry) + 1 active (future) + 1 expired
-_, _ = db.Exec(
-`INSERT INTO drive_shares (node_id, token_hash, token_prefix, expires_at, created_at) VALUES
+	now := int64(1_700_000_000_000)
+	// 1 active (no expiry) + 1 active (future) + 1 expired
+	_, _ = db.Exec(
+		`INSERT INTO drive_shares (node_id, token_hash, token_prefix, expires_at, created_at) VALUES
  (?, ?, ?, NULL, ?),
  (?, ?, ?, ?, ?),
  (?, ?, ?, ?, ?)`,
-f.ID, "h1", "h1", now,
-f.ID, "h2", "h2", time.Now().Add(time.Hour).UnixMilli(), now,
-f.ID, "h3", "h3", time.Now().Add(-time.Hour).UnixMilli(), now,
-)
+		f.ID, "h1", "h1", now,
+		f.ID, "h2", "h2", time.Now().Add(time.Hour).UnixMilli(), now,
+		f.ID, "h3", "h3", time.Now().Add(-time.Hour).UnixMilli(), now,
+	)
 
-out, err := svc.List(ctx, &parent.ID, nil, "", "")
-if err != nil {
-t.Fatal(err)
-}
-var got int
-for _, n := range out {
-if n.ID == f.ID {
-got = n.ShareCount
-}
-}
-if got != 2 {
-t.Fatalf("ShareCount = %d, want 2", got)
-}
+	out, err := svc.List(ctx, &parent.ID, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got int
+	for _, n := range out {
+		if n.ID == f.ID {
+			got = n.ShareCount
+		}
+	}
+	if got != 2 {
+		t.Fatalf("ShareCount = %d, want 2", got)
+	}
 }
 
 // Hard-deleting a node should cascade-delete its drive_shares rows.
 func TestDrive_PurgeCascadesShares(t *testing.T) {
-db, svc := setupDriveDB(t)
-ctx := context.Background()
-parent, _ := svc.CreateFolder(ctx, nil, "p")
+	db, svc := setupDriveDB(t)
+	ctx := context.Background()
+	parent, _ := svc.CreateFolder(ctx, nil, "p")
 
-blob := filepath.Join("drive", "z.txt")
-_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
-_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("hi"), 0644)
-f, err := svc.CreateFileNode(ctx, &parent.ID, "z.txt", blob, "", 2)
-if err != nil {
-t.Fatal(err)
-}
-if _, err := db.Exec(
-`INSERT INTO drive_shares (node_id, token_hash, token_prefix, expires_at, created_at)
+	blob := filepath.Join("drive", "z.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("hi"), 0644)
+	f, err := svc.CreateFileNode(ctx, &parent.ID, "z.txt", blob, "", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO drive_shares (node_id, token_hash, token_prefix, expires_at, created_at)
  VALUES (?, 'tk', 'tk', NULL, 1)`, f.ID); err != nil {
-t.Fatal(err)
-}
+		t.Fatal(err)
+	}
 
-// Purge the parent folder; child file row + its share should be gone.
-if err := svc.Purge(ctx, []int64{parent.ID}); err != nil {
-t.Fatal(err)
-}
-var n int
-_ = db.Get(&n, `SELECT COUNT(*) FROM drive_shares`)
-if n != 0 {
-t.Fatalf("expected drive_shares empty after purge, got %d rows", n)
-}
+	// Purge the parent folder; child file row + its share should be gone.
+	if err := svc.Purge(ctx, []int64{parent.ID}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = db.Get(&n, `SELECT COUNT(*) FROM drive_shares`)
+	if n != 0 {
+		t.Fatalf("expected drive_shares empty after purge, got %d rows", n)
+	}
 }
 
 // ListAll returns every share joined with the file's name + path; expired
 // rows are filtered unless includeExpired is true. Shares whose underlying
 // file is soft-deleted are excluded.
 func TestDriveShare_ListAll(t *testing.T) {
-db, svc := setupDriveDB(t)
-ctx := context.Background()
-share := NewDriveShareService(db, svc)
+	db, svc := setupDriveDB(t)
+	ctx := context.Background()
+	share := NewDriveShareService(db, svc)
 
-parent, _ := svc.CreateFolder(ctx, nil, "outer")
-inner, _ := svc.CreateFolder(ctx, &parent.ID, "inner")
+	parent, _ := svc.CreateFolder(ctx, nil, "outer")
+	inner, _ := svc.CreateFolder(ctx, &parent.ID, "inner")
 
-mk := func(parentID *int64, name string) *models.DriveNode {
-blob := filepath.Join("drive", name)
-_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
-_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
-f, err := svc.CreateFileNode(ctx, parentID, name, blob, "", 1)
-if err != nil {
-t.Fatal(err)
-}
-return f
-}
-a := mk(&inner.ID, "a.txt")
-b := mk(nil, "b.txt")
-c := mk(nil, "c.txt") // will be soft-deleted
+	mk := func(parentID *int64, name string) *models.DriveNode {
+		blob := filepath.Join("drive", name)
+		_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+		_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+		f, err := svc.CreateFileNode(ctx, parentID, name, blob, "", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	a := mk(&inner.ID, "a.txt")
+	b := mk(nil, "b.txt")
+	c := mk(nil, "c.txt") // will be soft-deleted
 
-now := int64(1_700_000_000_000)
-future := time.Now().Add(time.Hour).UnixMilli()
-past := time.Now().Add(-time.Hour).UnixMilli()
-_, err := db.Exec(`INSERT INTO drive_shares
+	now := int64(1_700_000_000_000)
+	future := time.Now().Add(time.Hour).UnixMilli()
+	past := time.Now().Add(-time.Hour).UnixMilli()
+	_, err := db.Exec(`INSERT INTO drive_shares
 (node_id, token_hash, token_prefix, expires_at, created_at) VALUES
 (?, 'h1', 'h1', NULL,    ?),
 (?, 'h2', 'h2', ?,        ?),
 (?, 'h3', 'h3', ?,        ?),
 (?, 'h4', 'h4', NULL,    ?)`,
-a.ID, now,
-b.ID, future, now+1,
-b.ID, past, now+2, // expired
-c.ID, now+3,       // file will be soft-deleted
-)
-if err != nil {
-t.Fatal(err)
-}
-if err := svc.SoftDelete(ctx, []int64{c.ID}); err != nil {
-t.Fatal(err)
-}
+		a.ID, now,
+		b.ID, future, now+1,
+		b.ID, past, now+2, // expired
+		c.ID, now+3, // file will be soft-deleted
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SoftDelete(ctx, []int64{c.ID}); err != nil {
+		t.Fatal(err)
+	}
 
-rows, err := share.ListAll(ctx, false)
-if err != nil {
-t.Fatal(err)
-}
-if len(rows) != 2 {
-t.Fatalf("active rows = %d, want 2 (got %+v)", len(rows), rows)
-}
-// rows are ordered by created_at DESC: b (future) first, a second
-if rows[0].Name != "b.txt" || rows[0].Path != "" {
-t.Errorf("row0 = %+v", rows[0])
-}
-if rows[1].Name != "a.txt" || rows[1].Path != "outer/inner" {
-t.Errorf("row1 = %+v", rows[1])
-}
+	rows, err := share.ListAll(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("active rows = %d, want 2 (got %+v)", len(rows), rows)
+	}
+	// rows are ordered by created_at DESC: b (future) first, a second
+	if rows[0].Name != "b.txt" || rows[0].Path != "" {
+		t.Errorf("row0 = %+v", rows[0])
+	}
+	if rows[1].Name != "a.txt" || rows[1].Path != "outer/inner" {
+		t.Errorf("row1 = %+v", rows[1])
+	}
 
-all, err := share.ListAll(ctx, true)
-if err != nil {
-t.Fatal(err)
-}
-if len(all) != 3 { // includes expired b-share, excludes c (deleted file)
-t.Fatalf("all rows = %d, want 3", len(all))
-}
+	all, err := share.ListAll(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 { // includes expired b-share, excludes c (deleted file)
+		t.Fatalf("all rows = %d, want 3", len(all))
+	}
 }
 
 // PurgeExpired removes only rows with expires_at <= now.
 func TestDriveShare_PurgeExpired(t *testing.T) {
-db, svc := setupDriveDB(t)
-ctx := context.Background()
-share := NewDriveShareService(db, svc)
+	db, svc := setupDriveDB(t)
+	ctx := context.Background()
+	share := NewDriveShareService(db, svc)
 
-blob := filepath.Join("drive", "p.txt")
-_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
-_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
-f, err := svc.CreateFileNode(ctx, nil, "p.txt", blob, "", 1)
-if err != nil {
-t.Fatal(err)
-}
+	blob := filepath.Join("drive", "p.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+	f, err := svc.CreateFileNode(ctx, nil, "p.txt", blob, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-now := time.Now().UnixMilli()
-_, _ = db.Exec(`INSERT INTO drive_shares
+	now := time.Now().UnixMilli()
+	_, _ = db.Exec(`INSERT INTO drive_shares
 (node_id, token_hash, token_prefix, expires_at, created_at) VALUES
 (?, 'a', 'a', NULL,    ?),
 (?, 'b', 'b', ?,        ?),
 (?, 'c', 'c', ?,        ?)`,
-f.ID, now,
-f.ID, now-1, now,
-f.ID, now+3600_000, now,
-)
+		f.ID, now,
+		f.ID, now-1, now,
+		f.ID, now+3600_000, now,
+	)
 
-n, err := share.PurgeExpired(ctx)
-if err != nil {
-t.Fatal(err)
-}
-if n != 1 {
-t.Fatalf("purged = %d, want 1", n)
-}
-var left int
-_ = db.Get(&left, `SELECT COUNT(*) FROM drive_shares`)
-if left != 2 {
-t.Fatalf("remaining = %d, want 2", left)
-}
+	n, err := share.PurgeExpired(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("purged = %d, want 1", n)
+	}
+	var left int
+	_ = db.Get(&left, `SELECT COUNT(*) FROM drive_shares`)
+	if left != 2 {
+		t.Fatalf("remaining = %d, want 2", left)
+	}
 }
 
 // LIKE wildcard escape: a query of "_" must not match every name.
 func TestDrive_SearchEscapesLikeWildcards(t *testing.T) {
-_, svc := setupDriveDB(t)
-ctx := context.Background()
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
 
-if _, err := svc.CreateFolder(ctx, nil, "alpha"); err != nil {
-t.Fatal(err)
-}
-if _, err := svc.CreateFolder(ctx, nil, "with_underscore"); err != nil {
-t.Fatal(err)
-}
+	if _, err := svc.CreateFolder(ctx, nil, "alpha"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateFolder(ctx, nil, "with_underscore"); err != nil {
+		t.Fatal(err)
+	}
 
-q := "_"
-rows, err := svc.List(ctx, nil, &q, "name", "asc")
-if err != nil {
-t.Fatal(err)
-}
-if len(rows) != 1 || rows[0].Name != "with_underscore" {
-t.Fatalf("expected 1 underscore match, got %+v", rows)
-}
+	q := "_"
+	rows, err := svc.List(ctx, nil, &q, "name", "asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Name != "with_underscore" {
+		t.Fatalf("expected 1 underscore match, got %+v", rows)
+	}
 
-q = "%"
-rows, err = svc.List(ctx, nil, &q, "name", "asc")
-if err != nil {
-t.Fatal(err)
-}
-if len(rows) != 0 {
-t.Fatalf("percent should match nothing, got %+v", rows)
-}
+	q = "%"
+	rows, err = svc.List(ctx, nil, &q, "name", "asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("percent should match nothing, got %+v", rows)
+	}
 }
 
 // Search does not require parentID to be valid.
 func TestDrive_SearchIgnoresParent(t *testing.T) {
-_, svc := setupDriveDB(t)
-ctx := context.Background()
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
 
-if _, err := svc.CreateFolder(ctx, nil, "alpha"); err != nil {
-t.Fatal(err)
-}
-bogus := int64(9999)
-q := "alpha"
-rows, err := svc.List(ctx, &bogus, &q, "name", "asc")
-if err != nil {
-t.Fatalf("search with stale parent should not error: %v", err)
-}
-if len(rows) != 1 {
-t.Fatalf("got %d rows", len(rows))
-}
-}
-
-// Restore must check name conflicts for *every* root in the batch, and surface
-// ErrDriveNameConflict instead of a low-level UNIQUE error.
-func TestDrive_RestoreMultiRootConflict(t *testing.T) {
-_, svc := setupDriveDB(t)
-ctx := context.Background()
-
-a, _ := svc.CreateFolder(ctx, nil, "a")
-b, _ := svc.CreateFolder(ctx, nil, "b")
-if err := svc.SoftDelete(ctx, []int64{a.ID, b.ID}); err != nil {
-t.Fatal(err)
-}
-// Recreate "a" so restoring the batch will collide on b's sibling? No —
-// the conflict must be on one of the deleted roots' own name. Recreate "a":
-if _, err := svc.CreateFolder(ctx, nil, "a"); err != nil {
-t.Fatal(err)
+	if _, err := svc.CreateFolder(ctx, nil, "alpha"); err != nil {
+		t.Fatal(err)
+	}
+	bogus := int64(9999)
+	q := "alpha"
+	rows, err := svc.List(ctx, &bogus, &q, "name", "asc")
+	if err != nil {
+		t.Fatalf("search with stale parent should not error: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows", len(rows))
+	}
 }
 
-// Even though the user asks to restore via b.ID (the non-conflicting root),
-// the whole batch would resurrect both, so the conflict on "a" must be caught.
-err := svc.Restore(ctx, b.ID)
-if !errors.Is(err, ErrDriveNameConflict) {
-t.Fatalf("expected ErrDriveNameConflict, got %v", err)
-}
+// Restoring one trash root from a multi-select delete must not restore or be
+// blocked by sibling roots from the same delete batch.
+func TestDrive_RestoreMultiRootOnlyRestoresRequestedRoot(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	a, _ := svc.CreateFolder(ctx, nil, "a")
+	b, _ := svc.CreateFolder(ctx, nil, "b")
+	if err := svc.SoftDelete(ctx, []int64{a.ID, b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateFolder(ctx, nil, "a"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Restore(ctx, b.ID); err != nil {
+		t.Fatalf("restore b: %v", err)
+	}
+	gotB, _ := svc.FindByID(ctx, b.ID)
+	if gotB.DeletedAt.Valid {
+		t.Fatal("requested root b is still deleted")
+	}
+	gotA, _ := svc.FindByID(ctx, a.ID)
+	if !gotA.DeletedAt.Valid {
+		t.Fatal("sibling root a should remain in trash")
+	}
 }
 
 // AutoRename picks max(N)+1 in a single pass (skips deleted and case-insens).
 func TestDrive_AutoRenameSkipsDeleted(t *testing.T) {
-_, svc := setupDriveDB(t)
-ctx := context.Background()
-parent, _ := svc.CreateFolder(ctx, nil, "p")
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+	parent, _ := svc.CreateFolder(ctx, nil, "p")
 
-mk := func(name string) int64 {
-blob := filepath.Join("drive", name)
-_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
-_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
-n, err := svc.CreateFileNode(ctx, &parent.ID, name, blob, "", 1)
-if err != nil {
-t.Fatal(err)
-}
-return n.ID
-}
-mk("report.pdf")
-mk("report (1).pdf")
-id3 := mk("report (3).pdf")
+	mk := func(name string) int64 {
+		blob := filepath.Join("drive", name)
+		_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+		_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+		n, err := svc.CreateFileNode(ctx, &parent.ID, name, blob, "", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.ID
+	}
+	mk("report.pdf")
+	mk("report (1).pdf")
+	id3 := mk("report (3).pdf")
 
-cand, err := svc.AutoRename(ctx, &parent.ID, "report.pdf")
-if err != nil {
-t.Fatal(err)
-}
-if cand != "report (4).pdf" {
-t.Fatalf("expected report (4).pdf, got %q", cand)
-}
-// Soft-delete the (3) and try again — should drop back to (2).
-if err := svc.SoftDelete(ctx, []int64{id3}); err != nil {
-t.Fatal(err)
-}
-cand, err = svc.AutoRename(ctx, &parent.ID, "report.pdf")
-if err != nil {
-t.Fatal(err)
-}
-if cand != "report (2).pdf" {
-t.Fatalf("after soft-delete expected report (2).pdf, got %q", cand)
-}
+	cand, err := svc.AutoRename(ctx, &parent.ID, "report.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cand != "report (4).pdf" {
+		t.Fatalf("expected report (4).pdf, got %q", cand)
+	}
+	// Soft-delete the (3) and try again — should drop back to (2).
+	if err := svc.SoftDelete(ctx, []int64{id3}); err != nil {
+		t.Fatal(err)
+	}
+	cand, err = svc.AutoRename(ctx, &parent.ID, "report.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cand != "report (2).pdf" {
+		t.Fatalf("after soft-delete expected report (2).pdf, got %q", cand)
+	}
 }

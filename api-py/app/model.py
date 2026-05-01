@@ -538,6 +538,7 @@ class DriveShare(db.Model):
     )
     token_hash = db.Column(db.Text, nullable=False, unique=True)
     token_prefix = db.Column(db.Text, nullable=False)
+    token = db.Column(db.Text, nullable=True)
     password_hash = db.Column(db.Text, nullable=True)
     expires_at = db.Column(db.BigInteger, nullable=True)
     created_at = db.Column(db.BigInteger, nullable=False)

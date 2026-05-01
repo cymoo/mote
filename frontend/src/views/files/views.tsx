@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, RotateCcwIcon, Share2Icon, Trash2Icon, UploadIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, Share2Icon, Trash2Icon, UploadIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -466,6 +466,7 @@ function formatExpiry(expires_at: number | null, lang: Lang): string {
 interface SharedViewProps {
   items: SharedItem[]
   onOpenLocation: (parentID: number | null) => void
+  onViewLink: (item: SharedItem) => void
   onRevoke: (shareID: number) => void | Promise<void>
   lang: Lang
 }
@@ -473,6 +474,7 @@ interface SharedViewProps {
 export const SharedView = memo(function SharedView({
   items,
   onOpenLocation,
+  onViewLink,
   onRevoke,
   lang,
 }: SharedViewProps) {
@@ -517,6 +519,18 @@ export const SharedView = memo(function SharedView({
                 <span>{formatExpiry(s.expires_at, lang)}</span>
               </div>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onViewLink(s)}
+              title={t('viewShareLink', lang)}
+              aria-label={t('viewShareLink', lang)}
+            >
+              <LinkIcon className="size-4 md:mr-1" />
+              <span className="hidden md:inline">
+                <T name="openLink" />
+              </span>
+            </Button>
             <Button
               variant="ghost"
               size="sm"

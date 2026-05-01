@@ -294,22 +294,17 @@ SELECT id, name FROM chain ORDER BY depth DESC"#,
         Ok(())
     }
 
-    pub async fn move_nodes(
-        &self,
-        ids: &[i64],
-        new_parent_id: Option<i64>,
-    ) -> DriveResult<()> {
+    pub async fn move_nodes(&self, ids: &[i64], new_parent_id: Option<i64>) -> DriveResult<()> {
         if ids.is_empty() {
             return Ok(());
         }
         let mut tx = self.pool.begin().await?;
         if let Some(pid) = new_parent_id {
-            let row: Option<(String, Option<i64>)> = sqlx::query_as(
-                "SELECT type, deleted_at FROM drive_nodes WHERE id = ?",
-            )
-            .bind(pid)
-            .fetch_optional(&mut *tx)
-            .await?;
+            let row: Option<(String, Option<i64>)> =
+                sqlx::query_as("SELECT type, deleted_at FROM drive_nodes WHERE id = ?")
+                    .bind(pid)
+                    .fetch_optional(&mut *tx)
+                    .await?;
             let (typ, del) = row.ok_or(DriveError::InvalidParent)?;
             if del.is_some() {
                 return Err(DriveError::InvalidParent);
@@ -392,31 +387,6 @@ WHERE id IN (SELECT id FROM subtree)"#,
             return Ok(());
         }
         let Some(batch) = n.delete_batch_id.clone() else {
-            sqlx::query(
-                "UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE id = ?",
-            )
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-            return Ok(());
-        };
-        let mut tx = self.pool.begin().await?;
-        let roots = sqlx::query_as::<_, DriveNodeRow>(
-            r#"
-SELECT * FROM drive_nodes n
-WHERE n.delete_batch_id = ?
-  AND (
-    n.parent_id IS NULL
-    OR NOT EXISTS (
-      SELECT 1 FROM drive_nodes p
-      WHERE p.id = n.parent_id AND p.delete_batch_id = n.delete_batch_id
-    )
-  )"#,
-        )
-        .bind(&batch)
-        .fetch_all(&mut *tx)
-        .await?;
-        for r in roots {
             let hit: i64 = sqlx::query_scalar(
                 r#"
 SELECT EXISTS(
@@ -426,17 +396,61 @@ SELECT EXISTS(
     AND deleted_at IS NULL
 )"#,
             )
-            .bind(r.parent_id)
-            .bind(&r.name)
-            .fetch_one(&mut *tx)
+            .bind(n.parent_id)
+            .bind(&n.name)
+            .fetch_one(&self.pool)
             .await?;
             if hit == 1 {
                 return Err(DriveError::NameConflict);
             }
+            sqlx::query(
+                "UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE id = ?",
+            )
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+            return Ok(());
+        };
+        let mut tx = self.pool.begin().await?;
+        let conflicts: i64 = sqlx::query_scalar(
+            r#"
+WITH RECURSIVE subtree(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NOT NULL
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = ?
+)
+SELECT COUNT(*)
+FROM drive_nodes r
+WHERE r.id IN (SELECT id FROM subtree)
+  AND EXISTS (
+    SELECT 1 FROM drive_nodes a
+    WHERE COALESCE(a.parent_id, 0) = COALESCE(r.parent_id, 0)
+      AND LOWER(a.name) = LOWER(r.name)
+      AND a.deleted_at IS NULL
+      AND a.id NOT IN (SELECT id FROM subtree)
+  )"#,
+        )
+        .bind(id)
+        .bind(&batch)
+        .fetch_one(&mut *tx)
+        .await?;
+        if conflicts > 0 {
+            return Err(DriveError::NameConflict);
         }
         sqlx::query(
-            "UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE delete_batch_id = ?",
+            r#"
+WITH RECURSIVE subtree(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NOT NULL
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = ?
+)
+UPDATE drive_nodes
+SET deleted_at = NULL, delete_batch_id = NULL
+WHERE id IN (SELECT id FROM subtree)"#,
         )
+        .bind(id)
         .bind(&batch)
         .execute(&mut *tx)
         .await?;
@@ -646,11 +660,7 @@ SELECT id, type, name, blob_path, rel_path FROM subtree"#,
         Ok(row.map(DriveNode::from_row))
     }
 
-    pub async fn auto_rename(
-        &self,
-        parent_id: Option<i64>,
-        name: &str,
-    ) -> DriveResult<String> {
+    pub async fn auto_rename(&self, parent_id: Option<i64>, name: &str) -> DriveResult<String> {
         if self.find_active_sibling(parent_id, name).await?.is_none() {
             return Ok(name.to_string());
         }

@@ -35,15 +35,21 @@ class DriveShareService(
         val exp = if (expiresAt != null && expiresAt > 0) expiresAt else null
         val now = System.currentTimeMillis()
 
-        val id = dsl.insertInto(DRIVE_SHARES)
-            .set(DRIVE_SHARES.NODE_ID, nodeId)
-            .set(DRIVE_SHARES.TOKEN_HASH, hash)
-            .set(DRIVE_SHARES.TOKEN_PREFIX, prefix)
-            .set(DRIVE_SHARES.PASSWORD_HASH, pwHash)
-            .set(DRIVE_SHARES.EXPIRES_AT, exp)
-            .set(DRIVE_SHARES.CREATED_AT, now)
-            .returningResult(DRIVE_SHARES.ID)
-            .fetchOne()!!.value1()
+        val id = dsl.resultQuery(
+            """
+            INSERT INTO drive_shares
+              (node_id, token_hash, token_prefix, token, password_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """.trimIndent(),
+            nodeId,
+            hash,
+            prefix,
+            token,
+            pwHash,
+            exp,
+            now,
+        ).fetchOne()!!.get("id", Long::class.java)
         return findById(id) to token
     }
 
@@ -162,6 +168,7 @@ class DriveShareService(
         nodeId = rec.get("node_id", Long::class.java),
         tokenHash = rec.get("token_hash", String::class.java),
         tokenPrefix = rec.get("token_prefix", String::class.java),
+        storedToken = rec.get("token", String::class.java),
         passwordHash = rec.get("password_hash", String::class.java),
         expiresAt = rec.get("expires_at", Long::class.javaObjectType),
         createdAt = rec.get("created_at", Long::class.java),

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Trash2Icon } from 'lucide-react'
 
+import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
 import { t, useLang } from '@/components/translation.tsx'
 
@@ -38,9 +40,43 @@ export function TrashPage() {
     })
   }
 
+  const handleClearTrash = () => {
+    if (items.length === 0) return
+    confirm.open({
+      heading: t('emptyTrash', lang),
+      description: t('clearTrashConfirm', lang),
+      okText: t('delete', lang),
+      cancelText: t('cancel', lang),
+      onOk: async () => {
+        try {
+          await purgeNodes(items.map((item) => item.id))
+          await refresh()
+        } catch (err) {
+          toast.error((err as Error).message)
+        }
+      },
+    })
+  }
+
   return (
     <div className="flex flex-1 flex-col">
-      <TopBar lang={lang} />
+      <TopBar
+        lang={lang}
+        extra={
+          items.length > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleClearTrash}
+              title={t('emptyTrash', lang)}
+            >
+              <Trash2Icon className="size-4" />
+              <span className="hidden sm:inline">{t('emptyTrash', lang)}</span>
+            </Button>
+          )
+        }
+      />
       <main className="flex-1 overflow-x-hidden overflow-y-auto">
         {items.length === 0 ? (
           <EmptyState trash lang={lang} />

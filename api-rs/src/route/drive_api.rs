@@ -76,10 +76,7 @@ async fn create_folder(
     State(state): State<AppState>,
     Json(req): Json<DriveCreateFolderRequest>,
 ) -> ApiResult<Json<DriveNode>> {
-    let n = state
-        .drive
-        .create_folder(req.parent_id, &req.name)
-        .await?;
+    let n = state.drive.create_folder(req.parent_id, &req.name).await?;
     Ok(Json(n))
 }
 
@@ -157,12 +154,15 @@ async fn thumb(
         .filter(|h| !h.is_empty())
         .map(|h| format!("\"{}\"", h));
 
-    if let (Some(et), Some(inm)) = (&etag, headers.get(IF_NONE_MATCH).and_then(|v| v.to_str().ok()))
-    {
+    if let (Some(et), Some(inm)) = (
+        &etag,
+        headers.get(IF_NONE_MATCH).and_then(|v| v.to_str().ok()),
+    ) {
         if inm.split(',').any(|s| s.trim() == et) {
             let mut resp = Response::new(Body::empty());
             *resp.status_mut() = StatusCode::NOT_MODIFIED;
-            resp.headers_mut().insert(ETAG, HeaderValue::from_str(et).unwrap());
+            resp.headers_mut()
+                .insert(ETAG, HeaderValue::from_str(et).unwrap());
             resp.headers_mut().insert(
                 CACHE_CONTROL,
                 HeaderValue::from_static("private, max-age=0, must-revalidate"),
@@ -175,7 +175,10 @@ async fn thumb(
     let f = tokio::fs::File::open(&path)
         .await
         .map_err(|_| ApiError::NotFound("not found".into()))?;
-    let st = f.metadata().await.map_err(|e| ApiError::ServerError(e.to_string()))?;
+    let st = f
+        .metadata()
+        .await
+        .map_err(|e| ApiError::ServerError(e.to_string()))?;
     let stream = ReaderStream::new(f);
     let body = Body::from_stream(stream);
     let mut resp = Response::new(body);
@@ -245,7 +248,13 @@ pub(crate) async fn serve_blob(
     }
     let blob = node.blob_path.clone().unwrap();
     let abs = state.drive.blob_abs_path(&blob);
-    serve_file(&abs, &node.name, node.mime_type.as_deref(), force_attachment).await
+    serve_file(
+        &abs,
+        &node.name,
+        node.mime_type.as_deref(),
+        force_attachment,
+    )
+    .await
 }
 
 pub(crate) async fn serve_file(
@@ -431,9 +440,15 @@ async fn list_shares(
 
 async fn list_all_shares(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<DriveSharesAllQuery>,
 ) -> ApiResult<Json<Vec<DriveSharedItemDTO>>> {
-    let out = state.drive_share.list_all(q.include_expired).await?;
+    let mut out = state.drive_share.list_all(q.include_expired).await?;
+    for item in &mut out {
+        if let Some(token) = item.token.as_deref() {
+            item.url = Some(share_url(&headers, token));
+        }
+    }
     Ok(Json(out))
 }
 

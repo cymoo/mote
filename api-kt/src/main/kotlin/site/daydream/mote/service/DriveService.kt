@@ -269,29 +269,6 @@ class DriveService(
         val n = findById(id)
         if (n.deletedAt == null) return
         if (n.deleteBatchId == null) {
-            // Keep as raw SQL for consistency with bulk restore below.
-            dsl.execute(
-                "UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE id = ?",
-                id,
-            )
-            return
-        }
-
-        val roots = dsl.resultQuery(
-            """
-            SELECT * FROM drive_nodes n
-            WHERE n.delete_batch_id = ?
-              AND (
-                n.parent_id IS NULL
-                OR NOT EXISTS (
-                  SELECT 1 FROM drive_nodes p
-                  WHERE p.id = n.parent_id AND p.delete_batch_id = n.delete_batch_id
-                )
-              )
-            """.trimIndent(),
-            n.deleteBatchId,
-        ).fetch { rec -> mapNodeFromRecord(rec) }
-        for (r in roots) {
             val hit = dsl.fetchOne(
                 """
                 SELECT EXISTS(
@@ -301,13 +278,52 @@ class DriveService(
                     AND deleted_at IS NULL
                 )
                 """.trimIndent(),
-                r.parentId, r.name,
+                n.parentId, n.name,
             )?.get(0, Int::class.java) ?: 0
             if (hit == 1) throw ConflictException("name already exists in this folder")
+            dsl.execute(
+                "UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE id = ?",
+                id,
+            )
+            return
         }
+
+        val conflicts = dsl.fetchOne(
+            """
+            WITH RECURSIVE subtree(id) AS (
+              SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NOT NULL
+              UNION ALL
+              SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+              WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = ?
+            )
+            SELECT COUNT(*)
+            FROM drive_nodes r
+            WHERE r.id IN (SELECT id FROM subtree)
+              AND EXISTS (
+                SELECT 1 FROM drive_nodes a
+                WHERE COALESCE(a.parent_id, 0) = COALESCE(r.parent_id, 0)
+                  AND LOWER(a.name) = LOWER(r.name)
+                  AND a.deleted_at IS NULL
+                  AND a.id NOT IN (SELECT id FROM subtree)
+              )
+            """.trimIndent(),
+            id, n.deleteBatchId,
+        )?.get(0, Int::class.java) ?: 0
+        if (conflicts > 0) throw ConflictException("name already exists in this folder")
+
         dsl.execute(
-            "UPDATE drive_nodes SET deleted_at = NULL, delete_batch_id = NULL WHERE delete_batch_id = ?",
-            n.deleteBatchId,
+            """
+            WITH RECURSIVE subtree(id) AS (
+              SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NOT NULL
+              UNION ALL
+              SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+              WHERE n.deleted_at IS NOT NULL AND n.delete_batch_id = ?
+            )
+            UPDATE drive_nodes
+            SET deleted_at = NULL, delete_batch_id = NULL
+            WHERE id IN (SELECT id FROM subtree)
+            """.trimIndent(),
+            id, n.deleteBatchId,
         )
     }
 

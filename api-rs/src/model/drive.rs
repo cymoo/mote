@@ -120,9 +120,7 @@ pub fn mime_for_ext(ext: &str) -> String {
         "mkv" => "video/x-matroska".into(),
         "avi" => "video/x-msvideo".into(),
         "doc" => "application/msword".into(),
-        "docx" => {
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document".into()
-        }
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document".into(),
         "xls" => "application/vnd.ms-excel".into(),
         "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".into(),
         "ppt" => "application/vnd.ms-powerpoint".into(),
@@ -140,6 +138,7 @@ pub struct DriveShareRow {
     pub node_id: i64,
     pub token_hash: String,
     pub token_prefix: String,
+    pub token: Option<String>,
     pub password_hash: Option<String>,
     pub expires_at: Option<i64>,
     pub created_at: i64,
@@ -307,4 +306,8 @@ pub struct DriveSharedItemDTO {
     pub name: String,
     pub size: i64,
     pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip)]
+    pub token: Option<String>,
 }

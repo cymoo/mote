@@ -17,6 +17,8 @@ import site.daydream.mote.service.RedisService
 import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 private const val COOKIE_PREFIX = "drive_share_pw_"
 
@@ -51,6 +53,7 @@ class DriveSharePageController(
         val html = renderLanding(
             name = node.name,
             size = humanSize(node.size ?: 0),
+            mimeType = node.mimeType ?: "application/octet-stream",
             hasPassword = !share.passwordHash.isNullOrEmpty(),
             authed = authed,
             token = token,
@@ -70,8 +73,9 @@ class DriveSharePageController(
         }
         val (share, _) = shareService.resolve(token)
         shareService.verifyPassword(share, password ?: "")
+        val cookieValue = cookieValue(share, token)
 
-        val cookie = Cookie(cookieName(token), "1").apply {
+        val cookie = Cookie(cookieName(token), cookieValue).apply {
             path = "/shared-files/$token"
             isHttpOnly = true
             maxAge = 60 * 60 * 24
@@ -115,7 +119,14 @@ class DriveSharePageController(
     private fun passwordOk(req: HttpServletRequest, share: DriveShare, token: String): Boolean {
         if (share.passwordHash.isNullOrEmpty()) return true
         val c = req.cookies?.firstOrNull { it.name == cookieName(token) } ?: return false
-        return c.value == "1"
+        return constantTimeEquals(c.value, cookieValue(share, token))
+    }
+
+    private fun cookieValue(share: DriveShare, token: String): String {
+        val key = share.passwordHash ?: throw AuthenticationException("share has no password")
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(key.toByteArray(StandardCharsets.UTF_8), "HmacSHA256"))
+        return mac.doFinal(token.toByteArray(StandardCharsets.UTF_8)).toHex()
     }
 
     private fun cookieName(token: String): String {
@@ -163,7 +174,23 @@ class DriveSharePageController(
             s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 .replace("\"", "&quot;").replace("'", "&#39;")
 
-        fun renderLanding(name: String, size: String, hasPassword: Boolean, authed: Boolean, token: String): String {
+        private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+        private fun constantTimeEquals(a: String, b: String): Boolean {
+            if (a.length != b.length) return false
+            var diff = 0
+            for (i in a.indices) diff = diff or (a[i].code xor b[i].code)
+            return diff == 0
+        }
+
+        fun renderLanding(
+            name: String,
+            size: String,
+            mimeType: String,
+            hasPassword: Boolean,
+            authed: Boolean,
+            token: String,
+        ): String {
             val n = esc(name); val s = esc(size); val t = esc(token)
             val cta = if (hasPassword && !authed) {
                 """<form method="post" action="/shared-files/$t/auth">
@@ -171,7 +198,14 @@ class DriveSharePageController(
                     <button type="submit">Unlock</button>
                   </form>"""
             } else {
-                """<a class="btn" href="/shared-files/$t/download">Download</a>"""
+                val preview = when {
+                    mimeType.startsWith("video/") ->
+                        """<video class="preview" src="/shared-files/$t/preview" controls preload="metadata"></video>"""
+                    mimeType.startsWith("audio/") ->
+                        """<audio class="preview" src="/shared-files/$t/preview" controls preload="metadata"></audio>"""
+                    else -> ""
+                }
+                """$preview<div class="actions"><a class="btn" href="/shared-files/$t/download">Download</a></div>"""
             }
             return """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -186,9 +220,12 @@ class DriveSharePageController(
   h1 { font-size:18px; margin:0 0 4px; word-break:break-all; }
   p.size { color:#888; margin:0 0 24px; font-size:13px; }
   a.btn, button { display:inline-block; padding:10px 18px; border-radius:8px; background:#111;
-          color:#fff; text-decoration:none; border:0; cursor:pointer; font-size:14px; }
+           color:#fff; text-decoration:none; border:0; cursor:pointer; font-size:14px; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .preview { display:block; width:100%; max-height:60vh; margin:0 0 16px; border-radius:10px; background:#000; }
+  audio.preview { background:transparent; }
   input[type=password] { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px;
-          font-size:14px; box-sizing:border-box; margin-bottom:12px; }
+           font-size:14px; box-sizing:border-box; margin-bottom:12px; }
   form { margin-top:8px; } .meta { color:#666; font-size:13px; margin-top:18px; }
 </style></head><body>
 <div class="card"><h1>$n</h1><p class="size">$s</p>$cta
