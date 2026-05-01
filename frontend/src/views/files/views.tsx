@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, Share2Icon, Trash2Icon, UploadIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -343,8 +343,13 @@ export const TrashView = memo(function TrashView({
         >
           <NodeIcon node={n} />
           <span className="flex-1 truncate text-sm">{n.name}</span>
-          <span className="text-muted-foreground text-xs">
-            {n.deleted_at ? new Date(n.deleted_at).toLocaleString() : ''}
+          <span className="text-muted-foreground shrink-0 text-xs">
+            {n.deleted_at ? (
+              <>
+                <span className="hidden md:inline">{new Date(n.deleted_at).toLocaleString()}</span>
+                <span className="md:hidden">{new Date(n.deleted_at).toLocaleDateString()}</span>
+              </>
+            ) : null}
           </span>
           <Button
             variant="ghost"
@@ -503,20 +508,18 @@ export const SharedView = memo(function SharedView({
                   </span>
                 )}
               </div>
-              <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-xs">
+              <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 text-xs">
                 <button
                   type="button"
-                  className="hover:text-foreground inline-flex items-center gap-1 truncate transition-colors"
+                  className="hover:text-foreground inline-flex min-w-0 shrink items-center gap-1 transition-colors"
                   onClick={() => onOpenLocation(s.parent_id)}
                   title={t('openFolder', lang)}
                 >
                   <FolderOpenIcon className="size-3 shrink-0" />
-                  <span className="truncate">{s.path || '/'}</span>
+                  <span className="min-w-0 truncate">{s.path || '/'}</span>
                 </button>
-                <span>·</span>
-                <span>{humanSize(s.size)}</span>
-                <span>·</span>
-                <span>{formatExpiry(s.expires_at, lang)}</span>
+                <span className="shrink-0 opacity-40">·</span>
+                <span className="shrink-0 whitespace-nowrap">{formatExpiry(s.expires_at, lang)}</span>
               </div>
             </div>
             <Button
@@ -534,12 +537,11 @@ export const SharedView = memo(function SharedView({
             <Button
               variant="ghost"
               size="sm"
-              className="text-destructive hover:text-destructive"
               onClick={() => void onRevoke(s.id)}
               title={t('revoke', lang)}
               aria-label={t('revoke', lang)}
             >
-              <Trash2Icon className="size-4 md:mr-1" />
+              <XIcon className="size-4 md:mr-1" />
               <span className="hidden md:inline">
                 <T name="revoke" />
               </span>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Trash2Icon } from 'lucide-react'
+import { EraserIcon } from 'lucide-react'
 
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
@@ -65,13 +65,13 @@ export function TrashPage() {
         extra={
           items.length > 0 && (
             <Button
-              variant="destructive"
+              variant="ghost"
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
               onClick={handleClearTrash}
               title={t('emptyTrash', lang)}
             >
-              <Trash2Icon className="size-4" />
+              <EraserIcon className="size-4" />
               <span className="hidden sm:inline">{t('emptyTrash', lang)}</span>
             </Button>
           )

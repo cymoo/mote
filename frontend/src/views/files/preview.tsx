@@ -1,6 +1,6 @@
 import 'photoswipe/style.css'
 
-import { DownloadIcon, ExternalLinkIcon, XIcon } from 'lucide-react'
+import { DownloadIcon, ExternalLinkIcon, MusicIcon, XIcon } from 'lucide-react'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
@@ -142,16 +142,9 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
 
   let body: ReactNode
   if (mt.startsWith('video/')) {
-    body = (
-      <video
-        src={url}
-        controls
-        autoPlay
-        className="max-h-[80vh] max-w-[80vw] rounded-lg shadow-2xl"
-      />
-    )
+    body = <VideoPreview url={url} node={node} onDownload={onDownload} lang={lang} />
   } else if (mt.startsWith('audio/')) {
-    body = <audio src={url} controls autoPlay />
+    body = <AudioPreview url={url} node={node} onDownload={onDownload} lang={lang} />
   } else if (mt === 'application/pdf') {
     // Mobile browsers (especially Android Chrome) won't render PDFs inside
     // an iframe — and on iOS Safari the iframe only shows the first page.
@@ -235,6 +228,66 @@ function TextPreview({ url }: { url: string }) {
     </pre>
   )
 }
+
+// ---------- video preview ----------
+
+function VideoPreview({
+  url,
+  node,
+  onDownload,
+  lang,
+}: {
+  url: string
+  node: DriveNode
+  onDownload: (n: DriveNode) => void
+  lang: 'en' | 'zh'
+}) {
+  const [error, setError] = useState(false)
+  if (error) return <NoPreview node={node} onDownload={onDownload} lang={lang} />
+  return (
+    <video
+      key={url}
+      src={url}
+      controls
+      autoPlay
+      className="max-h-[85vh] w-[90vw] max-w-5xl rounded-lg shadow-2xl"
+      onError={() => setError(true)}
+    />
+  )
+}
+
+// ---------- audio preview ----------
+
+function AudioPreview({
+  url,
+  node,
+  onDownload,
+  lang,
+}: {
+  url: string
+  node: DriveNode
+  onDownload: (n: DriveNode) => void
+  lang: 'en' | 'zh'
+}) {
+  const [error, setError] = useState(false)
+  if (error) return <NoPreview node={node} onDownload={onDownload} lang={lang} />
+  return (
+    <div className="bg-card text-foreground border-border flex w-[min(480px,90vw)] flex-col items-center gap-4 rounded-lg border p-6 shadow-xl">
+      <MusicIcon className="text-amber-500 size-12 opacity-70" strokeWidth={1.25} />
+      <div className="max-w-full truncate text-sm font-medium">{node.name}</div>
+      <audio
+        key={url}
+        src={url}
+        controls
+        autoPlay
+        className="w-full min-w-[360px]"
+        onError={() => setError(true)}
+      />
+</div>
+  )
+}
+
+// ---------- no preview fallback ----------
 
 // Shown for mime types we don't know how to preview safely (e.g. office
 // documents, archives). Avoids dumping binary content as garbled text and

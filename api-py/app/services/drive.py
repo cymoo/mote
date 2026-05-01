@@ -144,6 +144,19 @@ class DriveNodeRow:
             return ''
         import mimetypes
 
+        # Common A/V extensions absent from sparse system MIME databases
+        # (e.g. Alpine Linux in Docker). Checked first for consistent results.
+        _static: dict[str, str] = {
+            '.mp4': 'video/mp4', '.m4v': 'video/x-m4v', '.mov': 'video/quicktime',
+            '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska',
+            '.wmv': 'video/x-ms-wmv', '.webm': 'video/webm',
+            '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
+            '.flac': 'audio/flac', '.wav': 'audio/wav',
+            '.ogg': 'audio/ogg', '.opus': 'audio/ogg',
+        }
+        ext = os.path.splitext(self.name)[1].lower()
+        if ext in _static:
+            return _static[ext]
         mt = mimetypes.guess_type(self.name)[0]
         return mt or 'application/octet-stream'
 
