@@ -46,7 +46,7 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   lang,
 }: BreadcrumbsProps) {
   return (
-    <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
+    <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:[mask-image:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
       <button
         type="button"
         className="hover:bg-accent hover:text-accent-foreground inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 transition-colors"

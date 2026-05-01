@@ -188,7 +188,7 @@ function statusLabel(i: UploadItem, lang: Lang): string {
     case 'cancelled':
       return t('cancel', lang)
     case 'failed':
-      return i.error ?? 'failed'
+      return i.error ?? t('uploadFailed', lang)
     case 'conflict':
       return t('namingExists', lang)
   }

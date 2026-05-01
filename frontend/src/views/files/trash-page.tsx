@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { EraserIcon } from 'lucide-react'
+import { EraserIcon, InfoIcon } from 'lucide-react'
 
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
-import { t, useLang } from '@/components/translation.tsx'
+import { t, T, useLang } from '@/components/translation.tsx'
 
 import { DriveNode, purgeNodes, restoreNode, trash } from './api'
 import { TopBar } from './layout'
@@ -77,7 +77,11 @@ export function TrashPage() {
           )
         }
       />
-      <main className="flex-1 overflow-x-hidden overflow-y-auto">
+      <div className="border-border/40 flex items-center gap-2 border-b px-4 py-2 text-xs text-muted-foreground">
+        <InfoIcon className="size-3.5 shrink-0 opacity-60" />
+        <T name="driveTrashRetention" capitalized={false} />
+      </div>
+      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {items.length === 0 ? (
           <EmptyState trash lang={lang} />
         ) : (

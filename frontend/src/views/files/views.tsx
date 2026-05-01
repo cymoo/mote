@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, FileIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -218,7 +218,7 @@ export const GridView = memo(function GridView({
   lang,
 }: GridViewProps) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 p-4">
+    <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {items.map((n, idx) => (
         <GridCard
           key={n.id}
@@ -449,6 +449,23 @@ export const EmptyState = memo(function EmptyState({
           <span className="md:hidden">{t('tapUpload', lang)}</span>
         </>
       )}
+    </div>
+  )
+})
+
+// ---------- search empty state ----------
+
+export const SearchEmptyState = memo(function SearchEmptyState({
+  query,
+  lang,
+}: {
+  query: string
+  lang: Lang
+}) {
+  return (
+    <div className="text-muted-foreground flex h-full animate-[fadeIn_200ms_ease-out] flex-col items-center justify-center gap-3 text-sm">
+      <SearchIcon className="size-12 opacity-30" strokeWidth={1.25} />
+      <span>{t('searchNoResults', lang, true, query)}</span>
     </div>
   )
 })

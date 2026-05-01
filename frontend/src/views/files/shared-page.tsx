@@ -29,8 +29,8 @@ export function SharedPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <TopBar lang={lang} />
-      <main className="flex-1 overflow-x-hidden overflow-y-auto">
+      <TopBar lang={lang} middle={<span className="text-sm font-medium"><T name="sharedFiles" /></span>} />
+      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {items.length === 0 ? (
           <EmptyState trash={false} shared lang={lang} />
         ) : (
