@@ -508,18 +508,18 @@ export const SharedView = memo(function SharedView({
                   </span>
                 )}
               </div>
-            <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-2 text-xs">
+              <div className="text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 text-xs">
                 <button
                   type="button"
-                  className="hover:text-foreground inline-flex min-w-0 flex-1 items-center gap-1 truncate transition-colors"
+                  className="hover:text-foreground inline-flex min-w-0 shrink items-center gap-1 transition-colors"
                   onClick={() => onOpenLocation(s.parent_id)}
                   title={t('openFolder', lang)}
                 >
                   <FolderOpenIcon className="size-3 shrink-0" />
-                  <span className="truncate">{s.path || '/'}</span>
+                  <span className="min-w-0 truncate">{s.path || '/'}</span>
                 </button>
-                <span className="shrink-0">·</span>
-                <span className="shrink-0">{formatExpiry(s.expires_at, lang)}</span>
+                <span className="shrink-0 opacity-40">·</span>
+                <span className="shrink-0 whitespace-nowrap">{formatExpiry(s.expires_at, lang)}</span>
               </div>
             </div>
             <Button

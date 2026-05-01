@@ -250,7 +250,7 @@ function VideoPreview({
       src={url}
       controls
       autoPlay
-      className="max-h-[80vh] max-w-[80vw] rounded-lg shadow-2xl"
+      className="max-h-[85vh] w-[90vw] max-w-5xl rounded-lg shadow-2xl"
       onError={() => setError(true)}
     />
   )

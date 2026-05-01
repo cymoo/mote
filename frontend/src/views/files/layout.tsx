@@ -97,7 +97,6 @@ function FilesNavPills({ lang }: { lang: Lang }) {
         to="/files/trash"
         label={t('trash', lang)}
         icon={<Trash2Icon className="size-4" />}
-        activeColor="text-destructive"
       />
     </>
   )
