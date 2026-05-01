@@ -44,13 +44,39 @@ func (n DriveNode) Ext() string {
 	return strings.ToLower(filepath.Ext(n.Name))
 }
 
+// staticMIME maps common extensions that are frequently absent from the
+// system MIME database (e.g. Alpine Linux in Docker). Checked first to
+// ensure predictable behaviour across deployment environments.
+var staticMIME = map[string]string{
+	// video
+	".mp4":  "video/mp4",
+	".m4v":  "video/x-m4v",
+	".mov":  "video/quicktime",
+	".avi":  "video/x-msvideo",
+	".mkv":  "video/x-matroska",
+	".wmv":  "video/x-ms-wmv",
+	".webm": "video/webm",
+	// audio
+	".mp3":  "audio/mpeg",
+	".m4a":  "audio/mp4",
+	".aac":  "audio/aac",
+	".flac": "audio/flac",
+	".wav":  "audio/wav",
+	".ogg":  "audio/ogg",
+	".opus": "audio/ogg",
+}
+
 // MimeType returns the MIME type derived from the filename extension. Folders
 // and unknown extensions yield "application/octet-stream".
 func (n DriveNode) MimeType() string {
 	if n.Type != "file" {
 		return ""
 	}
-	if mt := mime.TypeByExtension(n.Ext()); mt != "" {
+	ext := n.Ext()
+	if mt, ok := staticMIME[ext]; ok {
+		return mt
+	}
+	if mt := mime.TypeByExtension(ext); mt != "" {
 		return mt
 	}
 	return "application/octet-stream"
