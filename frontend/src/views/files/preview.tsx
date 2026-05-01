@@ -272,18 +272,18 @@ function AudioPreview({
   const [error, setError] = useState(false)
   if (error) return <NoPreview node={node} onDownload={onDownload} lang={lang} />
   return (
-    <div className="bg-card text-foreground border-border flex max-w-[90vw] flex-col items-center gap-4 rounded-lg border p-6 shadow-xl">
+    <div className="bg-card text-foreground border-border flex w-[min(480px,90vw)] flex-col items-center gap-4 rounded-lg border p-6 shadow-xl">
       <MusicIcon className="text-amber-500 size-12 opacity-70" strokeWidth={1.25} />
-      <div className="max-w-[60vw] truncate text-sm font-medium">{node.name}</div>
+      <div className="max-w-full truncate text-sm font-medium">{node.name}</div>
       <audio
         key={url}
         src={url}
         controls
         autoPlay
-        className="w-full max-w-sm"
+        className="w-full min-w-[360px]"
         onError={() => setError(true)}
       />
-    </div>
+</div>
   )
 }
 
