@@ -64,6 +64,7 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
 deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
+	@[ "$(shell id -u)" = "0" ] || sudo -v
 	@echo "$(YELLOW)-> Backing up...$(NC)"
 	@$(MAKE) -s backup
 	@echo "$(YELLOW)-> Pulling latest code...$(NC)"
