@@ -28,6 +28,8 @@ MOTE_PASSWORD   := $(shell sed -n 's/^MOTE_PASSWORD=//p' .env 2>/dev/null)
 REAL_UID        := $(or $(SUDO_UID),$(shell id -u))
 REAL_GID        := $(or $(SUDO_GID),$(shell id -g))
 GIT_EXEC        := $(if $(SUDO_USER),sudo -u "$(SUDO_USER)" -H,)
+export PUID     := $(REAL_UID)
+export PGID     := $(REAL_GID)
 
 .PHONY: help setup deploy _deploy backup logs ps restart
 
@@ -46,8 +48,6 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@echo "$(YELLOW)-> Creating directories...$(NC)"
 	@mkdir -p $(APP_DIR)/data $(APP_DIR)/uploads $(WEB_DIR) $(CERTBOT_WEBROOT)
 	@chown "$(REAL_UID):$(REAL_GID)" $(APP_DIR)/data $(APP_DIR)/uploads
-	@grep -q '^PUID=' .env 2>/dev/null || echo "PUID=$(REAL_UID)" >> .env
-	@grep -q '^PGID=' .env 2>/dev/null || echo "PGID=$(REAL_GID)" >> .env
 	@echo "$(YELLOW)-> Building frontend...$(NC)"
 	@docker build -t mote-frontend -f Dockerfile.frontend ..
 	@docker run --rm -v $(WEB_DIR):/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
