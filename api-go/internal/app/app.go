@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -89,27 +91,19 @@ func (app *App) initDatabase() error {
 		}
 	}
 
-	db, err := sqlx.Connect("sqlite", app.config.DB.URL)
+	// Embed pragmas in the DSN so modernc.org/sqlite applies them to every
+	// connection the pool creates, not just the first one. Without this,
+	// busy_timeout is only set on one connection; concurrent upload inits
+	// on other pool connections hit SQLITE_BUSY immediately and return 500.
+	dsn := sqliteDSN(app.config.DB.URL, map[string]string{
+		"busy_timeout": "5000",
+		"journal_mode": "WAL",
+		"foreign_keys": "ON",
+	})
+	db, err := sqlx.Connect("sqlite", dsn)
 	if err != nil {
 		log.Printf("database connection error: %v", app.config.DB.URL)
 		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	_, err = db.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		return fmt.Errorf("failed to enable foreign keys: %w", err)
-	}
-
-	_, err = db.Exec("PRAGMA journal_mode = WAL")
-	if err != nil {
-		return fmt.Errorf("failed to enable WAL mode: %w", err)
-	}
-
-	// Avoid SQLITE_BUSY under concurrent writes (e.g. parallel chunk uploads).
-	// SQLite serialises writers; without a busy timeout, contending writers
-	// fail immediately instead of waiting for the lock to be released.
-	if _, err = db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
-		return fmt.Errorf("failed to set busy_timeout: %w", err)
 	}
 
 	verifyForeignKeysConstraints(db)
@@ -379,7 +373,17 @@ func verifyWALMode(db *sqlx.DB) {
 	}
 }
 
-// runMigrations applies database migrations using embedded migration files
+// sqliteDSN appends _pragma query parameters to the given SQLite DSN so that
+// modernc.org/sqlite applies them to every new connection it opens, not just
+// the first one grabbed from the pool.
+func sqliteDSN(dsn string, pragmas map[string]string) string {
+	base, query, _ := strings.Cut(dsn, "?")
+	q, _ := url.ParseQuery(query)
+	for k, v := range pragmas {
+		q.Add("_pragma", k+"("+v+")")
+	}
+	return base + "?" + q.Encode()
+}
 func runMigrations(url string) error {
 	iofsDriver, err := iofs.New(assets.MigrationFS(), "migrations")
 	if err != nil {

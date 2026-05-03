@@ -148,7 +148,7 @@
   "viewShareLink": "view share link",
   "shareLinkUnavailable": "This share was created before link viewing was available. Revoke it and create a new share link to view or copy it here.",
   "close": "close",
-  "driveTrashRetention": "Files in trash are permanently deleted after 30 days",
+  "driveTrashRetention": "Files are permanently deleted after 30 days",
   "uploadFailed": "upload failed",
   "searchNoResults": "no files matching \"{0}\""
 }
