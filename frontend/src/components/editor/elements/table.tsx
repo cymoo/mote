@@ -44,7 +44,7 @@ export function TableCell({ attributes, children, element }: RenderElementProps)
     <Tag
       {...attributes}
       style={cell.align ? { textAlign: cell.align } : undefined}
-      className={`border border-gray-200 px-3 py-1.5 align-top ${isHeader ? 'bg-gray-50 font-semibold' : ''}`}
+      className={`border border-gray-200 dark:border-gray-700 px-3 py-1.5 align-top ${isHeader ? 'bg-gray-100 dark:bg-gray-800 font-semibold' : ''}`}
     >
       {children}
     </Tag>

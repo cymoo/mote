@@ -195,7 +195,9 @@ export function MbEditor({
               // See：https://www.wangeditor.com/v5/editor-config.html#scroll
               boundary: ReactEditor.toDOMNode(editor, editor).parentElement,
               // boundary: document.body,
-              block: 'end',
+              // Use 'nearest' inside table cells to avoid a runaway upward scroll
+              // caused by the cursor's degenerate rect right after inserting '\n'.
+              block: findElement(editor, TABLE_CELL) ? 'nearest' : 'end',
               behavior: 'smooth',
             })
 
