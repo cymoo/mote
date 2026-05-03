@@ -198,6 +198,10 @@ func (h *DriveHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAttachment bool) {
+	// Extend write deadline so large file downloads aren't cut off by the
+	// global WriteTimeout.
+	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Hour))
+
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseInt(idStr, 10, 64)
 	if id <= 0 {
@@ -232,6 +236,10 @@ func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAt
 }
 
 func (h *DriveHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
+	// Zip generation + streaming can be slow for large folders; extend the
+	// write deadline well beyond the global WriteTimeout.
+	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(2 * time.Hour))
+
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseInt(idStr, 10, 64)
 	node, err := h.drive.FindByID(r.Context(), id)
@@ -291,6 +299,10 @@ func (h *DriveHandler) UploadStatus(r *http.Request, _ m.Query[uploadStatusQuery
 }
 
 func (h *DriveHandler) UploadChunk(w http.ResponseWriter, r *http.Request) {
+	// Each chunk can be up to 16 MiB; extend the read deadline so slow
+	// connections aren't cut off by the global ReadTimeout.
+	http.NewResponseController(w).SetReadDeadline(time.Now().Add(30 * time.Minute))
+
 	id := chi.URLParam(r, "upload_id")
 	idx, err := strconv.Atoi(chi.URLParam(r, "idx"))
 	if err != nil {

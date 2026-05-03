@@ -130,6 +130,10 @@ func (h *DriveShareHandler) Preview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DriveShareHandler) serveShared(w http.ResponseWriter, r *http.Request, forceAttachment bool) {
+	// Extend write deadline so large shared-file downloads aren't cut off by
+	// the global WriteTimeout.
+	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Hour))
+
 	token := chi.URLParam(r, "token")
 	share, node, err := h.share.Resolve(r.Context(), token)
 	if err != nil {

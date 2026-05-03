@@ -246,19 +246,12 @@ func (app *App) setupRoutes() {
 	driveShareSvc := services.NewDriveShareService(app.db, driveSvc)
 	r.Mount("/shared-files", NewPublicShareRouter(driveSvc, driveShareSvc, app.redis))
 
-	// HTTP server: drive uploads/downloads can stream large files; use a
-	// generous WriteTimeout to avoid premature termination.
-	writeTimeout := app.config.HTTP.WriteTimeout
-	if writeTimeout < 5*time.Minute {
-		writeTimeout = 5 * time.Minute
-	}
-
 	// Create HTTP server
 	app.server = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", app.config.HTTP.IP, app.config.HTTP.Port),
 		Handler:      r,
 		ReadTimeout:  app.config.HTTP.ReadTimeout,
-		WriteTimeout: writeTimeout,
+		WriteTimeout: app.config.HTTP.WriteTimeout,
 		IdleTimeout:  app.config.HTTP.IdleTimeout,
 	}
 }
