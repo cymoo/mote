@@ -34,9 +34,11 @@ MOTE_PASSWORD=xxx flask run
 MOTE_PASSWORD=xxx gunicorn -k gevent -b :8000 --timeout 120 wsgi:app
 ```
 
-NOTE: `--timeout 120` prevents the gevent worker liveness check from killing workers
-during large zip generation or slow uploads. The default of 30s is too short for
-these operations.
+NOTE: `--timeout` is a **worker liveness** check (not a per-request I/O deadline, and has no
+read/write distinction). With gevent workers, cooperative I/O scheduling keeps workers responsive
+during long downloads or uploads, so this timeout mainly guards against CPU-bound hangs such as
+thumbnail generation on a very large image. The default of 30s is usually sufficient; 120s is a
+conservative upper bound.
 
 NOTE: The `MOTE_PASSWORD` variable is used for login. Ensure it is complex and securely stored in production.
 
