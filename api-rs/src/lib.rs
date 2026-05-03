@@ -17,9 +17,11 @@ use axum::Router;
 use jieba_rs::Jieba;
 use std::fs;
 use std::sync::Arc;
+use std::time::Duration;
 use tower::ServiceBuilder;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::services::ServeDir;
+use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 use tracing::error;
 
@@ -64,21 +66,31 @@ pub async fn create_app(state: AppState) -> Router {
         ServeDir::new(config.upload.base_path.clone()).not_found_service(handle_404.into_service()),
     );
 
+    let write_timeout = Duration::from_secs(config.http.write_timeout_secs);
+
     // The order of the layers is important.
     // https://docs.rs/axum/latest/axum/middleware/index.html#ordering
     let mut app = Router::new()
         .nest(
             "/api",
-            post_api::create_routes(state.rd.pool.clone()).merge(
-                Router::new().nest("/drive", drive_api::create_routes()).layer(
-                    axum::middleware::from_fn(|req, next| {
-                        crate::middleware::check_access::check_access(&[], req, next)
-                    }),
+            // Apply the global write timeout to post/note API routes only;
+            // drive_api routes own their timeouts internally (file operations
+            // need different deadlines than normal JSON endpoints).
+            post_api::create_routes(state.rd.pool.clone())
+                .layer(TimeoutLayer::new(write_timeout))
+                .merge(
+                    Router::new().nest("/drive", drive_api::create_routes(write_timeout)).layer(
+                        axum::middleware::from_fn(|req, next| {
+                            crate::middleware::check_access::check_access(&[], req, next)
+                        }),
+                    ),
                 ),
-            ),
         )
-        .nest("/shared", post_share::create_routes())
-        .nest("/shared-files", drive_share::create_routes())
+        .nest(
+            "/shared",
+            post_share::create_routes().layer(TimeoutLayer::new(write_timeout)),
+        )
+        .nest("/shared-files", drive_share::create_routes(write_timeout))
         .merge(static_route)
         .merge(uploads_route)
         .fallback(handle_404)

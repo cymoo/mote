@@ -16,10 +16,28 @@ use axum::Router;
 use futures::TryStreamExt;
 use serde::Serialize;
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio_util::io::ReaderStream;
+use tower_http::timeout::TimeoutLayer;
 
-pub fn create_routes() -> Router<AppState> {
-    Router::new()
+/// Routes whose handler futures may take significant time: thumbnail generation,
+/// chunk body reads (slow connections), and file assembly on upload completion.
+/// Everything else — including download/preview/zip — returns a Response quickly
+/// because the actual I/O is streamed lazily after the service future completes.
+const SLOW_HANDLER_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+pub fn create_routes(write_timeout: Duration) -> Router<AppState> {
+    // Handlers that can legitimately block for a long time before returning
+    // the initial Response (image processing, large body reads, file assembly).
+    let slow_routes = Router::new()
+        .route("/thumb", get(thumb))
+        .route("/upload/chunk/{upload_id}/{idx}", put(upload_chunk))
+        .route("/upload/complete", post(upload_complete))
+        .layer(TimeoutLayer::new(SLOW_HANDLER_TIMEOUT));
+
+    // All remaining routes: fast JSON handlers + streaming routes whose
+    // handlers return a Response almost instantly (the body is streamed lazily).
+    let api_routes = Router::new()
         .route("/list", get(list))
         .route("/breadcrumbs", get(breadcrumbs))
         .route("/trash", get(trash))
@@ -31,19 +49,19 @@ pub fn create_routes() -> Router<AppState> {
         .route("/purge", post(purge))
         .route("/download", get(download))
         .route("/preview", get(preview))
-        .route("/thumb", get(thumb))
         .route("/download-zip", get(download_zip))
         .route("/upload/init", post(upload_init))
         .route(
             "/upload/{upload_id}",
             get(upload_status).delete(upload_cancel),
         )
-        .route("/upload/chunk/{upload_id}/{idx}", put(upload_chunk))
-        .route("/upload/complete", post(upload_complete))
         .route("/share", post(create_share))
         .route("/shares", get(list_shares))
         .route("/shares/all", get(list_all_shares))
         .route("/share/revoke", post(revoke_share))
+        .layer(TimeoutLayer::new(write_timeout));
+
+    slow_routes.merge(api_routes)
 }
 
 // ---------- list / tree ----------

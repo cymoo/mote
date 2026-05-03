@@ -31,8 +31,12 @@ MOTE_PASSWORD=xxx flask run
 - Run in production
 
 ```bash
-MOTE_PASSWORD=xxx gunicorn -k gevent -b :8000 wsgi:app
+MOTE_PASSWORD=xxx gunicorn -k gevent -b :8000 --timeout 120 wsgi:app
 ```
+
+NOTE: `--timeout 120` prevents the gevent worker liveness check from killing workers
+during large zip generation or slow uploads. The default of 30s is too short for
+these operations.
 
 NOTE: The `MOTE_PASSWORD` variable is used for login. Ensure it is complex and securely stored in production.
 

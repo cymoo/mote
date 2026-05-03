@@ -12,16 +12,19 @@ use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use serde_json::json;
 use sha2::Sha256;
+use std::time::Duration;
 use subtle::ConstantTimeEq;
+use tower_http::timeout::TimeoutLayer;
 
 const SHARE_PW_COOKIE_PREFIX: &str = "drive_share_pw_";
 
-pub fn create_routes() -> Router<AppState> {
+pub fn create_routes(write_timeout: Duration) -> Router<AppState> {
     Router::new()
         .route("/{token}", get(landing))
         .route("/{token}/auth", post(auth))
         .route("/{token}/download", get(download))
         .route("/{token}/preview", get(preview))
+        .layer(TimeoutLayer::new(write_timeout))
 }
 
 fn cookie_name(token: &str) -> String {
