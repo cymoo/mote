@@ -9,6 +9,7 @@ import { Image } from './elements/image'
 import { Link } from './elements/link'
 import { BulletedList, ListItem, NumberedList } from './elements/list'
 import { Paragraph } from './elements/paragraph'
+import { Table, TableCell, TableRow } from './elements/table'
 import {
   BLOCK_QUOTE,
   BULLETED_LIST,
@@ -24,6 +25,9 @@ import {
   LINK,
   LIST_ITEM,
   NUMBERED_LIST,
+  TABLE,
+  TABLE_CELL,
+  TABLE_ROW,
 } from './types'
 
 export const Element = (props: RenderElementProps) => {
@@ -58,6 +62,12 @@ export const Element = (props: RenderElementProps) => {
       return <CodeBlock {...props} />
     case BLOCK_QUOTE:
       return <BlockQuote {...props} />
+    case TABLE:
+      return <Table {...props} />
+    case TABLE_ROW:
+      return <TableRow {...props} />
+    case TABLE_CELL:
+      return <TableCell {...props} />
     default:
       return <Paragraph {...props} />
   }
