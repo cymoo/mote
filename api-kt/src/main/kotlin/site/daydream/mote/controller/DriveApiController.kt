@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets
 @RestController
 @RequestMapping("/api/drive")
 @AuthRequired(true)
-class DriveController(
+class DriveApiController(
     private val driveService: DriveService,
     private val uploadService: DriveUploadService,
     private val shareService: DriveShareService,

@@ -2,7 +2,7 @@ use crate::config::db::DB;
 use crate::config::rd::RD;
 use crate::config::AppConfig;
 use crate::errors::{any_error, ApiError};
-use crate::route::{drive_api, drive_share_page, post_api, post_page};
+use crate::route::{drive_api, drive_share, post_api, post_share};
 use crate::service::drive_service::DriveService;
 use crate::service::drive_share_service::DriveShareService;
 use crate::service::drive_thumb_service::DriveThumbService;
@@ -77,8 +77,8 @@ pub async fn create_app(state: AppState) -> Router {
                 ),
             ),
         )
-        .nest("/shared", post_page::create_routes())
-        .nest("/shared-files", drive_share_page::create_routes())
+        .nest("/shared", post_share::create_routes())
+        .nest("/shared-files", drive_share::create_routes())
         .merge(static_route)
         .merge(uploads_route)
         .fallback(handle_404)

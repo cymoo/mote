@@ -86,12 +86,12 @@ def init_extension(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     from .handler.api import api
-    from .handler.page import page
+    from .handler.blog import blog
     from .handler.drive import drive_bp
     from .handler.shared_drive import shared_bp
 
     app.register_blueprint(api, url_prefix='/api')
-    app.register_blueprint(page, url_prefix='/shared')
+    app.register_blueprint(blog, url_prefix='/shared')
     app.register_blueprint(drive_bp, url_prefix='/api/drive')
     app.register_blueprint(shared_bp, url_prefix='/shared-files')
 

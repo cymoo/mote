@@ -24,7 +24,7 @@ private const val COOKIE_PREFIX = "drive_share_pw_"
 
 @RestController
 @RequestMapping("/shared-files")
-class DriveSharePageController(
+class DriveShareController(
     private val driveService: DriveService,
     private val shareService: DriveShareService,
     private val redis: RedisService,
@@ -102,7 +102,7 @@ class DriveSharePageController(
         if (!abs.exists()) throw NotFoundException("not found")
 
         val mt = node.mimeType ?: "application/octet-stream"
-        val disp = if (forceAttachment || DriveController.mustForceAttachment(mt, node.ext ?: "")) "attachment" else "inline"
+        val disp = if (forceAttachment || DriveApiController.mustForceAttachment(mt, node.ext ?: "")) "attachment" else "inline"
 
         val body = StreamingResponseBody { out -> abs.inputStream().use { it.copyTo(out) } }
         return ResponseEntity.ok()

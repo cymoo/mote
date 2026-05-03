@@ -7,10 +7,10 @@ import orjson as json
 
 from ..model import Post
 
-page = Blueprint('page', __name__)
+blog = Blueprint('blog', __name__)
 
 
-@page.get('/')
+@blog.get('/')
 def post_list():
     rows = (
         Post.query.filter(Post.shared)
@@ -35,7 +35,7 @@ def post_list():
     )
 
 
-@page.get('/<int:id>')
+@blog.get('/<int:id>')
 def post_item(id: int):
     post = Post.query.filter_by(id=id).first()
 

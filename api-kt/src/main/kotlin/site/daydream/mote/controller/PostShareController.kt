@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 
 @Controller
 @RequestMapping("/shared")
-class PostSharedController(
+class PostShareController(
     private val appConfig: AppConfig,
     private val postService: PostService,
     private val objectMapper: ObjectMapper,

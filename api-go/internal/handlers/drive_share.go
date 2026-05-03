@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -247,7 +248,7 @@ func nullable(n models.NullInt64) *int64 {
 func writeJSON(w http.ResponseWriter, code int, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	_ = encodeJSON(w, body)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 func humanSize(n int64) string {

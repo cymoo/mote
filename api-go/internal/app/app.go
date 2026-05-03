@@ -239,7 +239,7 @@ func (app *App) setupRoutes() {
 
 	// Mount API and page routers
 	r.Mount("/api", NewApiRouter(app))
-	r.Mount("/shared", NewPageRouter(app))
+	r.Mount("/shared", NewBlogRouter(app))
 
 	// Mount public file-share router (no auth, no /api prefix).
 	driveSvc := services.NewDriveService(app.db, &app.config.Upload)
@@ -384,6 +384,7 @@ func sqliteDSN(dsn string, pragmas map[string]string) string {
 	}
 	return base + "?" + q.Encode()
 }
+
 func runMigrations(url string) error {
 	iofsDriver, err := iofs.New(assets.MigrationFS(), "migrations")
 	if err != nil {

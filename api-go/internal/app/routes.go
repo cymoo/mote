@@ -95,8 +95,8 @@ func NewPublicShareRouter(
 	return r
 }
 
-// NewPageRouter creates and returns a router for page endpoints
-func NewPageRouter(app *App) *chi.Mux {
+// NewBlogRouter creates and returns a router for page endpoints
+func NewBlogRouter(app *App) *chi.Mux {
 	r := chi.NewRouter()
 
 	pageHandler, err := handlers.NewPostPageHandler(app.db, assets.TemplateFS())
