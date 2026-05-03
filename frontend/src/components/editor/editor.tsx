@@ -21,17 +21,18 @@ import { withHashTag } from './elements/hash-tag'
 import { withHeading } from './elements/heading'
 import { handleMoveImage, withImage } from './elements/image'
 import { withLink } from './elements/link'
-import { deIndentList, indentList, withList } from './elements/list'
+import { withList, deIndentList, indentList } from './elements/list'
 import {
   withAvoidEmptyChildren,
   withResetToParagraphWhenDeleteAtBlockStart,
 } from './elements/plugins'
+import { withTable, moveToNextTableCell, moveToPrevTableCell } from './elements/table'
 import { HashTagSelect } from './extensions/hashtag-select'
 import { withMarkdownShortcuts } from './extensions/markdown'
 import { withMatchBrackets } from './extensions/match-brackets'
 import { withPasteHtml } from './html'
 import { Leaf } from './leaf'
-import { BLOCK_QUOTE, CHECK_LIST, CODE_BLOCK, HEADINGS, IMAGE, LIST_ITEM } from './types'
+import { BLOCK_QUOTE, CHECK_LIST, CODE_BLOCK, HEADINGS, IMAGE, LIST_ITEM, TABLE_CELL } from './types'
 import {
   findElement,
   isEditorEmpty,
@@ -111,6 +112,7 @@ export function MbEditor({
         withImage,
         withLink,
         withList,
+        withTable,
         // NOTE: `withReact` must be placed after `withPasteHtml`;
         // otherwise, the `insertData` method of `withPasteHTML` will not be invoked.
         withPasteHtml,
@@ -224,6 +226,16 @@ export function MbEditor({
           }
 
           if (event.key === 'Tab') {
+            if (isElementActive(editor, TABLE_CELL)) {
+              event.preventDefault()
+              if (event.shiftKey) {
+                moveToPrevTableCell(editor)
+              } else {
+                moveToNextTableCell(editor)
+              }
+              return
+            }
+
             if (!isElementActive(editor, LIST_ITEM)) return
 
             // NOTE: The default behavior when pressing the Tab key is to focus on the next focusable element outside the editor.

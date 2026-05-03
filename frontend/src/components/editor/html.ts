@@ -34,6 +34,12 @@ import {
   NUMBERED_LIST,
   NumberedListElement,
   PARAGRAPH,
+  TABLE,
+  TABLE_CELL,
+  TABLE_ROW,
+  TableCellElement,
+  TableElement,
+  TableRowElement,
   isBlockElement,
   isInlineElementOrText,
 } from './types'
@@ -246,6 +252,29 @@ export function toHtml(node: Descendant, parent?: SlateElement): string {
       return `<h5>${children}</h5>`
     case PARAGRAPH:
       return `<p>${children}</p>`
+    case TABLE: {
+      const tableNode = node as TableElement
+      const headerRows = tableNode.children.filter((r) => r.isHeader)
+      const bodyRows = tableNode.children.filter((r) => !r.isHeader)
+      const theadHtml =
+        headerRows.length > 0
+          ? `<thead>${headerRows.map((r) => toHtml(r, tableNode)).join('')}</thead>`
+          : ''
+      const tbodyHtml =
+        bodyRows.length > 0
+          ? `<tbody>${bodyRows.map((r) => toHtml(r, tableNode)).join('')}</tbody>`
+          : ''
+      return `<table>${theadHtml}${tbodyHtml}</table>`
+    }
+    case TABLE_ROW:
+      return `<tr>${children}</tr>`
+    case TABLE_CELL: {
+      const cellNode = node as TableCellElement
+      const isHeader = (parent as TableRowElement)?.isHeader
+      const tag = isHeader ? 'th' : 'td'
+      const alignAttr = cellNode.align ? ` style="text-align:${cellNode.align}"` : ''
+      return `<${tag}${alignAttr}>${children}</${tag}>`
+    }
     default:
       return children
   }
@@ -339,6 +368,11 @@ export function fromHtml(
   // Children of `ul`, `ol`, and `li` can be other blocks.
   if (isValidBlockNode && Object.keys(LIST_TAGS).includes(nodeName)) {
     isValidChildBlockNode = true
+  }
+
+  // Table cells contain inline content only.
+  if (nodeName === 'TH' || nodeName === 'TD') {
+    isValidChildBlockNode = false
   }
 
   const dirtyChildren = Array.from(el.childNodes)
@@ -441,6 +475,42 @@ export function fromHtml(
     }
   }
 
+  // THEAD / TBODY / TFOOT are transparent wrappers — just return their children (rows)
+  if (nodeName === 'THEAD' || nodeName === 'TBODY' || nodeName === 'TFOOT') {
+    return children
+  }
+
+  if (isValidBlockNode && nodeName === 'TR') {
+    const isHeader = !!(el as HTMLElement).closest('thead')
+    const cells = children.filter(
+      (c) => SlateElement.isElement(c) && c.type === TABLE_CELL,
+    ) as TableCellElement[]
+    if (cells.length === 0) return null
+    return { type: TABLE_ROW, isHeader, children: cells } as TableRowElement
+  }
+
+  if (nodeName === 'TH' || nodeName === 'TD') {
+    // Parse alignment from `align` attribute (marked output) or `style` attribute
+    const alignAttr = (el as HTMLElement).getAttribute('align')
+    const styleAttr = (el as HTMLElement).getAttribute('style') ?? ''
+    const alignFromStyle = styleAttr.match(/text-align:\s*(left|center|right)/i)?.[1]
+    const align = (alignAttr || alignFromStyle) as 'left' | 'center' | 'right' | undefined
+    const inlineChildren = children.filter(isInlineElementOrText)
+    return {
+      type: TABLE_CELL,
+      align,
+      children: inlineChildren.length > 0 ? inlineChildren : [{ text: '' }],
+    } as TableCellElement
+  }
+
+  if (isValidBlockNode && nodeName === 'TABLE') {
+    const rows = children.filter(
+      (c) => SlateElement.isElement(c) && c.type === TABLE_ROW,
+    ) as TableRowElement[]
+    if (rows.length === 0) return null
+    return { type: TABLE, children: rows } as TableElement
+  }
+
   return children
 }
 
@@ -450,6 +520,7 @@ function looksLikeMarkdown(text: string): boolean {
   if (/^```|^~~~/m.test(text)) score += 2 // fenced code blocks
   if (/^#{1,6} /m.test(text)) score += 2 // ATX headings
   if (/^[-*] \[[ xX]\]/m.test(text)) score += 2 // task list items
+  if (/^\|.+\|$/m.test(text) && /^\|[\s|:-]+\|$/m.test(text)) score += 2 // GFM pipe table
   // Regular signals (count as 1 each)
   if (/\*\*[^*\n]+\*\*/.test(text)) score++ // bold
   if (/(?<!\*)\*(?!\*)[^*\n]+\*(?!\*)/.test(text)) score++ // italic

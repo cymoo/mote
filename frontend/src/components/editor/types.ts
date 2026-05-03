@@ -22,6 +22,11 @@ export const HASH_TAG = 'hash-tag'
 // void elements
 export const IMAGE = 'image'
 
+// table elements
+export const TABLE = 'table'
+export const TABLE_ROW = 'table-row'
+export const TABLE_CELL = 'table-cell'
+
 // marks
 export const BOLD = 'bold'
 export const ITALIC = 'italic'
@@ -139,4 +144,21 @@ export interface ImageElement {
 export interface HashTagElement {
   type: typeof HASH_TAG
   children: [Text]
+}
+
+export interface TableCellElement {
+  type: typeof TABLE_CELL
+  align?: 'left' | 'center' | 'right'
+  children: Descendant[]
+}
+
+export interface TableRowElement {
+  type: typeof TABLE_ROW
+  isHeader?: boolean
+  children: TableCellElement[]
+}
+
+export interface TableElement {
+  type: typeof TABLE
+  children: TableRowElement[]
 }
