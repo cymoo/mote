@@ -19,8 +19,6 @@ export function Table({ attributes, children }: RenderElementProps) {
   return (
     <div className="my-3 overflow-x-auto">
       <table className="border-collapse w-full">
-        {/* attributes (including Slate's ref) go on tbody, matching the official Slate tables pattern.
-            This prevents the browser from inserting an implicit tbody and keeps Slate's DOM mapping correct. */}
         <tbody {...attributes}>{children}</tbody>
       </table>
     </div>

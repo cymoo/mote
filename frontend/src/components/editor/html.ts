@@ -481,7 +481,10 @@ export function fromHtml(
   }
 
   if (isValidBlockNode && nodeName === 'TR') {
-    const isHeader = !!(el as HTMLElement).closest('thead')
+    const trEl = el as HTMLTableRowElement
+    const isHeader =
+      !!trEl.closest('thead') ||
+      (trEl.cells.length > 0 && Array.from(trEl.cells).every((c) => c.nodeName === 'TH'))
     const cells = children.filter(
       (c) => SlateElement.isElement(c) && c.type === TABLE_CELL,
     ) as TableCellElement[]
@@ -491,10 +494,14 @@ export function fromHtml(
 
   if (nodeName === 'TH' || nodeName === 'TD') {
     // Parse alignment from `align` attribute (marked output) or `style` attribute
-    const alignAttr = (el as HTMLElement).getAttribute('align')
+    const alignAttr = (el as HTMLElement).getAttribute('align')?.toLowerCase()
     const styleAttr = (el as HTMLElement).getAttribute('style') ?? ''
-    const alignFromStyle = styleAttr.match(/text-align:\s*(left|center|right)/i)?.[1]
-    const align = (alignAttr || alignFromStyle) as 'left' | 'center' | 'right' | undefined
+    const alignFromStyle = styleAttr.match(/text-align:\s*(left|center|right)/i)?.[1]?.toLowerCase()
+    const rawAlign = alignAttr || alignFromStyle
+    const VALID_ALIGNS = ['left', 'center', 'right'] as const
+    const align = VALID_ALIGNS.includes(rawAlign as (typeof VALID_ALIGNS)[number])
+      ? (rawAlign as 'left' | 'center' | 'right')
+      : undefined
     const inlineChildren = children.filter(isInlineElementOrText)
     return {
       type: TABLE_CELL,
