@@ -56,6 +56,56 @@ function createTurndownService(): TurndownService {
     },
   })
 
+  // GFM tables: thead/tbody/tfoot are transparent wrappers
+  td.addRule('tableSection', {
+    filter: ['thead', 'tbody', 'tfoot'],
+    replacement: (content) => content,
+  })
+
+  // Each cell becomes a pipe-delimited segment: | content
+  td.addRule('tableCell', {
+    filter: ['th', 'td'],
+    replacement: (content) =>
+      `| ${content
+        .trim()
+        .replace(/\|/g, '\\|')
+        .replace(/\n/g, ' ')} `,
+  })
+
+  // Each row closes the pipe sequence; header rows get a separator underneath
+  td.addRule('tableRow', {
+    filter: 'tr',
+    replacement: (content, node) => {
+      const row = node as HTMLTableRowElement
+      const cells = Array.from(row.cells)
+      const isHeader =
+        !!row.closest('thead') ||
+        (cells.length > 0 && cells.every((c) => c.nodeName === 'TH'))
+
+      let result = `\n${content}|`
+
+      if (isHeader) {
+        const separators = cells.map((cell) => {
+          const style = cell.getAttribute('style') ?? ''
+          const align = style.match(/text-align:\s*(left|center|right)/i)?.[1]?.toLowerCase()
+          if (align === 'center') return ':---:'
+          if (align === 'right') return '---:'
+          if (align === 'left') return ':---'
+          return '---'
+        })
+        result += `\n| ${separators.join(' | ')} |`
+      }
+
+      return result
+    },
+  })
+
+  // Wrap the whole table in blank lines
+  td.addRule('table', {
+    filter: 'table',
+    replacement: (content) => `\n\n${content}\n\n`,
+  })
+
   return td
 }
 
