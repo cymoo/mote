@@ -169,7 +169,7 @@ func (app *App) setupTasks() error {
 	tm.SetContextValue("upload_path", app.config.Upload.BasePath)
 
 	// delete old posts daily at 2:00 AM
-	if err := tm.AddTask("delete-old-posts", mita.Every().Day().At(2, 0), tasks.DeleteOldPosts); err != nil {
+	if err := tm.AddTask("purge-old-posts", mita.Every().Day().At(2, 0), tasks.PurgeOldPosts); err != nil {
 		return err
 	}
 
