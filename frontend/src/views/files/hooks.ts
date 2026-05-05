@@ -83,6 +83,26 @@ export function useRefreshOnUploadComplete(refresh: () => void) {
   useEffect(() => uploadManager.onCompleted(() => refresh()), [refresh])
 }
 
+// Show dot files toggle ---------------------------------------------------
+
+const SHOW_DOT_FILES_STORE = 'drive_show_dotfiles'
+
+export function useShowDotFiles() {
+  const [showDotFiles, setShowDotFiles] = useState(
+    () => localStorage.getItem(SHOW_DOT_FILES_STORE) === 'true',
+  )
+
+  const toggleShowDotFiles = useCallback(() => {
+    setShowDotFiles((v) => {
+      const next = !v
+      localStorage.setItem(SHOW_DOT_FILES_STORE, String(next))
+      return next
+    })
+  }, [])
+
+  return { showDotFiles, toggleShowDotFiles }
+}
+
 // Mobile breakpoint detection ---------------------------------------------
 
 // Aligned with Tailwind's `md` (768px). Pages branch a small number of

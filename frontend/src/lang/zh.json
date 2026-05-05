@@ -150,5 +150,7 @@
   "close": "关闭",
   "driveTrashRetention": "回收站中的文件最多保留30天",
   "uploadFailed": "上传失败",
-  "searchNoResults": "未找到与 \"{0}\" 相关的文件"
+  "searchNoResults": "未找到与 \"{0}\" 相关的文件",
+  "dotFilesShown": "已显示点文件",
+  "dotFilesHidden": "已隐藏点文件"
 }

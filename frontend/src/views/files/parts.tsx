@@ -16,7 +16,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { ReactNode, Ref, memo, useState } from 'react'
+import { ReactNode, Ref, memo, useRef, useState } from 'react'
 
 import { cx } from '@/utils/css.ts'
 
@@ -37,7 +37,11 @@ interface BreadcrumbsProps {
   isTrash?: boolean
   label?: string
   lang: Lang
+  onSecretActivate?: () => void
 }
+
+const SECRET_CLICK_TARGET = 10
+const SECRET_CLICK_TIMEOUT_MS = 2000
 
 export const Breadcrumbs = memo(function Breadcrumbs({
   crumbs,
@@ -46,13 +50,31 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   isTrash,
   label,
   lang,
+  onSecretActivate,
 }: BreadcrumbsProps) {
+  const clickCount = useRef(0)
+  const clickTimer = useRef<ReturnType<typeof setTimeout>>(null)
+
+  const handleRootClick = () => {
+    onRoot()
+    if (!onSecretActivate) return
+    clickCount.current++
+    if (clickTimer.current) clearTimeout(clickTimer.current)
+    if (clickCount.current >= SECRET_CLICK_TARGET) {
+      clickCount.current = 0
+      onSecretActivate()
+    } else {
+      clickTimer.current = setTimeout(() => {
+        clickCount.current = 0
+      }, SECRET_CLICK_TIMEOUT_MS)
+    }
+  }
   return (
     <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:[mask-image:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
       <button
         type="button"
         className="hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md px-2 py-1 transition-colors"
-        onClick={onRoot}
+        onClick={handleRootClick}
         title={t('myDrive', lang)}
       >
         <T name="myDrive" />

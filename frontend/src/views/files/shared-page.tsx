@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router'
 import { CheckIcon, CopyIcon, ExternalLinkIcon } from 'lucide-react'
@@ -9,8 +9,10 @@ import { useModal } from '@/components/modal.tsx'
 import { T, t, useLang } from '@/components/translation.tsx'
 
 import { SharedItem, listAllShares, revokeShare } from './api'
+import { useShowDotFiles } from './hooks'
 import { TopBar } from './layout'
 import { Breadcrumbs } from './parts'
+import { useShortcuts } from './use-shortcuts'
 import { EmptyState, SharedView } from './views'
 
 export function SharedPage() {
@@ -19,6 +21,7 @@ export function SharedPage() {
   const modal = useModal()
   const { lang } = useLang()
   const navigate = useNavigate()
+  const { showDotFiles, toggleShowDotFiles } = useShowDotFiles()
 
   const refresh = useCallback(async () => {
     setItems(await listAllShares())
@@ -27,6 +30,20 @@ export function SharedPage() {
   useEffect(() => {
     void refresh().catch((err: Error) => toast.error(err.message))
   }, [refresh])
+
+  const visibleItems = useMemo(
+    () => (showDotFiles ? items : items.filter((s) => !s.name.startsWith('.'))),
+    [items, showDotFiles],
+  )
+
+  const handleToggleDotFiles = useCallback(() => {
+    toggleShowDotFiles()
+    toast(t(showDotFiles ? 'dotFilesHidden' : 'dotFilesShown', lang))
+  }, [toggleShowDotFiles, showDotFiles, lang])
+
+  useShortcuts({
+    'mod+.': { run: handleToggleDotFiles },
+  })
 
   return (
     <div className="flex flex-1 flex-col">
@@ -43,11 +60,11 @@ export function SharedPage() {
         }
       />
       <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <EmptyState trash={false} shared lang={lang} />
         ) : (
           <SharedView
-            items={items}
+            items={visibleItems}
             onOpenLocation={(pid) => {
               void navigate(pid == null ? '/files' : `/files?p=${pid}`)
             }}
@@ -74,6 +91,7 @@ export function SharedPage() {
               })
             }}
             lang={lang}
+            showDotFiles={showDotFiles}
           />
         )}
       </main>

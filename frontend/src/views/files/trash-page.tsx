@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { EraserIcon, InfoIcon } from 'lucide-react'
 import { useNavigate } from 'react-router'
@@ -8,14 +8,17 @@ import { useConfirm } from '@/components/confirm.tsx'
 import { t, T, useLang } from '@/components/translation.tsx'
 
 import { DriveNode, purgeNodes, restoreNode, trash } from './api'
+import { useShowDotFiles } from './hooks'
 import { TopBar } from './layout'
 import { Breadcrumbs } from './parts'
+import { useShortcuts } from './use-shortcuts'
 import { EmptyState, TrashView } from './views'
 
 export function TrashPage() {
   const [items, setItems] = useState<DriveNode[]>([])
   const confirm = useConfirm()
   const { lang } = useLang()
+  const { showDotFiles, toggleShowDotFiles } = useShowDotFiles()
 
   const navigate = useNavigate()
   const refresh = useCallback(async () => {
@@ -25,6 +28,20 @@ export function TrashPage() {
   useEffect(() => {
     void refresh().catch((err: Error) => toast.error(err.message))
   }, [refresh])
+
+  const visibleItems = useMemo(
+    () => (showDotFiles ? items : items.filter((n) => !n.name.startsWith('.'))),
+    [items, showDotFiles],
+  )
+
+  const handleToggleDotFiles = useCallback(() => {
+    toggleShowDotFiles()
+    toast(t(showDotFiles ? 'dotFilesHidden' : 'dotFilesShown', lang))
+  }, [toggleShowDotFiles, showDotFiles, lang])
+
+  useShortcuts({
+    'mod+.': { run: handleToggleDotFiles },
+  })
 
   const handlePurge = (id: number) => {
     confirm.open({
@@ -94,11 +111,11 @@ export function TrashPage() {
         )}
       </div>
       <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <EmptyState trash lang={lang} />
         ) : (
           <TrashView
-            items={items}
+            items={visibleItems}
             onRestore={async (id) => {
               try {
                 await restoreNode(id)
@@ -109,6 +126,7 @@ export function TrashPage() {
             }}
             onPurge={handlePurge}
             lang={lang}
+            showDotFiles={showDotFiles}
           />
         )}
       </main>

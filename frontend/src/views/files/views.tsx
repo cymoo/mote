@@ -29,6 +29,7 @@ interface ListViewProps {
   onSort: (k: SortKey) => void
   lang: Lang
   isMobile?: boolean
+  showDotFiles?: boolean
 }
 
 export const ListView = memo(function ListView({
@@ -44,6 +45,7 @@ export const ListView = memo(function ListView({
   onSort,
   lang,
   isMobile,
+  showDotFiles,
 }: ListViewProps) {
   const allSelected = items.length > 0 && selected.size === items.length
   const someSelected = selected.size > 0 && !allSelected
@@ -91,6 +93,7 @@ export const ListView = memo(function ListView({
             onNavigateToParent={onNavigateToParent}
             lang={lang}
             isMobile={isMobile}
+            dimmed={showDotFiles && n.name.startsWith('.')}
           />
         ))}
       </tbody>
@@ -108,6 +111,7 @@ interface ListRowProps {
   onNavigateToParent: (parentID: number | null) => void
   lang: Lang
   isMobile?: boolean
+  dimmed?: boolean
 }
 
 const ListRow = memo(function ListRow({
@@ -120,6 +124,7 @@ const ListRow = memo(function ListRow({
   onNavigateToParent,
   lang,
   isMobile,
+  dimmed,
 }: ListRowProps) {
   return (
     <tr
@@ -127,6 +132,7 @@ const ListRow = memo(function ListRow({
         'group hover:bg-accent/50 cursor-default border-b transition-colors',
         'border-border/40',
         selected ? 'bg-accent' : undefined,
+        dimmed ? 'opacity-50' : undefined,
       )}
       onClick={(e) => {
         if (isMobile) {
@@ -207,6 +213,7 @@ interface GridViewProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   lang: Lang
+  showDotFiles?: boolean
 }
 
 export const GridView = memo(function GridView({
@@ -216,6 +223,7 @@ export const GridView = memo(function GridView({
   onOpen,
   onAction,
   lang,
+  showDotFiles,
 }: GridViewProps) {
   return (
     <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
@@ -229,6 +237,7 @@ export const GridView = memo(function GridView({
           onOpen={onOpen}
           onAction={onAction}
           lang={lang}
+          dimmed={showDotFiles && n.name.startsWith('.')}
         />
       ))}
     </div>
@@ -243,6 +252,7 @@ interface GridCardProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   lang: Lang
+  dimmed?: boolean
 }
 
 const GridCard = memo(function GridCard({
@@ -253,6 +263,7 @@ const GridCard = memo(function GridCard({
   onOpen,
   onAction,
   lang,
+  dimmed,
 }: GridCardProps) {
   return (
     <div
@@ -262,6 +273,7 @@ const GridCard = memo(function GridCard({
         'group relative flex h-32 flex-col items-center justify-start gap-1.5 rounded-xl border p-3 text-center transition-all md:h-36',
         'hover:bg-accent/60 border-transparent hover:-translate-y-0.5 hover:shadow-sm',
         selected ? 'border-primary/40 bg-accent ring-primary/20 ring-2' : undefined,
+        dimmed ? 'opacity-50' : undefined,
       )}
       onClick={(e) => {
         // Modifier-click toggles selection; plain click opens.
@@ -326,6 +338,7 @@ interface TrashViewProps {
   onRestore: (id: number) => void | Promise<void>
   onPurge: (id: number) => void
   lang: Lang
+  showDotFiles?: boolean
 }
 
 export const TrashView = memo(function TrashView({
@@ -333,13 +346,17 @@ export const TrashView = memo(function TrashView({
   onRestore,
   onPurge,
   lang,
+  showDotFiles,
 }: TrashViewProps) {
   return (
     <ul className="divide-border/60 divide-y">
       {items.map((n) => (
         <li
           key={n.id}
-          className="hover:bg-accent/40 flex items-center gap-3 px-4 py-2.5 transition-colors"
+          className={cx(
+            'hover:bg-accent/40 flex items-center gap-3 px-4 py-2.5 transition-colors',
+            showDotFiles && n.name.startsWith('.') ? 'opacity-50' : undefined,
+          )}
         >
           <NodeIcon node={n} />
           <span className="flex-1 truncate text-sm">{n.name}</span>
@@ -491,6 +508,7 @@ interface SharedViewProps {
   onViewLink: (item: SharedItem) => void
   onRevoke: (shareID: number) => void | Promise<void>
   lang: Lang
+  showDotFiles?: boolean
 }
 
 export const SharedView = memo(function SharedView({
@@ -499,6 +517,7 @@ export const SharedView = memo(function SharedView({
   onViewLink,
   onRevoke,
   lang,
+  showDotFiles,
 }: SharedViewProps) {
   return (
     <ul className="divide-border/60 divide-y">
@@ -510,6 +529,7 @@ export const SharedView = memo(function SharedView({
             className={cx(
               'hover:bg-accent/40 flex items-center gap-3 px-4 py-2.5 transition-colors',
               expired ? 'opacity-60' : undefined,
+              showDotFiles && s.name.startsWith('.') ? 'opacity-50' : undefined,
             )}
           >
             <span className="shrink-0">

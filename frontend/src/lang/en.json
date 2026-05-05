@@ -150,5 +150,7 @@
   "close": "close",
   "driveTrashRetention": "Files are permanently deleted after 30 days",
   "uploadFailed": "upload failed",
-  "searchNoResults": "no files matching \"{0}\""
+  "searchNoResults": "no files matching \"{0}\"",
+  "dotFilesShown": "Showing dotfiles",
+  "dotFilesHidden": "Hiding dotfiles"
 }

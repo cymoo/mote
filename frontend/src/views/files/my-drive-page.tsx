@@ -30,7 +30,7 @@ import {
   search,
 } from './api'
 import { MoveDialog, NameDialog, ShareDialog } from './dialogs'
-import { useIsMobile, useRefreshOnUploadComplete, useSelection, useSort } from './hooks'
+import { useIsMobile, useRefreshOnUploadComplete, useSelection, useShowDotFiles, useSort } from './hooks'
 import { TopBar } from './layout'
 import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
@@ -60,7 +60,7 @@ export function MyDrivePage() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   const { sortKey, sortDir, onSort } = useSort()
-  const { selected, toggle, toggleAll, clear } = useSelection(items)
+  const { showDotFiles, toggleShowDotFiles } = useShowDotFiles()
   const isMobile = useIsMobile()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -68,6 +68,15 @@ export function MyDrivePage() {
   const confirm = useConfirm()
   const modal = useModal()
   const { lang } = useLang()
+
+  // Derived: items with dotfiles filtered out when showDotFiles is false.
+  // Used for rendering and selection so toggleAll operates only on visible items.
+  const visibleItems = useMemo(
+    () => (showDotFiles ? items : items.filter((n) => !n.name.startsWith('.'))),
+    [items, showDotFiles],
+  )
+
+  const { selected, toggle, toggleAll, clear } = useSelection(visibleItems)
 
   const refresh = useCallback(async () => {
     if (query.trim()) {
@@ -94,6 +103,14 @@ export function MyDrivePage() {
   useEffect(() => {
     if (searchOpen) searchRef.current?.focus()
   }, [searchOpen])
+
+  // ---- dotfiles toggle --------------------------------------------------------
+
+  const handleToggleDotFiles = useCallback(() => {
+    toggleShowDotFiles()
+    setPreviewIdx(null)
+    toast(t(showDotFiles ? 'dotFilesHidden' : 'dotFilesShown', lang))
+  }, [toggleShowDotFiles, showDotFiles, lang])
 
   // ---- uploads ------------------------------------------------------------
 
@@ -343,6 +360,9 @@ export function MyDrivePage() {
       run: () => handleDelete([...selected]),
       when: () => selected.size > 0,
     },
+    'mod+.': {
+      run: handleToggleDotFiles,
+    },
   })
 
   return (
@@ -371,6 +391,7 @@ export function MyDrivePage() {
             onCrumb={goTo}
             isTrash={false}
             lang={lang}
+            onSecretActivate={handleToggleDotFiles}
           />
         }
         extra={
@@ -467,7 +488,7 @@ export function MyDrivePage() {
       </div>
 
       <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           query.trim() ? (
             <SearchEmptyState query={query.trim()} lang={lang} />
           ) : (
@@ -475,7 +496,7 @@ export function MyDrivePage() {
           )
         ) : view === 'list' ? (
           <ListView
-            items={items}
+            items={visibleItems}
             selected={selected}
             onToggle={toggle}
             onToggleAll={toggleAll}
@@ -487,22 +508,24 @@ export function MyDrivePage() {
             onSort={onSort}
             lang={lang}
             isMobile={isMobile}
+            showDotFiles={showDotFiles}
           />
         ) : (
           <GridView
-            items={items}
+            items={visibleItems}
             selected={selected}
             onToggle={toggle}
             onOpen={open}
             onAction={onAction}
             lang={lang}
+            showDotFiles={showDotFiles}
           />
         )}
       </main>
 
       {previewIdx != null && (
         <PreviewModal
-          items={items}
+          items={visibleItems}
           index={previewIdx}
           onClose={() => setPreviewIdx(null)}
           onDownload={downloadOne}
