@@ -87,13 +87,13 @@ class DriveApiController(
     fun download(
         @RequestParam id: Long,
         @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
-    ): ResponseEntity<*> = serveBlob(id, true, range)
+    ): ResponseEntity<StreamingResponseBody> = serveBlob(id, true, range)
 
     @GetMapping("/preview")
     fun preview(
         @RequestParam id: Long,
         @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
-    ): ResponseEntity<*> = serveBlob(id, false, range)
+    ): ResponseEntity<StreamingResponseBody> = serveBlob(id, false, range)
 
     @GetMapping("/thumb")
     fun thumb(
@@ -135,7 +135,7 @@ class DriveApiController(
             .body(body)
     }
 
-    private fun serveBlob(id: Long, forceAttachment: Boolean, range: String?): ResponseEntity<*> {
+    private fun serveBlob(id: Long, forceAttachment: Boolean, range: String?): ResponseEntity<StreamingResponseBody> {
         val node = driveService.findById(id)
         if (node.type != "file" || node.blobPath.isNullOrBlank() || node.deletedAt != null) {
             throw NotFoundException("not found")

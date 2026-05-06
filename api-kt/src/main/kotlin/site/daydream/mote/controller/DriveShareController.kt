@@ -91,7 +91,7 @@ class DriveShareController(
         @PathVariable token: String,
         request: HttpServletRequest,
         @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
-    ): ResponseEntity<*> =
+    ): ResponseEntity<StreamingResponseBody> =
         serveShared(token, request, true, range)
 
     @GetMapping("/{token}/preview")
@@ -99,7 +99,7 @@ class DriveShareController(
         @PathVariable token: String,
         request: HttpServletRequest,
         @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
-    ): ResponseEntity<*> =
+    ): ResponseEntity<StreamingResponseBody> =
         serveShared(token, request, false, range)
 
     private fun serveShared(
@@ -107,10 +107,10 @@ class DriveShareController(
         request: HttpServletRequest,
         forceAttachment: Boolean,
         range: String?,
-    ): ResponseEntity<*> {
+    ): ResponseEntity<StreamingResponseBody> {
         val (share, node) = shareService.resolve(token)
         if (!share.passwordHash.isNullOrEmpty() && !passwordOk(request, share, token)) {
-            return ResponseEntity.status(303).header(HttpHeaders.LOCATION, "/shared-files/$token").build<Void>()
+            return ResponseEntity.status(303).header(HttpHeaders.LOCATION, "/shared-files/$token").build<StreamingResponseBody>()
         }
         if (node.blobPath.isNullOrBlank()) throw NotFoundException("not found")
         val abs = File(driveService.blobAbsPath(node.blobPath))

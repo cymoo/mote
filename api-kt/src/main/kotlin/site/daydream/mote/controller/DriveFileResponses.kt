@@ -18,7 +18,7 @@ fun driveFileResponse(
     mimeType: String?,
     forceAttachment: Boolean,
     rangeHeader: String?,
-): ResponseEntity<*> {
+): ResponseEntity<StreamingResponseBody> {
     val mt = mimeType ?: "application/octet-stream"
     val ext = File(name).extension
     val disp = if (forceAttachment || DriveApiController.mustForceAttachment(mt, ext)) "attachment" else "inline"
@@ -26,14 +26,15 @@ fun driveFileResponse(
     if (!abs.exists() || abs.isDirectory) throw NotFoundException("not found")
 
     if (accelUri != null) {
+        // nginx replaces the body; return an empty body so Spring can serialize it
         return responseBuilder(HttpStatus.OK, mt, disp, name)
             .header("X-Accel-Redirect", accelUri)
-            .build<Void>()
+            .body(StreamingResponseBody { })
     }
 
     val range = parseRange(rangeHeader, abs.length())
     val contentLength = range?.let { it.last - it.first + 1 } ?: abs.length()
-    val body = StreamingResponseBody { out ->
+    val body: StreamingResponseBody = StreamingResponseBody { out ->
         RandomAccessFile(abs, "r").use { file ->
             range?.let { file.seek(it.first) }
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
