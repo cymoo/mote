@@ -1,5 +1,5 @@
 use crate::errors::{any_error, ApiError, ApiResult};
-use crate::route::drive_api::serve_file;
+use crate::route::drive_api::serve_drive_file;
 use crate::util::extractor::{Form, Path};
 use crate::AppState;
 use axum::extract::State;
@@ -209,7 +209,16 @@ async fn serve_shared(
         return Err(any_error(404, "Not Found", None));
     };
     let abs = state.drive.blob_abs_path(&blob);
-    serve_file(&abs, &node.name, node.mime_type.as_deref(), force).await
+    serve_drive_file(
+        &state.drive.config,
+        &abs,
+        &blob,
+        &node.name,
+        node.mime_type.as_deref(),
+        force,
+        &headers,
+    )
+    .await
 }
 
 async fn rate_limit_ok(state: &AppState, key: &str, expires: u64, max_count: i64) -> bool {

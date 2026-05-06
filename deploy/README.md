@@ -78,7 +78,7 @@ tar -xzf /opt/mote/backups/backup-YYYYMMDD-HHMMSS/uploads.tar.gz -C /opt/mote
 | Path | Contents |
 |------|----------|
 | `/opt/mote/data/app.db` | SQLite database (bind-mounted into container) |
-| `/opt/mote/uploads/` | User-uploaded files (served by nginx) |
+| `/opt/mote/uploads/` | User-uploaded files; Drive blobs under `uploads/drive/` are served by nginx through an internal accelerated location after app auth checks |
 | `/opt/mote/web/` | Built React SPA (served by nginx) |
 | `/opt/mote/backups/` | Backup sets |
 
@@ -89,4 +89,3 @@ Redis data is stored in a Docker named volume (`mote_redis_data`).
 Certbot obtains and auto-renews the certificate. Renewal is triggered automatically by certbot's systemd timer (installed with certbot). On each renewal, the deploy hook `nginx -s reload` runs automatically. Certificates are stored in `/etc/letsencrypt/live/<DOMAIN>/`.
 
 To verify renewal works: `certbot renew --dry-run`
-

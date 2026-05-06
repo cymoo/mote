@@ -39,6 +39,7 @@ class Config:
     # Upload
     UPLOAD_PATH: str = os.path.join(PY_ROOT, 'uploads')
     UPLOAD_URL: str = '/uploads'
+    DRIVE_ACCEL_REDIRECT_PREFIX: str = ''
     UPLOAD_IMAGE_FORMATS: set = frozenset({'png', 'jpg', 'jpeg', 'gif', 'webp'})
     UPLOAD_THUMB_WIDTH: int = 128
 
@@ -127,6 +128,8 @@ class Config:
         # Validate Upload config
         if not self.UPLOAD_URL:
             errors.append("UPLOAD_URL cannot be empty")
+        if self.DRIVE_ACCEL_REDIRECT_PREFIX and not self.DRIVE_ACCEL_REDIRECT_PREFIX.startswith('/'):
+            errors.append("DRIVE_ACCEL_REDIRECT_PREFIX must start with '/'")
 
         if not self.UPLOAD_PATH:
             errors.append("UPLOAD_PATH cannot be empty")

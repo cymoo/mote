@@ -34,10 +34,11 @@ type Config struct {
 }
 
 type UploadConfig struct {
-	BaseURL      string
-	BasePath     string
-	ImageFormats []string
-	ThumbWidth   uint32
+	BaseURL             string
+	BasePath            string
+	AccelRedirectPrefix string
+	ImageFormats        []string
+	ThumbWidth          uint32
 }
 
 type DBConfig struct {
@@ -107,10 +108,11 @@ func Load() *Config {
 	}
 
 	config.Upload = UploadConfig{
-		BaseURL:      env.GetString("UPLOAD_URL", "/uploads"),
-		BasePath:     env.GetString("UPLOAD_PATH", "./uploads"),
-		ImageFormats: env.GetSlice("UPLOAD_IMAGE_FORMATS", []string{"jpg", "jpeg", "png", "webp", "gif"}),
-		ThumbWidth:   uint32(env.GetInt("UPLOAD_THUMB_WIDTH", 128)),
+		BaseURL:             env.GetString("UPLOAD_URL", "/uploads"),
+		BasePath:            env.GetString("UPLOAD_PATH", "./uploads"),
+		AccelRedirectPrefix: env.GetString("DRIVE_ACCEL_REDIRECT_PREFIX", ""),
+		ImageFormats:        env.GetSlice("UPLOAD_IMAGE_FORMATS", []string{"jpg", "jpeg", "png", "webp", "gif"}),
+		ThumbWidth:          uint32(env.GetInt("UPLOAD_THUMB_WIDTH", 128)),
 	}
 
 	config.DB = DBConfig{
@@ -215,6 +217,9 @@ func (c *Config) validate() {
 	// Validate Upload config
 	if c.Upload.BaseURL == "" {
 		errs = append(errs, "Upload.BaseURL cannot be empty")
+	}
+	if c.Upload.AccelRedirectPrefix != "" && !strings.HasPrefix(c.Upload.AccelRedirectPrefix, "/") {
+		errs = append(errs, "Upload.AccelRedirectPrefix must start with '/'")
 	}
 	if c.Upload.BasePath == "" {
 		errs = append(errs, "Upload.BasePath cannot be empty")

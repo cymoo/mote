@@ -4,33 +4,28 @@ Mirrors api-go/internal/handlers/drive_share.go.
 """
 from __future__ import annotations
 
-import os
 import hashlib
 import hmac
-from urllib.parse import quote
 
 from flask import (
     Blueprint,
-    Response,
     abort,
     current_app,
     make_response,
     redirect,
     render_template_string,
     request,
-    send_file,
 )
 
 from ..services.drive import (
-    DriveError,
     DriveNotFound,
-    must_force_attachment,
 )
 from ..services.drive_share import (
     ShareExpired,
     ShareNotFound,
     share_password_cookie_name,
 )
+from .drive_serve import serve_drive_blob
 
 
 shared_bp = Blueprint('shared_drive', __name__)
@@ -215,21 +210,13 @@ def _serve_share(token: str, force_attachment: bool):
     if not node.blob_path:
         abort(404)
     abs_path = _drive().blob_abs_path(node.blob_path)
-    if not os.path.exists(abs_path):
-        abort(404)
-
-    mt = node.mime_type()
-    disp = (
-        'attachment'
-        if (force_attachment or must_force_attachment(mt, node.ext()))
-        else 'inline'
+    return serve_drive_blob(
+        abs_path,
+        node.blob_path,
+        node.name,
+        node.mime_type(),
+        force_attachment,
     )
-    resp = send_file(abs_path, mimetype=mt, conditional=True)
-    resp.headers['Content-Disposition'] = (
-        f"{disp}; filename*=UTF-8''{quote(node.name, safe='')}"
-    )
-    resp.headers['X-Content-Type-Options'] = 'nosniff'
-    return resp
 
 
 @shared_bp.get('/<token>/download')

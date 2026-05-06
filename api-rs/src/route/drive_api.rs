@@ -1,3 +1,4 @@
+use crate::config::UploadConfig;
 use crate::errors::{bad_request, ApiError, ApiResult};
 use crate::model::drive::*;
 use crate::service::drive_service::DriveError;
@@ -9,7 +10,7 @@ use axum::http::header::{
     CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG, IF_NONE_MATCH,
     X_CONTENT_TYPE_OPTIONS,
 };
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::Router;
@@ -18,6 +19,8 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio_util::io::ReaderStream;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 use tower_http::timeout::TimeoutLayer;
 
 /// Routes whose handler futures may take significant time: thumbnail generation,
@@ -266,31 +269,56 @@ pub(crate) async fn serve_blob(
     }
     let blob = node.blob_path.clone().unwrap();
     let abs = state.drive.blob_abs_path(&blob);
-    serve_file(
+    serve_drive_file(
+        &state.drive.config,
         &abs,
+        &blob,
         &node.name,
         node.mime_type.as_deref(),
         force_attachment,
+        _headers,
     )
     .await
 }
 
-pub(crate) async fn serve_file(
+pub(crate) async fn serve_drive_file(
+    config: &UploadConfig,
     abs: &PathBuf,
+    blob_path: &str,
     name: &str,
     mime: Option<&str>,
     force_attachment: bool,
+    headers: &HeaderMap,
 ) -> ApiResult<Response> {
-    let f = tokio::fs::File::open(abs)
+    let accel_uri = drive_accel_redirect_uri(config, blob_path)?;
+    let st = tokio::fs::metadata(abs)
         .await
         .map_err(|_| ApiError::NotFound("not found".into()))?;
-    let st = f
-        .metadata()
-        .await
-        .map_err(|e| ApiError::ServerError(e.to_string()))?;
-    let stream = ReaderStream::new(f);
-    let body = Body::from_stream(stream);
-    let mut resp = Response::new(body);
+    if st.is_dir() {
+        return Err(ApiError::NotFound("not found".into()));
+    }
+
+    let mut resp = if let Some(uri) = accel_uri {
+        let mut resp = Response::new(Body::empty());
+        resp.headers_mut().insert(
+            HeaderName::from_static("x-accel-redirect"),
+            HeaderValue::from_str(&uri)
+                .map_err(|e| ApiError::ServerError(format!("invalid accel redirect: {e}")))?,
+        );
+        resp
+    } else {
+        let mut file_req = Request::new(Body::empty());
+        *file_req.headers_mut() = headers.clone();
+        let resp = ServeFile::new(abs)
+            .oneshot(file_req)
+            .await
+            .map_err(|e| ApiError::ServerError(e.to_string()))?
+            .map(Body::new);
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Err(ApiError::NotFound("not found".into()));
+        }
+        resp
+    };
     let mt = mime.unwrap_or("application/octet-stream").to_string();
     let ext = std::path::Path::new(name)
         .extension()
@@ -312,11 +340,36 @@ pub(crate) async fn serve_file(
         HeaderValue::from_str(&disp).unwrap_or(HeaderValue::from_static("inline")),
     );
     h.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    h.insert(
-        CONTENT_LENGTH,
-        HeaderValue::from_str(&st.len().to_string()).unwrap(),
-    );
     Ok(resp)
+}
+
+fn drive_accel_redirect_uri(config: &UploadConfig, blob_path: &str) -> ApiResult<Option<String>> {
+    let prefix = config.accel_redirect_prefix.trim().trim_end_matches('/');
+    if prefix.is_empty() {
+        return Ok(None);
+    }
+    if !prefix.starts_with('/') {
+        return Err(ApiError::ServerError(
+            "DRIVE_ACCEL_REDIRECT_PREFIX must start with '/'".into(),
+        ));
+    }
+    let mut components = std::path::Path::new(blob_path).components();
+    let Some(std::path::Component::Normal(first)) = components.next() else {
+        return Err(ApiError::NotFound("not found".into()));
+    };
+    if first != "drive" {
+        return Err(ApiError::NotFound("not found".into()));
+    }
+    let Some(std::path::Component::Normal(name)) = components.next() else {
+        return Err(ApiError::NotFound("not found".into()));
+    };
+    if components.next().is_some() {
+        return Err(ApiError::NotFound("not found".into()));
+    }
+    let name = name
+        .to_str()
+        .ok_or_else(|| ApiError::NotFound("not found".into()))?;
+    Ok(Some(format!("{}/{}", prefix, urlencoding::encode(name))))
 }
 
 pub(crate) fn must_force_attachment(mt: &str, ext: &str) -> bool {

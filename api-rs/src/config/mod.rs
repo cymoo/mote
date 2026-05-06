@@ -44,6 +44,7 @@ pub struct HTTPConfig {
 pub struct UploadConfig {
     pub base_path: String,
     pub base_url: String,
+    pub accel_redirect_prefix: String,
     pub thumb_width: u32,
     pub image_formats: Vec<String>,
 }
@@ -129,6 +130,8 @@ impl UploadConfig {
     pub fn from_env() -> Self {
         let base_path = get_env_or("UPLOAD_PATH", "./uploads".to_string()).unwrap();
         let base_url = get_env_or("UPLOAD_URL", "/uploads".to_string()).unwrap();
+        let accel_redirect_prefix =
+            get_env_or("DRIVE_ACCEL_REDIRECT_PREFIX", "".to_string()).unwrap();
         let thumb_width = get_env_or("UPLOAD_THUMB_WIDTH", 128).unwrap();
         let image_formats = get_vec_from_env_or(
             "UPLOAD_IMAGE_FORMATS",
@@ -139,6 +142,7 @@ impl UploadConfig {
         UploadConfig {
             base_path,
             base_url,
+            accel_redirect_prefix,
             thumb_width,
             image_formats,
         }
@@ -277,6 +281,11 @@ impl AppConfig {
         // Validate Upload config
         if self.upload.base_url.is_empty() {
             errors.push("upload.base_url cannot be empty".to_string());
+        }
+        if !self.upload.accel_redirect_prefix.is_empty()
+            && !self.upload.accel_redirect_prefix.starts_with('/')
+        {
+            errors.push("upload.accel_redirect_prefix must start with '/'".to_string());
         }
         if self.upload.base_path.is_empty() {
             errors.push("upload.base_path cannot be empty".to_string());

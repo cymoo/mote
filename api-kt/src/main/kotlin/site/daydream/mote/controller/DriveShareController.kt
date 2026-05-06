@@ -8,6 +8,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
+import site.daydream.mote.config.UploadConfig
 import site.daydream.mote.exception.AuthenticationException
 import site.daydream.mote.exception.NotFoundException
 import site.daydream.mote.model.DriveShare
@@ -28,6 +29,7 @@ class DriveShareController(
     private val driveService: DriveService,
     private val shareService: DriveShareService,
     private val redis: RedisService,
+    private val uploadConfig: UploadConfig,
 ) {
 
     @GetMapping("/{token}")
@@ -85,35 +87,34 @@ class DriveShareController(
     }
 
     @GetMapping("/{token}/download")
-    fun download(@PathVariable token: String, request: HttpServletRequest): ResponseEntity<*> =
-        serveShared(token, request, true)
+    fun download(
+        @PathVariable token: String,
+        request: HttpServletRequest,
+        @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
+    ): ResponseEntity<*> =
+        serveShared(token, request, true, range)
 
     @GetMapping("/{token}/preview")
-    fun preview(@PathVariable token: String, request: HttpServletRequest): ResponseEntity<*> =
-        serveShared(token, request, false)
+    fun preview(
+        @PathVariable token: String,
+        request: HttpServletRequest,
+        @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
+    ): ResponseEntity<*> =
+        serveShared(token, request, false, range)
 
-    private fun serveShared(token: String, request: HttpServletRequest, forceAttachment: Boolean): ResponseEntity<*> {
+    private fun serveShared(
+        token: String,
+        request: HttpServletRequest,
+        forceAttachment: Boolean,
+        range: String?,
+    ): ResponseEntity<*> {
         val (share, node) = shareService.resolve(token)
         if (!share.passwordHash.isNullOrEmpty() && !passwordOk(request, share, token)) {
             return ResponseEntity.status(303).header(HttpHeaders.LOCATION, "/shared-files/$token").build<Void>()
         }
         if (node.blobPath.isNullOrBlank()) throw NotFoundException("not found")
         val abs = File(driveService.blobAbsPath(node.blobPath))
-        if (!abs.exists()) throw NotFoundException("not found")
-
-        val mt = node.mimeType ?: "application/octet-stream"
-        val disp = if (forceAttachment || DriveApiController.mustForceAttachment(mt, node.ext ?: "")) "attachment" else "inline"
-
-        val body = StreamingResponseBody { out -> abs.inputStream().use { it.copyTo(out) } }
-        return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_TYPE, mt)
-            .header(HttpHeaders.CONTENT_LENGTH, abs.length().toString())
-            .header(
-                HttpHeaders.CONTENT_DISPOSITION,
-                "$disp; filename*=UTF-8''${urlEncode(node.name)}",
-            )
-            .header("X-Content-Type-Options", "nosniff")
-            .body(body)
+        return driveFileResponse(uploadConfig, abs, node.blobPath, node.name, node.mimeType, forceAttachment, range)
     }
 
     private fun passwordOk(req: HttpServletRequest, share: DriveShare, token: String): Boolean {

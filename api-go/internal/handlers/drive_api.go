@@ -209,30 +209,11 @@ func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAt
 		return
 	}
 	node, err := h.drive.FindByID(r.Context(), id)
-	if err != nil || node.Type != "file" || !node.BlobPath.Valid || node.DeletedAt.Valid {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-	abs := h.drive.BlobAbsPath(node.BlobPath.String)
-	f, err := os.Open(abs)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	defer f.Close()
-	if _, err := f.Stat(); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	disp := "inline"
-	if forceAttachment || mustForceAttachment(node.MimeType(), node.Ext()) {
-		disp = "attachment"
-	}
-	w.Header().Set("Content-Type", node.MimeType())
-	w.Header().Set("Content-Disposition",
-		fmt.Sprintf("%s; filename*=UTF-8''%s", disp, url.PathEscape(node.Name)))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	http.ServeContent(w, r, node.Name, time.UnixMilli(node.UpdatedAt), f)
+	serveStoredDriveBlob(w, r, h.drive, node, forceAttachment)
 }
 
 func (h *DriveHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {

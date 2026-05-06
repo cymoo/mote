@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import site.daydream.mote.annotation.AuthRequired
+import site.daydream.mote.config.UploadConfig
 import site.daydream.mote.exception.BadRequestException
 import site.daydream.mote.exception.NotFoundException
 import site.daydream.mote.model.*
@@ -31,6 +32,7 @@ class DriveApiController(
     private val shareService: DriveShareService,
     private val thumbService: DriveThumbService,
     private val zipService: DriveZipService,
+    private val uploadConfig: UploadConfig,
 ) {
 
     @GetMapping("/list")
@@ -82,10 +84,16 @@ class DriveApiController(
     }
 
     @GetMapping("/download")
-    fun download(@RequestParam id: Long): ResponseEntity<StreamingResponseBody> = serveBlob(id, true)
+    fun download(
+        @RequestParam id: Long,
+        @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
+    ): ResponseEntity<*> = serveBlob(id, true, range)
 
     @GetMapping("/preview")
-    fun preview(@RequestParam id: Long): ResponseEntity<StreamingResponseBody> = serveBlob(id, false)
+    fun preview(
+        @RequestParam id: Long,
+        @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
+    ): ResponseEntity<*> = serveBlob(id, false, range)
 
     @GetMapping("/thumb")
     fun thumb(
@@ -127,27 +135,13 @@ class DriveApiController(
             .body(body)
     }
 
-    private fun serveBlob(id: Long, forceAttachment: Boolean): ResponseEntity<StreamingResponseBody> {
+    private fun serveBlob(id: Long, forceAttachment: Boolean, range: String?): ResponseEntity<*> {
         val node = driveService.findById(id)
         if (node.type != "file" || node.blobPath.isNullOrBlank() || node.deletedAt != null) {
             throw NotFoundException("not found")
         }
         val abs = File(driveService.blobAbsPath(node.blobPath))
-        if (!abs.exists()) throw NotFoundException("not found")
-
-        val mt = node.mimeType ?: "application/octet-stream"
-        val disp = if (forceAttachment || mustForceAttachment(mt, node.ext ?: "")) "attachment" else "inline"
-
-        val body = StreamingResponseBody { out -> abs.inputStream().use { it.copyTo(out) } }
-        return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_TYPE, mt)
-            .header(HttpHeaders.CONTENT_LENGTH, abs.length().toString())
-            .header(
-                HttpHeaders.CONTENT_DISPOSITION,
-                "$disp; filename*=UTF-8''${urlEncode(node.name)}",
-            )
-            .header("X-Content-Type-Options", "nosniff")
-            .body(body)
+        return driveFileResponse(uploadConfig, abs, node.blobPath, node.name, node.mimeType, forceAttachment, range)
     }
 
     // ---------- uploads ----------

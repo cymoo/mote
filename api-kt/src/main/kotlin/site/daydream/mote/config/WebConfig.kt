@@ -71,10 +71,14 @@ data class UploadConfig(
     val uploadUrl: String,
     val uploadDir: String,
     val thumbnailSize: Int,
-    val imageFormats: List<String>
+    val imageFormats: List<String>,
+    val accelRedirectPrefix: String = "",
 ) {
     @PostConstruct
     fun init() {
+        require(accelRedirectPrefix.isBlank() || accelRedirectPrefix.startsWith("/")) {
+            "DRIVE_ACCEL_REDIRECT_PREFIX must start with '/'"
+        }
         val path = Paths.get(uploadDir)
         if (!path.exists()) {
             Files.createDirectories(path)

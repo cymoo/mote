@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -35,6 +37,7 @@ var (
 	ErrDriveNotFolder     = errors.New("parent must be a folder")
 	ErrDriveInvalidName   = errors.New("invalid name")
 	ErrDriveInvalidParent = errors.New("invalid parent folder")
+	ErrDriveInvalidBlob   = errors.New("invalid drive blob path")
 )
 
 // DriveService handles tree CRUD for the drive feature.
@@ -58,6 +61,29 @@ func NewDriveService(db *sqlx.DB, cfg *config.UploadConfig) *DriveService {
 // blob_path is stored relative to the upload base, e.g. "drive/abc.png".
 func (s *DriveService) BlobAbsPath(rel string) string {
 	return filepath.Join(s.config.BasePath, rel)
+}
+
+// BlobAccelRedirectURI maps a stored drive blob path to the configured nginx
+// internal URI. It accepts only direct children of drive/ because completed
+// uploads are stored as drive/<generated-name>; internal caches/chunks must
+// never be addressable through media endpoints.
+func (s *DriveService) BlobAccelRedirectURI(rel string) (string, bool, error) {
+	prefix := strings.TrimRight(strings.TrimSpace(s.config.AccelRedirectPrefix), "/")
+	if prefix == "" {
+		return "", false, nil
+	}
+	if !strings.HasPrefix(prefix, "/") {
+		return "", true, ErrDriveInvalidBlob
+	}
+	if filepath.IsAbs(rel) {
+		return "", true, ErrDriveInvalidBlob
+	}
+	clean := path.Clean(filepath.ToSlash(rel))
+	dir, name := path.Split(clean)
+	if dir != "drive/" || name == "" || name == "." || name == ".." {
+		return "", true, ErrDriveInvalidBlob
+	}
+	return prefix + "/" + url.PathEscape(name), true, nil
 }
 
 func validName(name string) error {

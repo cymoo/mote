@@ -12,6 +12,7 @@ services:
       HTTP_IP: 0.0.0.0
       DATABASE_URL: /data/app.db
       UPLOAD_PATH: /uploads
+      DRIVE_ACCEL_REDIRECT_PREFIX: /__mote_drive_blobs__
       REDIS_URL: redis:6379
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
