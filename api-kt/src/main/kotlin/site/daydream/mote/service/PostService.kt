@@ -24,14 +24,26 @@ class PostService(
     private val objectMapper: ObjectMapper,
 ) {
     fun findWithParent(id: Int): Post {
-        // Get main post
-        val post = findById(id) ?: postNotFound()
+        val rows = dsl.resultQuery(
+            """
+            WITH target AS (
+                SELECT *
+                FROM posts
+                WHERE id = ? AND deleted_at IS NULL
+            )
+            SELECT * FROM target
+            UNION ALL
+            SELECT parent.*
+            FROM posts AS parent
+            INNER JOIN target ON parent.id = target.parent_id
+            WHERE parent.deleted_at IS NULL
+            """.trimIndent(),
+            id
+        ).fetchAllIntoClass<Post>()
 
-        post.parent = if (post.parentId != null) {
-            findById(post.parentId)
-        } else {
-            null
-        }
+        val post = rows.firstOrNull { it.id == id } ?: postNotFound()
+        val parents = rows.filter { it.id != id }.associateBy { it.id }
+        post.parent = post.parentId?.let { parents[it] }
 
         return post
     }
@@ -355,7 +367,15 @@ class PostService(
         val parentIds = posts.mapNotNull { it.parentId }.distinct()
 
         if (parentIds.isNotEmpty()) {
-            val parents = findByIds(parentIds).associateBy { it.id }
+            val parentList = dsl.selectFrom(POSTS)
+                .where(POSTS.ID.`in`(parentIds))
+                .and(POSTS.DELETED_AT.isNull)
+                .fetchAllIntoClass<Post>()
+                .toMutableList()
+
+            attachTags(parentList)
+
+            val parents = parentList.associateBy { it.id }
             posts.forEach {
                 if (it.parentId != null) {
                     it.parent = parents[it.parentId]

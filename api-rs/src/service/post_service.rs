@@ -10,16 +10,42 @@ use std::collections::{HashMap, HashSet};
 
 impl Post {
     pub async fn find_with_parent(pool: &SqlitePool, id: i64) -> ApiResult<Post> {
-        let row = Post::find_by_id(pool, id).await?.ok_or(post_not_found())?;
-        let mut post = Post::from(row);
+        let rows = query_as::<_, PostRow>(
+            r#"
+WITH target AS (
+    SELECT *
+    FROM posts
+    WHERE id = ? AND deleted_at IS NULL
+)
+SELECT * FROM target
+UNION ALL
+SELECT parent.*
+FROM posts AS parent
+INNER JOIN target ON parent.id = target.parent_id
+WHERE parent.deleted_at IS NULL
+"#,
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await?;
 
-        if let Some(parent_id) = post.row.parent_id {
-            let parent_row = Post::find_by_id(pool, parent_id).await?;
-            if let Some(parent_row) = parent_row {
-                post.parent = Some(Box::new(Post::from(parent_row)));
+        if rows.is_empty() {
+            return Err(post_not_found());
+        }
+
+        let mut post = None;
+        let mut parents = HashMap::new();
+        for row in rows {
+            if row.id == id {
+                post = Some(Post::from(row));
             } else {
-                post.parent = None;
+                parents.insert(row.id, Post::from(row));
             }
+        }
+
+        let mut post = post.ok_or(post_not_found())?;
+        if let Some(parent_id) = post.row.parent_id {
+            post.parent = parents.remove(&parent_id).map(Box::new);
         }
         Ok(post)
     }

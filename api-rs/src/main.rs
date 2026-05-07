@@ -17,11 +17,11 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     load_dotenv();
 
     if env::var("MOTE_PASSWORD").is_err() {
-        panic!("Environment variable 'MOTE_PASSWORD' is not set!");
+        anyhow::bail!("Environment variable 'MOTE_PASSWORD' is not set");
     }
 
     tracing_subscriber::registry()
@@ -32,7 +32,7 @@ async fn main() {
         .with(fmt::layer())
         .init();
 
-    let app_state = AppState::new().await;
+    let app_state = AppState::new().await?;
 
     let config = &app_state.config;
     debug!("Config:\n {:#?}", config);
@@ -42,7 +42,7 @@ async fn main() {
     let db = &app_state.db;
     if config.db.auto_migrate {
         debug!("Migrating database...");
-        db.migrate().await.expect("Cannot migrate database");
+        db.migrate().await?;
     }
 
     let state_clone = app_state.clone();
@@ -53,8 +53,9 @@ async fn main() {
     });
 
     let addr = format!("{}:{}", &config.http.ip, &config.http.port);
-    let app = create_app(app_state).await;
-    let listener = TcpListener::bind(&addr).await.unwrap();
+    let app = create_app(app_state).await?;
+    let listener = TcpListener::bind(&addr).await?;
     tracing::info!("Listening on {}", addr);
-    axum::serve(listener, app).await.unwrap()
+    axum::serve(listener, app).await?;
+    Ok(())
 }

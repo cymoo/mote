@@ -22,58 +22,91 @@ func GetString(key, defaultValue string) string {
 }
 
 func GetInt(key string, defaultValue int) int {
+	intValue, err := GetIntE(key, defaultValue)
+	if err != nil {
+		panic(err)
+	}
+	return intValue
+}
+
+func GetIntE(key string, defaultValue int) (int, error) {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		return defaultValue
+		return defaultValue, nil
 	}
 
 	intValue, err := strconv.Atoi(value)
 	if err != nil {
-		panic(err)
+		return 0, fmt.Errorf("invalid int value for %s: %w", key, err)
 	}
 
-	return intValue
+	return intValue, nil
 }
 
 func GetByteSize(key string, defaultValue int64) int64 {
+	intValue, err := GetByteSizeE(key, defaultValue)
+	if err != nil {
+		panic(err)
+	}
+	return intValue
+}
+
+func GetByteSizeE(key string, defaultValue int64) (int64, error) {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		return defaultValue
+		return defaultValue, nil
 	}
 
 	intValue, err := ParseByteSize(value)
 	if err != nil {
-		panic(err)
+		return 0, fmt.Errorf("invalid byte size value for %s: %w", key, err)
 	}
 
-	return intValue
+	return intValue, nil
 }
 
 func GetBool(key string, defaultValue bool) bool {
+	boolValue, err := GetBoolE(key, defaultValue)
+	if err != nil {
+		panic(err)
+	}
+	return boolValue
+}
+
+func GetBoolE(key string, defaultValue bool) (bool, error) {
 	value, exists := os.LookupEnv(key)
 	if !exists {
-		return defaultValue
+		return defaultValue, nil
 	}
 
 	boolValue, err := strconv.ParseBool(value)
 	if err != nil {
-		panic(err)
+		return false, fmt.Errorf("invalid bool value for %s: %w", key, err)
 	}
 
-	return boolValue
+	return boolValue, nil
 }
 
 // GetDuration retrieves a time.Duration from an environment variable
 // Example: If the environment variable "TIMEOUT" is set to "30s", calling
 // GetDuration("TIMEOUT", 10*time.Second) will return 30*time.Second
 func GetDuration(key string, defaultValue time.Duration) time.Duration {
-	if value := os.Getenv(key); value != "" {
-		if duration, err := time.ParseDuration(value); err == nil {
-			return duration
-		}
-		panic(fmt.Errorf("invalid duration value for %s: %s", key, value))
+	duration, err := GetDurationE(key, defaultValue)
+	if err != nil {
+		panic(err)
 	}
-	return defaultValue
+	return duration
+}
+
+func GetDurationE(key string, defaultValue time.Duration) (time.Duration, error) {
+	if value := os.Getenv(key); value != "" {
+		duration, err := time.ParseDuration(value)
+		if err != nil {
+			return 0, fmt.Errorf("invalid duration value for %s: %w", key, err)
+		}
+		return duration, nil
+	}
+	return defaultValue, nil
 }
 
 // GetSlice retrieves a slice of strings from an environment variable, splitting by commas
@@ -142,8 +175,13 @@ func ParseByteSize(s string) (int64, error) {
 // env: the application environment (e.g., "dev", "prod", "test")
 // It loads .env, .env.{env}, and .env.local files in that order
 // Local overrides are loaded last
-// Panics if any file fails to load
 func LoadConfigFiles(env string) {
+	if err := LoadConfigFilesE(env); err != nil {
+		panic(err)
+	}
+}
+
+func LoadConfigFilesE(env string) error {
 	configFiles := []string{
 		".env",
 	}
@@ -164,10 +202,11 @@ func LoadConfigFiles(env string) {
 	for _, file := range configFiles {
 		if fileExists(file) {
 			if err := godotenv.Load(file); err != nil {
-				panic(fmt.Errorf("failed to load %s: %w", file, err))
+				return fmt.Errorf("failed to load %s: %w", file, err)
 			}
 		}
 	}
+	return nil
 }
 
 // fileExists checks if a file exists at the given path

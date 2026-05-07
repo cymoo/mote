@@ -1,10 +1,11 @@
 package site.daydream.mote.config
 
-import jakarta.annotation.PostConstruct
 import site.daydream.mote.interceptor.AuthInterceptor
 import site.daydream.mote.service.AuthService
+import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.convert.ApplicationConversionService
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.format.FormatterRegistry
 import org.springframework.web.servlet.config.annotation.CorsRegistry
@@ -72,9 +73,15 @@ data class UploadConfig(
     val uploadDir: String,
     val thumbnailSize: Int,
     val imageFormats: List<String>
+)
+
+@Configuration
+class UploadDirectoryConfig(
+    private val uploadConfig: UploadConfig
 ) {
-    @PostConstruct
-    fun init() {
+    @Bean
+    fun uploadDirectoryInitializer() = ApplicationRunner {
+        val (_, uploadDir) = uploadConfig
         val path = Paths.get(uploadDir)
         if (!path.exists()) {
             Files.createDirectories(path)

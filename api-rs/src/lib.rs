@@ -9,13 +9,13 @@ use crate::service::drive_thumb_service::DriveThumbService;
 use crate::service::drive_upload_service::DriveUploadService;
 use crate::service::drive_zip_service::DriveZipService;
 use crate::service::search_service::FullTextSearch;
+use anyhow::Result;
 use axum::extract::DefaultBodyLimit;
 use axum::handler::HandlerWithoutStateExt;
 use axum::http::Uri;
 use axum::response::{IntoResponse, Response};
 use axum::Router;
 use jieba_rs::Jieba;
-use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 use tower::ServiceBuilder;
@@ -50,7 +50,7 @@ pub struct AppState {
 
 // Application router creation
 // Note: The order of layers is important.
-pub async fn create_app(state: AppState) -> Router {
+pub async fn create_app(state: AppState) -> Result<Router> {
     let config = &state.config;
 
     let static_route = Router::new().nest_service(
@@ -58,8 +58,7 @@ pub async fn create_app(state: AppState) -> Router {
         ServeDir::new(config.static_path.clone()).not_found_service(handle_404.into_service()),
     );
 
-    fs::create_dir_all(config.upload.base_path.clone())
-        .expect("Failed to create 'uploads' directory");
+    config.ensure_upload_path()?;
 
     let uploads_route = Router::new().nest_service(
         &config.upload.base_url,
@@ -79,11 +78,11 @@ pub async fn create_app(state: AppState) -> Router {
             post_api::create_routes(state.rd.pool.clone())
                 .layer(TimeoutLayer::new(write_timeout))
                 .merge(
-                    Router::new().nest("/drive", drive_api::create_routes(write_timeout)).layer(
-                        axum::middleware::from_fn(|req, next| {
+                    Router::new()
+                        .nest("/drive", drive_api::create_routes(write_timeout))
+                        .layer(axum::middleware::from_fn(|req, next| {
                             crate::middleware::check_access::check_access(&[], req, next)
-                        }),
-                    ),
+                        })),
                 ),
         )
         .nest(
@@ -109,26 +108,18 @@ pub async fn create_app(state: AppState) -> Router {
     if config.log.log_requests {
         app = app.layer(TraceLayer::new_for_http());
     }
-    app.with_state(state)
+    Ok(app.with_state(state))
 }
 
 // Application state initialization
 // Cloning AppState is cheap because it uses Arc internally to share resources like DB and Redis connections.
 impl AppState {
-    pub async fn new() -> Self {
-        let config = AppConfig::from_env();
+    pub async fn new() -> Result<Self> {
+        let config = AppConfig::from_env()?;
 
-        let db = Arc::new(
-            DB::new(&config.db.url, config.db.pool_size)
-                .await
-                .expect("Cannot connect to database"),
-        );
+        let db = Arc::new(DB::new(&config.db.url, config.db.pool_size).await?);
 
-        let rd = Arc::new(
-            RD::new(&config.redis.url)
-                .await
-                .expect("Cannot connect to redis server"),
-        );
+        let rd = Arc::new(RD::new(&config.redis.url).await?);
 
         let fts = Arc::new(FullTextSearch::new(
             rd.clone(),
@@ -143,7 +134,7 @@ impl AppState {
         let drive_thumb = DriveThumbService::new(drive.clone());
         let drive_zip = DriveZipService::new(drive.clone());
 
-        AppState {
+        Ok(AppState {
             config: Arc::new(config),
             db,
             fts,
@@ -153,7 +144,7 @@ impl AppState {
             drive_share,
             drive_thumb,
             drive_zip,
-        }
+        })
     }
 }
 

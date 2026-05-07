@@ -187,22 +187,54 @@ impl DriveService {
     }
 
     pub async fn populate_paths(&self, nodes: &mut [DriveNode]) -> DriveResult<()> {
-        let mut cache: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
-        for n in nodes.iter_mut() {
-            let Some(pid) = n.parent_id else { continue };
-            if let Some(p) = cache.get(&pid) {
-                n.path = p.clone();
-                continue;
-            }
-            let bcs = self.breadcrumbs(pid).await?;
-            let p = bcs
-                .into_iter()
-                .map(|b| b.name)
-                .collect::<Vec<_>>()
-                .join("/");
-            cache.insert(pid, p.clone());
-            n.path = p;
+        let parent_ids: Vec<i64> = nodes
+            .iter()
+            .filter_map(|n| n.parent_id)
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        if parent_ids.is_empty() {
+            return Ok(());
         }
+
+        let parent_ids = serde_json::to_string(&parent_ids).map_err(anyhow::Error::from)?;
+        let rows = sqlx::query(
+            r#"
+WITH RECURSIVE chain(parent_id, id, name, ancestor_parent_id, depth) AS (
+  SELECT p.id, p.id, p.name, p.parent_id, 0
+  FROM drive_nodes p
+  WHERE p.id IN (SELECT value FROM json_each(?))
+  UNION ALL
+  SELECT chain.parent_id, n.id, n.name, n.parent_id, chain.depth + 1
+  FROM drive_nodes n
+  JOIN chain ON n.id = chain.ancestor_parent_id
+)
+SELECT parent_id, name
+FROM chain
+ORDER BY parent_id, depth DESC"#,
+        )
+        .bind(parent_ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut parts_by_parent: std::collections::HashMap<i64, Vec<String>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let parent_id: i64 = row.try_get("parent_id")?;
+            let name: String = row.try_get("name")?;
+            parts_by_parent.entry(parent_id).or_default().push(name);
+        }
+        let paths: std::collections::HashMap<i64, String> = parts_by_parent
+            .into_iter()
+            .map(|(parent_id, parts)| (parent_id, parts.join("/")))
+            .collect();
+
+        for n in nodes.iter_mut() {
+            if let Some(pid) = n.parent_id {
+                n.path = paths.get(&pid).cloned().unwrap_or_default();
+            }
+        }
+
         Ok(())
     }
 

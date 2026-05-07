@@ -3,7 +3,8 @@ import pydantic
 from functools import wraps
 from typing import Callable, Literal, get_type_hints, Optional
 from pydantic import BaseModel
-from flask import Flask, Blueprint, request, make_response, Response, abort
+from flask import Flask, Blueprint, request, make_response, Response
+from .exception import APIError
 
 
 class CORS:
@@ -148,7 +149,7 @@ def rate_limit(max_count: int, expires: int = 60) -> Callable:
             pipe.set(key, 0, ex=expires, nx=True).incr(key)
             _, rv = pipe.execute()
             if rv > max_count:
-                abort(429)
+                raise APIError(429, 'Too Many Requests')
             else:
                 return view_func(*args, **kw)
 

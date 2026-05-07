@@ -1,6 +1,7 @@
 package site.daydream.mote.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import jakarta.validation.Valid
 import site.daydream.mote.annotation.AuthRequired
 import site.daydream.mote.config.AppConfig
 import site.daydream.mote.exception.AuthenticationException
@@ -68,7 +69,7 @@ class PostApiController(
 
     @PostMapping("/stick-tag")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    fun stickTag(@RequestBody payload: StickyTagRequest) {
+    fun stickTag(@Valid @RequestBody payload: StickyTagRequest) {
         tagService.insertOrUpdate(payload.name, payload.sticky)
     }
 
@@ -278,4 +279,3 @@ fun String.toZonedDateTime(utcOffset: Int, endOfDay: Boolean = false): ZonedDate
 
     return localDateTime.atZone(zoneOffset)
 }
-

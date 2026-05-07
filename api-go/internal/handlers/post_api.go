@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -70,7 +71,7 @@ func (h *PostHandler) SearchPosts(r *http.Request, query m.Query[models.SearchRe
 	posts, err := h.postService.FindByIDs(ctx, ids)
 	if err != nil {
 		log.Printf("error finding posts with ids %v: %v", ids, err)
-		return nil, err
+		return nil, postServiceError(err)
 	}
 
 	// Process each post's content and score
@@ -154,19 +155,19 @@ func (h *PostHandler) GetStats(r *http.Request) (*models.PostStats, error) {
 	postCount, err := h.postService.GetCount(r.Context())
 	if err != nil {
 		log.Printf("error getting post count: %v", err)
-		return nil, err
+		return nil, e.InternalError()
 	}
 
 	tagCount, err := h.tagService.GetCount(r.Context())
 	if err != nil {
 		log.Printf("error getting tag count: %v", err)
-		return nil, err
+		return nil, e.InternalError()
 	}
 
 	dayCount, err := h.postService.GetActiveDays(r.Context())
 	if err != nil {
 		log.Printf("error getting active days: %v", err)
-		return nil, err
+		return nil, e.InternalError()
 	}
 
 	return &models.PostStats{
@@ -202,7 +203,7 @@ func (h *PostHandler) GetDailyCounts(r *http.Request, query m.Query[models.DateR
 	counts, err := h.postService.GetDailyCounts(r.Context(), startDate, endDate, query.Value.Offset*60)
 	if err != nil {
 		log.Printf("error getting daily post counts: %v", err)
-		return nil, err
+		return nil, e.InternalError()
 	}
 	return counts, nil
 }
@@ -214,7 +215,7 @@ func (h *PostHandler) CreatePost(r *http.Request, body m.JSON[models.CreatePostR
 	rv, err := h.postService.Create(r.Context(), body.Value)
 	if err != nil {
 		log.Printf("error creating post: %v", err)
-		return nil, err
+		return nil, postServiceError(err)
 	}
 
 	go func() {
@@ -235,7 +236,7 @@ func (h *PostHandler) UpdatePost(r *http.Request, body m.JSON[models.UpdatePostR
 	err := h.postService.Update(r.Context(), body.Value)
 	if err != nil {
 		log.Printf("error updating post %d: %v", id, err)
-		return 0, err
+		return 0, postServiceError(err)
 	}
 
 	if body.Value.Content != nil {
@@ -261,7 +262,7 @@ func (h *PostHandler) DeletePost(r *http.Request, payload m.JSON[models.DeletePo
 		err := h.postService.HardDelete(r.Context(), id)
 		if err != nil {
 			log.Printf("error hard deleting post %d: %v", id, err)
-			return 0, err
+			return 0, postServiceError(err)
 		}
 
 		go func() {
@@ -275,7 +276,7 @@ func (h *PostHandler) DeletePost(r *http.Request, payload m.JSON[models.DeletePo
 		err := h.postService.Delete(r.Context(), id)
 		if err != nil {
 			log.Printf("error deleting post %d: %v", id, err)
-			return 0, err
+			return 0, postServiceError(err)
 		}
 	}
 
@@ -289,7 +290,7 @@ func (h *PostHandler) RestorePost(r *http.Request, payload m.JSON[models.ID]) (m
 	err := h.postService.Restore(r.Context(), id)
 	if err != nil {
 		log.Printf("error restoring post %d: %v", id, err)
-		return 0, err
+		return 0, postServiceError(err)
 	}
 	return 204, nil
 }
@@ -301,7 +302,7 @@ func (h *PostHandler) ClearPosts(r *http.Request) (m.StatusCode, error) {
 	ids, err := h.postService.ClearAll(r.Context())
 	if err != nil {
 		log.Printf("error clearing posts: %v", err)
-		return 0, err
+		return 0, postServiceError(err)
 	}
 	log.Printf("cleared posts: %v", ids)
 
@@ -318,6 +319,13 @@ func (h *PostHandler) ClearPosts(r *http.Request) (m.StatusCode, error) {
 }
 
 // Helper functions
+
+func postServiceError(err error) error {
+	if errors.Is(err, services.ErrPostNotFound) {
+		return e.NotFound("post not found")
+	}
+	return e.InternalError()
+}
 
 // IsChineseCharacter checks if a rune is a Chinese character
 func isChineseCharacter(c rune) bool {

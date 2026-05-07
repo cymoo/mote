@@ -29,22 +29,43 @@ func NewPostService(db *sqlx.DB) *PostService {
 
 // FindWithParent retrieves a post with its parent
 func (s *PostService) FindWithParent(ctx context.Context, id int64) (*models.Post, error) {
-	post, err := s.FindByID(ctx, id)
-	if err != nil {
+	query := `
+		WITH target AS (
+			SELECT *
+			FROM posts
+			WHERE id = ? AND deleted_at IS NULL
+		)
+		SELECT * FROM target
+		UNION ALL
+		SELECT parent.*
+		FROM posts AS parent
+		INNER JOIN target ON parent.id = target.parent_id
+		WHERE parent.deleted_at IS NULL
+	`
+
+	var rows []models.Post
+	if err := s.db.SelectContext(ctx, &rows, query, id); err != nil {
 		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, ErrPostNotFound
+	}
+
+	var post *models.Post
+	parents := make(map[int64]*models.Post, len(rows)-1)
+	for i := range rows {
+		rows[i].Tags = []string{}
+		if rows[i].ID == id {
+			post = &rows[i]
+			continue
+		}
+		parents[rows[i].ID] = &rows[i]
 	}
 	if post == nil {
 		return nil, ErrPostNotFound
 	}
-
 	if post.ParentID.Valid {
-		parent, err := s.FindByID(ctx, post.ParentID.Int64)
-		if err != nil {
-			return nil, err
-		}
-		if parent != nil {
-			post.Parent = parent
-		}
+		post.Parent = parents[post.ParentID.Int64]
 	}
 
 	return post, nil
@@ -582,11 +603,22 @@ func (s *PostService) HardDelete(ctx context.Context, id int64) error {
 // ClearAll permanently deletes all soft-deleted posts
 // It returns the IDs of the deleted posts
 func (s *PostService) ClearAll(ctx context.Context) ([]int64, error) {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	query := `DELETE FROM posts WHERE deleted_at IS NOT NULL RETURNING id`
 
 	var ids []int64
-	err := s.db.SelectContext(ctx, &ids, query)
-	return ids, err
+	if err := tx.SelectContext(ctx, &ids, query); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return ids, nil
 }
 
 // Helper functions

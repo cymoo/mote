@@ -16,7 +16,7 @@ import bcrypt
 from sqlalchemy import text
 
 from ..extension import db
-from ..model import utc_now_ms
+from ..models import utc_now_ms
 from .drive import DriveError, DriveNotFound, DriveService
 
 

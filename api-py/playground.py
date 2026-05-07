@@ -2,7 +2,8 @@ import json
 import re
 from app import create_app
 from app.config import Config
-from app.model import Post, db
+from app.extension import db
+from app.models import Post
 import sqlite3
 
 # https://github.com/brightmart/nlp_chinese_corpus

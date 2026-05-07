@@ -5,7 +5,7 @@ import tempfile
 import pytest
 from app.config import Config
 from app import create_app
-from app.model import db as _db
+from app.extension import db as _db
 
 
 @pytest.fixture(scope="session")
@@ -70,4 +70,3 @@ def clean_drive(app):
         shutil.rmtree(p, ignore_errors=True)
         os.makedirs(p, exist_ok=True)
     yield
-

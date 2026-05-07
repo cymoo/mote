@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"log"
 	"time"
-
-	"github.com/cymoo/mita"
-	"github.com/cymoo/mote/pkg/fulltext"
-	"github.com/jmoiron/sqlx"
 )
 
 // DeleteOldPosts deletes posts that were marked as deleted more than 30 days ago
 func DeleteOldPosts(ctx context.Context) error {
-	db := ctx.Value(mita.CtxtKey("db")).(*sqlx.DB)
+	db, err := dbFromContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	thirtyDaysAgo := time.Now().UTC().AddDate(0, 0, -30).UnixMilli()
 
@@ -31,9 +30,14 @@ func DeleteOldPosts(ctx context.Context) error {
 
 // RebuildFullTextIndex rebuilds the full-text search index for all documents
 func RebuildFullTextIndex(ctx context.Context) error {
-	// Get FullTextSearch and DB from context
-	fts := ctx.Value(mita.CtxtKey("fts")).(*fulltext.FullTextSearch)
-	db := ctx.Value(mita.CtxtKey("db")).(*sqlx.DB)
+	fts, err := ftsFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	db, err := dbFromContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	type Post struct {
 		ID      int64  `db:"id"`
@@ -48,7 +52,7 @@ func RebuildFullTextIndex(ctx context.Context) error {
 	var results []Post
 
 	// Fetch all posts from the database
-	err := db.SelectContext(ctx, &results, "SELECT id, content FROM posts")
+	err = db.SelectContext(ctx, &results, "SELECT id, content FROM posts")
 	if err != nil {
 		return fmt.Errorf("error fetching posts for full-text indexing: %w", err)
 	}

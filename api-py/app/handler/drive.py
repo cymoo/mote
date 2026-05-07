@@ -12,7 +12,6 @@ from urllib.parse import quote
 from flask import (
     Blueprint,
     Response,
-    abort,
     current_app,
     request,
     send_file,
@@ -72,7 +71,7 @@ drive_bp = Blueprint('drive', __name__)
 
 def _map_drive_err(err: Exception) -> NoReturn:
     if isinstance(err, (DriveNotFound, UploadNotFound, ShareNotFound)):
-        abort(404, description=str(err))
+        raise APIError(404, 'Not Found', str(err))
     if isinstance(err, DriveNameConflict):
         raise APIError(409, 'Conflict', str(err))
     if isinstance(
@@ -86,15 +85,15 @@ def _map_drive_err(err: Exception) -> NoReturn:
             ShareInvalidNode,
         ),
     ):
-        abort(400, description=str(err))
+        raise APIError(400, 'Bad Request', str(err))
     if isinstance(err, UploadCollision):
         raise APIError(409, 'Conflict', str(err))
     if isinstance(err, UploadGone):
-        abort(410, description=str(err))
+        raise APIError(410, 'Gone', str(err))
     if isinstance(err, ShareExpired):
-        abort(410, description=str(err))
+        raise APIError(410, 'Gone', str(err))
     if isinstance(err, ShareUnauthorized):
-        abort(401, description=str(err))
+        raise APIError(401, 'Unauthorized', str(err))
     raise err
 
 
@@ -211,22 +210,18 @@ def purge(payload: DrivePurgeRequest):
 # ---------------------------------------------------------------------------
 
 
-def _serve_blob(force_attachment: bool):
-    try:
-        node_id = int(request.args.get('id', '0'))
-    except ValueError:
-        abort(400, description='invalid id')
+def _serve_blob(node_id: int, force_attachment: bool):
     if node_id <= 0:
-        abort(400, description='invalid id')
+        raise APIError(400, 'Bad Request', 'invalid id')
     try:
         n = _drive().find_by_id(node_id)
     except DriveNotFound:
-        abort(404)
+        raise APIError(404, 'Not Found')
     if n.type != 'file' or not n.blob_path or n.deleted_at is not None:
-        abort(404)
+        raise APIError(404, 'Not Found')
     abs_path = _drive().blob_abs_path(n.blob_path)
     if not os.path.exists(abs_path):
-        abort(404)
+        raise APIError(404, 'Not Found')
 
     mt = n.mime_type()
     disp = (
@@ -243,48 +238,44 @@ def _serve_blob(force_attachment: bool):
 
 
 @drive_bp.get('/download')
-def download():
-    return _serve_blob(force_attachment=True)
+@validate(type='query')
+def download(payload: DriveIdQuery):
+    return _serve_blob(payload.id, force_attachment=True)
 
 
 @drive_bp.get('/preview')
-def preview():
-    return _serve_blob(force_attachment=False)
+@validate(type='query')
+def preview(payload: DriveIdQuery):
+    return _serve_blob(payload.id, force_attachment=False)
 
 
 @drive_bp.get('/thumb')
-def thumb():
+@validate(type='query')
+def thumb(payload: DriveIdQuery):
+    if payload.id <= 0:
+        raise APIError(400, 'Bad Request', 'invalid id')
     try:
-        node_id = int(request.args.get('id', '0'))
-    except ValueError:
-        abort(400, description='invalid id')
-    if node_id <= 0:
-        abort(400, description='invalid id')
-    try:
-        path = make_thumbnail(_drive(), node_id)
+        path = make_thumbnail(_drive(), payload.id)
     except (DriveNotFound, DriveNotImage):
-        abort(404)
+        raise APIError(404, 'Not Found')
     resp = send_file(path, mimetype='image/jpeg', conditional=True)
     resp.headers['Cache-Control'] = 'private, max-age=86400'
     return resp
 
 
 @drive_bp.get('/download-zip')
-def download_zip():
+@validate(type='query')
+def download_zip(payload: DriveIdQuery):
+    if payload.id <= 0:
+        raise APIError(400, 'Bad Request', 'invalid id')
     try:
-        node_id = int(request.args.get('id', '0'))
-    except ValueError:
-        abort(400, description='invalid id')
-    if node_id <= 0:
-        abort(400, description='invalid id')
-    try:
-        n = _drive().find_by_id(node_id)
+        n = _drive().find_by_id(payload.id)
     except DriveNotFound:
-        abort(404)
+        raise APIError(404, 'Not Found')
     if n.type != 'folder' or n.deleted_at is not None:
-        abort(404)
+        raise APIError(404, 'Not Found')
     drive = _drive()
-    gen = zip_folder_iter(drive, node_id)
+    gen = zip_folder_iter(drive, payload.id)
     headers = {
         'Content-Type': 'application/zip',
         'Content-Disposition': (

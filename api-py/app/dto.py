@@ -6,7 +6,7 @@ from typing import Optional, Self, Literal, TypeAlias, Annotated
 import orjson
 from pydantic import BaseModel, AfterValidator, Field
 
-from .model import Post
+from .models import Post
 
 NoContent: TypeAlias = tuple[Literal[''], Literal[204]]
 NO_CONTENT = '', 204

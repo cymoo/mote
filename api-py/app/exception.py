@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, NoReturn
 
-from flask import jsonify, Flask, abort
+from flask import jsonify, Flask
 from werkzeug.exceptions import HTTPException
 
 
@@ -48,8 +48,12 @@ def register_error_handlers(app: Flask) -> None:
 
 
 def not_found(message: Optional[str] = None) -> NoReturn:
-    abort(404, description=message)
+    raise APIError(404, 'Not Found', message)
 
 
 def bad_request(message: Optional[str] = None) -> NoReturn:
-    abort(400, description=message)
+    raise APIError(400, 'Bad Request', message)
+
+
+def unauthorized(message: Optional[str] = None) -> NoReturn:
+    raise APIError(401, 'Unauthorized', message)

@@ -5,7 +5,7 @@ from datetime import datetime
 import re
 import orjson as json
 
-from ..model import Post
+from ..models import Post
 
 blog = Blueprint('blog', __name__)
 

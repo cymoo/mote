@@ -1,4 +1,4 @@
-from app.model import Post
+from app.models import Post
 
 
 def test_create_post(session):

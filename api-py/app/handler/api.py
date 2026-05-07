@@ -1,5 +1,4 @@
 import os
-from concurrent.futures import ThreadPoolExecutor
 from mimetypes import guess_extension
 from os import path
 from datetime import timedelta, datetime, timezone
@@ -10,21 +9,20 @@ from flask import (
     Blueprint,
     request,
     Response,
-    abort,
     current_app as app,
     url_for,
     stream_with_context,
 )
+from sqlalchemy.orm import subqueryload
 
 from ..dto import *
-from ..exception import bad_request
-from ..model import Post, Tag, HASH_PATTERN
+from ..exception import bad_request, not_found, unauthorized
+from ..models import HASH_PATTERN, Post, Tag
 from ..extension import fts, db
 from ..middleware import rate_limit, validate
+from ..task import deindex_post, index_post, reindex_post
 
 api = Blueprint('api', __name__)
-
-executor = ThreadPoolExecutor()
 
 
 def is_valid_password(password: str) -> bool:
@@ -123,9 +121,16 @@ def get_posts(payload: FilterPostRequest) -> PostPagination:
 @api.get('/get-post')
 @validate(type='query')
 def get_post(payload: Id) -> PostDto:
-    post = db.get_or_404(Post, payload.id, description='post not found')
-    if post.deleted:
-        abort(404, 'post not found')
+    post = (
+        Post.query.options(
+            subqueryload(Post.tags),
+            subqueryload(Post.parent).subqueryload(Post.tags),
+        )
+        .filter(Post.id == payload.id)
+        .one_or_none()
+    )
+    if post is None or post.deleted:
+        not_found('post not found')
 
     return PostDto.from_model(post)
 
@@ -144,7 +149,7 @@ def create_post(payload: CreatePostRequest) -> CreationDto:
     )
     post.save()
 
-    executor.submit(fts.index, post.id, payload.content)
+    index_post(post.id, payload.content)
 
     return CreationDto(
         id=post.id,
@@ -158,7 +163,7 @@ def create_post(payload: CreatePostRequest) -> CreationDto:
 def update_post(payload: UpdatePostRequest) -> NoContent:
     post = db.get_or_404(Post, payload.id, description='post not found')
     if post.deleted:
-        abort(404)
+        not_found('post not found')
 
     old_content = post.content
 
@@ -185,7 +190,7 @@ def update_post(payload: UpdatePostRequest) -> NoContent:
     post.save()
 
     if payload.content is not None and post.content != old_content:
-        executor.submit(fts.reindex, post.id, payload.content)
+        reindex_post(post.id, payload.content)
 
     return NO_CONTENT
 
@@ -198,7 +203,7 @@ def delete_post(payload: DeletePostRequest) -> NoContent:
 
     if hard:
         post.clear()
-        executor.submit(fts.deindex, id)
+        deindex_post(id)
     else:
         post.delete()
 
@@ -219,7 +224,7 @@ def clear_posts() -> NoContent:
     ids = Post.clear_all()
 
     for _id in ids:
-        executor.submit(fts.deindex, _id)
+        deindex_post(_id)
     return NO_CONTENT
 
 
@@ -339,14 +344,14 @@ def check_permission() -> None:
     if not token:
         auth_header = request.headers.get('Authorization')
         if not auth_header:
-            abort(401, "missing authorization header")
+            unauthorized("missing authorization header")
         if not auth_header.startswith('Bearer '):
-            abort(401, "invalid authorization header")
+            unauthorized("invalid authorization header")
 
         token = auth_header[len('Bearer ') :].strip()
 
     if not is_valid_password(token):
-        abort(401, "invalid authorization token")
+        unauthorized("invalid authorization token")
 
 
 # Helper functions

@@ -74,64 +74,120 @@ type HTTPConfig struct {
 	CORS         CORSConfig
 }
 
-// Load loads the configuration from environment variables and config files
-func Load() *Config {
+// Load loads the configuration from environment variables and config files.
+func Load() (*Config, error) {
 	config := &Config{}
 
 	config.AppEnv = env.GetString("APP_ENV", "prod")
-	env.LoadConfigFiles(config.AppEnv)
+	if err := env.LoadConfigFilesE(config.AppEnv); err != nil {
+		return nil, err
+	}
 
 	config.AppName = env.GetString("APP_NAME", "mote")
 	config.AppVersion = env.GetString("APP_VERSION", "1.0.0")
 
-	config.PostsPerPage = env.GetInt("POSTS_PER_PAGE", 20)
+	postsPerPage, err := env.GetIntE("POSTS_PER_PAGE", 20)
+	if err != nil {
+		return nil, err
+	}
+	config.PostsPerPage = postsPerPage
 
 	config.StaticURL = env.GetString("STATIC_URL", "/static")
 	// If StaticPath is not set, then static files will be served from embedded FS
 	config.StaticPath = env.GetString("STATIC_PATH", "")
 
+	httpPort, err := env.GetIntE("HTTP_PORT", 8000)
+	if err != nil {
+		return nil, err
+	}
+	httpMaxBodySize, err := env.GetByteSizeE("HTTP_MAX_BODY_SIZE", 1024*1024*10)
+	if err != nil {
+		return nil, err
+	}
+	httpReadTimeout, err := env.GetDurationE("HTTP_READ_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	httpWriteTimeout, err := env.GetDurationE("HTTP_WRITE_TIMEOUT", 10*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	httpIdleTimeout, err := env.GetDurationE("HTTP_IDLE_TIMEOUT", 30*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	corsAllowCredentials, err := env.GetBoolE("CORS_ALLOW_CREDENTIALS", false)
+	if err != nil {
+		return nil, err
+	}
+	corsMaxAge, err := env.GetIntE("CORS_MAX_AGE", 3600*24)
+	if err != nil {
+		return nil, err
+	}
 	config.HTTP = HTTPConfig{
 		IP:           env.GetString("HTTP_IP", "127.0.0.1"),
-		Port:         env.GetInt("HTTP_PORT", 8000),
-		MaxBodySize:  env.GetByteSize("HTTP_MAX_BODY_SIZE", 1024*1024*10),
-		ReadTimeout:  env.GetDuration("HTTP_READ_TIMEOUT", 10*time.Second),
-		WriteTimeout: env.GetDuration("HTTP_WRITE_TIMEOUT", 10*time.Second),
-		IdleTimeout:  env.GetDuration("HTTP_IDLE_TIMEOUT", 30*time.Second),
+		Port:         httpPort,
+		MaxBodySize:  httpMaxBodySize,
+		ReadTimeout:  httpReadTimeout,
+		WriteTimeout: httpWriteTimeout,
+		IdleTimeout:  httpIdleTimeout,
 		CORS: CORSConfig{
 			AllowedOrigins:   env.GetSlice("CORS_ALLOWED_ORIGINS", []string{}),
 			AllowedMethods:   env.GetSlice("CORS_ALLOWED_METHODS", []string{}),
 			AllowedHeaders:   env.GetSlice("CORS_ALLOWED_HEADERS", []string{}),
-			AllowCredentials: env.GetBool("CORS_ALLOW_CREDENTIALS", false),
-			MaxAge:           env.GetInt("CORS_MAX_AGE", 3600*24),
+			AllowCredentials: corsAllowCredentials,
+			MaxAge:           corsMaxAge,
 		},
 	}
 
+	uploadThumbWidth, err := env.GetIntE("UPLOAD_THUMB_WIDTH", 128)
+	if err != nil {
+		return nil, err
+	}
 	config.Upload = UploadConfig{
 		BaseURL:      env.GetString("UPLOAD_URL", "/uploads"),
 		BasePath:     env.GetString("UPLOAD_PATH", "./uploads"),
 		ImageFormats: env.GetSlice("UPLOAD_IMAGE_FORMATS", []string{"jpg", "jpeg", "png", "webp", "gif"}),
-		ThumbWidth:   uint32(env.GetInt("UPLOAD_THUMB_WIDTH", 128)),
+		ThumbWidth:   uint32(uploadThumbWidth),
 	}
 
+	dbPoolSize, err := env.GetIntE("DATABASE_POOL_SIZE", 5)
+	if err != nil {
+		return nil, err
+	}
+	dbAutoMigrate, err := env.GetBoolE("DATABASE_AUTO_MIGRATE", true)
+	if err != nil {
+		return nil, err
+	}
 	config.DB = DBConfig{
 		URL:         env.GetString("DATABASE_URL", "app.db"),
-		PoolSize:    env.GetInt("DATABASE_POOL_SIZE", 5),
-		AutoMigrate: env.GetBool("DATABASE_AUTO_MIGRATE", true),
+		PoolSize:    dbPoolSize,
+		AutoMigrate: dbAutoMigrate,
 	}
 
+	redisDB, err := env.GetIntE("REDIS_DB", 0)
+	if err != nil {
+		return nil, err
+	}
 	config.Redis = RedisConfig{
 		URL:      env.GetString("REDIS_URL", "localhost:6379"),
 		Password: env.GetString("REDIS_PASSWORD", ""),
-		DB:       env.GetInt("REDIS_DB", 0),
+		DB:       redisDB,
 	}
 
+	logRequests, err := env.GetBoolE("LOG_REQUESTS", true)
+	if err != nil {
+		return nil, err
+	}
 	config.Log = LogConfig{
-		LogRequests: env.GetBool("LOG_REQUESTS", true),
+		LogRequests: logRequests,
 	}
 
-	config.validate()
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
 
-	return config
+	return config, nil
 }
 
 // ToJSON returns the configuration as a JSON string, optionally hiding sensitive information
@@ -153,8 +209,8 @@ func (c *Config) ToJSON(hideSensitive bool) (string, error) {
 	return string(data), nil
 }
 
-// ValidateConfig validates the configuration and panics if any validation fails
-func (c *Config) validate() {
+// validate validates the configuration values without causing startup side effects.
+func (c *Config) validate() error {
 	var errs []string
 
 	// Validate basic app info
@@ -218,19 +274,6 @@ func (c *Config) validate() {
 	}
 	if c.Upload.BasePath == "" {
 		errs = append(errs, "Upload.BasePath cannot be empty")
-	} else {
-		// Ensure upload directory exists or can be created
-		if err := os.MkdirAll(c.Upload.BasePath, 0755); err != nil {
-			errs = append(errs, fmt.Sprintf("failed to create upload directory '%s': %v", c.Upload.BasePath, err))
-		} else {
-			// Check if directory is writable
-			testFile := filepath.Join(c.Upload.BasePath, ".write_test")
-			if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
-				errs = append(errs, fmt.Sprintf("upload directory '%s' is not writable: %v", c.Upload.BasePath, err))
-			} else {
-				os.Remove(testFile)
-			}
-		}
 	}
 
 	if len(c.Upload.ImageFormats) == 0 {
@@ -273,10 +316,25 @@ func (c *Config) validate() {
 		errs = append(errs, "Redis.DB cannot exceed 15")
 	}
 
-	// If there are validation errors, panic with all of them
 	if len(errs) > 0 {
-		panic(fmt.Sprintf("configuration validation failed:\n  - %s", strings.Join(errs, "\n  - ")))
+		return fmt.Errorf("configuration validation failed:\n  - %s", strings.Join(errs, "\n  - "))
 	}
+	return nil
+}
+
+func (c *Config) EnsureUploadPath() error {
+	if err := os.MkdirAll(c.Upload.BasePath, 0755); err != nil {
+		return fmt.Errorf("failed to create upload directory %q: %w", c.Upload.BasePath, err)
+	}
+
+	testFile := filepath.Join(c.Upload.BasePath, ".write_test")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		return fmt.Errorf("upload directory %q is not writable: %w", c.Upload.BasePath, err)
+	}
+	if err := os.Remove(testFile); err != nil {
+		return fmt.Errorf("failed to remove upload directory write test file %q: %w", testFile, err)
+	}
+	return nil
 }
 
 // maskSensitive masks sensitive information in URLs

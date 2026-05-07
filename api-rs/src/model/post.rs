@@ -71,13 +71,14 @@ pub enum SortingField {
     DeletedAt,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct Id {
     pub id: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct Name {
+    #[validate(length(min = 1, message = "can not be empty"))]
     pub name: String,
 }
 
@@ -103,7 +104,7 @@ pub struct SearchRequest {
     pub partial: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Validate)]
 #[serde(default)]
 pub struct FilterPostRequest {
     pub cursor: Option<i64>,
@@ -129,7 +130,7 @@ pub struct CreatePostRequest {
     pub parent_id: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct UpdatePostRequest {
     pub id: i64,
 
@@ -147,7 +148,7 @@ pub struct UpdatePostRequest {
     pub parent_id: MaybeAbsent<Option<i64>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 pub struct DeletePostRequest {
     pub id: i64,
     #[serde(default)]
