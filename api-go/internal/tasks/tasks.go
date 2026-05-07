@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// DeleteOldPosts deletes posts that were marked as deleted more than 30 days ago
-func DeleteOldPosts(ctx context.Context) error {
+// PurgeOldPosts deletes posts that were marked as deleted more than 30 days ago
+func PurgeOldPosts(ctx context.Context) error {
 	db, err := dbFromContext(ctx)
 	if err != nil {
 		return err

@@ -16,6 +16,7 @@ mod tests {
         let cfg = UploadConfig {
             base_url: "/uploads".into(),
             base_path: tmp.path().to_string_lossy().into(),
+            accel_redirect_prefix: String::new(),
             thumb_width: 240,
             image_formats: vec![],
         };

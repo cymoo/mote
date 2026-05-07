@@ -67,24 +67,31 @@ data class CorsProperties(
     val maxAge: Long
 )
 
-@ConfigurationProperties(prefix = "web.upload")
-data class UploadConfig(
-    val uploadUrl: String,
-    val uploadDir: String,
-    val thumbnailSize: Int,
-    val imageFormats: List<String>
-)
-
-@Configuration
-class UploadDirectoryConfig(
-    private val uploadConfig: UploadConfig
-) {
-    @Bean
-    fun uploadDirectoryInitializer() = ApplicationRunner {
-        val (_, uploadDir) = uploadConfig
-        val path = Paths.get(uploadDir)
-        if (!path.exists()) {
-            Files.createDirectories(path)
-        }
-    }
-}
+ @ConfigurationProperties(prefix = "web.upload")
+ data class UploadConfig(
+     val uploadUrl: String,
+     val uploadDir: String,
+     val thumbnailSize: Int,
+     val imageFormats: List<String>,
+     val accelRedirectPrefix: String = "",
+ ) {
+     @PostConstruct
+     fun init() {
+         require(accelRedirectPrefix.isBlank() || accelRedirectPrefix.startsWith("/")) {
+             "DRIVE_ACCEL_REDIRECT_PREFIX must start with '/'"
+         }
+     }
+ }
+ 
+ @Configuration
+ class UploadDirectoryConfig(
+     private val uploadConfig: UploadConfig
+ ) {
+     @Bean
+     fun uploadDirectoryInitializer() = ApplicationRunner {
+         val path = Paths.get(uploadConfig.uploadDir)
+         if (!path.exists()) {
+             Files.createDirectories(path)
+         }
+     }
+ }

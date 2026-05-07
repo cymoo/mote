@@ -12,8 +12,6 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -148,23 +146,7 @@ func (h *DriveShareHandler) serveShared(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	abs := h.drive.BlobAbsPath(node.BlobPath.String)
-	f, err := os.Open(abs)
-	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-	defer f.Close()
-
-	disp := "inline"
-	if forceAttachment || mustForceAttachment(node.MimeType(), node.Ext()) {
-		disp = "attachment"
-	}
-	w.Header().Set("Content-Type", node.MimeType())
-	w.Header().Set("Content-Disposition",
-		fmt.Sprintf("%s; filename*=UTF-8''%s", disp, url.PathEscape(node.Name)))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	http.ServeContent(w, r, node.Name, time.UnixMilli(node.UpdatedAt), f)
+	serveStoredDriveBlob(w, r, h.drive, node, forceAttachment)
 }
 
 func (h *DriveShareHandler) passwordOK(r *http.Request, share *models.DriveShare, token string) bool {

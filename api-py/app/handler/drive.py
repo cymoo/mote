@@ -5,7 +5,6 @@ Service instances are attached to the Flask app in app.py as
 """
 from __future__ import annotations
 
-import os
 from typing import NoReturn
 from urllib.parse import quote
 
@@ -43,7 +42,6 @@ from ..services.drive import (
     DriveNotFolder,
     DriveNotFound,
     DriveNotImage,
-    must_force_attachment,
 )
 from ..services.drive_share import (
     ShareExpired,
@@ -60,6 +58,7 @@ from ..services.drive_upload import (
 )
 from ..services.drive_zip import zip_folder_iter
 from ..middleware import validate
+from .drive_serve import serve_drive_blob
 
 drive_bp = Blueprint('drive', __name__)
 
@@ -220,21 +219,13 @@ def _serve_blob(node_id: int, force_attachment: bool):
     if n.type != 'file' or not n.blob_path or n.deleted_at is not None:
         raise APIError(404, 'Not Found')
     abs_path = _drive().blob_abs_path(n.blob_path)
-    if not os.path.exists(abs_path):
-        raise APIError(404, 'Not Found')
-
-    mt = n.mime_type()
-    disp = (
-        'attachment'
-        if (force_attachment or must_force_attachment(mt, n.ext()))
-        else 'inline'
+    return serve_drive_blob(
+        abs_path,
+        n.blob_path,
+        n.name,
+        n.mime_type(),
+        force_attachment,
     )
-    resp = send_file(abs_path, mimetype=mt, conditional=True)
-    resp.headers['Content-Disposition'] = (
-        f"{disp}; filename*=UTF-8''{quote(n.name, safe='')}"
-    )
-    resp.headers['X-Content-Type-Options'] = 'nosniff'
-    return resp
 
 
 @drive_bp.get('/download')

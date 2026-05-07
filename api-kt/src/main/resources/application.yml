@@ -44,6 +44,7 @@ web:
     upload-dir: ${UPLOAD_PATH:uploads}
     thumbnail-size: ${UPLOAD_THUMB_WIDTH:128}
     image-formats: ${UPLOAD_IMAGE_FORMATS:jpeg,jpg,png,webp,gif}
+    accel-redirect-prefix: ${DRIVE_ACCEL_REDIRECT_PREFIX:}
 app:
   posts-per-page: ${POSTS_PER_PAGE:20}
   about-url: ${ABOUT_URL:}
