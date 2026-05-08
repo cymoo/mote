@@ -96,40 +96,31 @@ export function StatsPage() {
             </div>
           </div>
 
-          <div className="mt-5 rounded-xl border bg-background/70 p-2">
-            <div className="mb-2 flex items-center gap-2 px-1">
-              <span className="bg-primary/10 text-primary flex size-8 items-center justify-center rounded-lg">
-                <ListFilterIcon className="size-4" />
-              </span>
-              <span className="text-muted-foreground text-xs">{t('reviewRange', lang)}</span>
-            </div>
-            <div className="scrollbar-none flex gap-1 overflow-x-auto">
-              <button
-                className={cx('rounded-full px-3 py-1.5 text-sm font-medium transition-colors', {
-                  'bg-primary text-primary-foreground shadow-sm': year === null,
-                  'text-muted-foreground hover:bg-accent hover:text-accent-foreground': year !== null,
-                })}
-                onClick={() => setYear(null)}
+          <label className="mt-5 flex items-center gap-3 rounded-xl border bg-background/70 p-2">
+            <span className="bg-primary/10 text-primary flex size-9 items-center justify-center rounded-lg">
+              <ListFilterIcon className="size-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="text-muted-foreground block text-xs">{t('reviewRange', lang)}</span>
+              <select
+                className="w-full bg-transparent text-sm font-semibold focus:outline-none"
+                value={year ?? 'all'}
+                onChange={(event) => {
+                  const value = event.target.value
+                  const nextYear = value === 'all' ? null : Number(value)
+                  setYear(nextYear)
+                  if (nextYear !== null) setHeatmapYear(nextYear)
+                }}
               >
-                {t('allTime', lang)}
-              </button>
-              {years.map((item) => (
-                <button
-                  key={item}
-                  className={cx('rounded-full px-3 py-1.5 text-sm font-medium transition-colors', {
-                    'bg-primary text-primary-foreground shadow-sm': year === item,
-                    'text-muted-foreground hover:bg-accent hover:text-accent-foreground': year !== item,
-                  })}
-                  onClick={() => {
-                    setYear(item)
-                    setHeatmapYear(item)
-                  }}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </div>
+                <option value="all">{t('allTime', lang)}</option>
+                {years.map((item) => (
+                  <option key={item} value={item}>
+                    {item.toString()}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </label>
 
           <div className="mt-6 grid grid-cols-2 gap-3">
             <MetricCard icon={<SparklesIcon />} label={t('totalMemos', lang)} value={summary?.total_posts} />
