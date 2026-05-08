@@ -155,9 +155,9 @@ export function StatsPage() {
             ))}
           </div>
         )}
-        <div className="rounded-xl bg-muted/30 p-3">
+        <div className="scrollbar-none overflow-x-auto rounded-xl bg-muted/30 p-3">
           <HeatMapWithTooltip
-            className="w-full [grid-auto-columns:minmax(0,1fr)] gap-px opacity-90 sm:gap-0.5"
+            className="min-w-[520px] w-full [grid-auto-columns:minmax(0,1fr)] gap-px opacity-90 sm:gap-0.5"
             startDate={new Date(selectedHeatmapYear, 0, 1)}
             endDate={selectedHeatmapYear === currentYear ? new Date() : new Date(selectedHeatmapYear, 11, 31)}
             onClick={(event) => {
