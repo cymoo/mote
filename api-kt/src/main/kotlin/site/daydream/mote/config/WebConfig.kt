@@ -1,5 +1,6 @@
 package site.daydream.mote.config
 
+import jakarta.annotation.PostConstruct
 import site.daydream.mote.interceptor.AuthInterceptor
 import site.daydream.mote.service.AuthService
 import org.springframework.boot.ApplicationRunner
@@ -82,7 +83,7 @@ data class CorsProperties(
          }
      }
  }
- 
+
  @Configuration
  class UploadDirectoryConfig(
      private val uploadConfig: UploadConfig

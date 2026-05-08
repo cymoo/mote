@@ -13,7 +13,7 @@ func (app *App) setupTasks() error {
 	tm.SetContextValue(tasks.ContextFTS, app.fts)
 	tm.SetContextValue(tasks.ContextUploadPath, app.config.Upload.BasePath)
 
-	if err := tm.AddTask("delete-old-posts", mita.Every().Day().At(2, 0), tasks.DeleteOldPosts); err != nil {
+	if err := tm.AddTask("delete-old-posts", mita.Every().Day().At(2, 0), tasks.PurgeOldPosts); err != nil {
 		return err
 	}
 	if err := tm.AddTask("purge-drive-uploads", mita.Every().Hour(), tasks.PurgeExpiredDriveUploads); err != nil {

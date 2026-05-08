@@ -73,10 +73,8 @@ setup: ## First-time: build, start containers, configure nginx + TLS
 	@nginx -t && systemctl reload-or-restart nginx
 	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
 
-deploy: ## Backup, git pull, rebuild images, restart, refresh nginx config
+deploy: ## git pull, rebuild images, restart, refresh nginx config
 	@[ "$$(id -u)" = "0" ] || { printf '$(RED)ERROR: run as: sudo make $@$(NC)\n' >&2; exit 1; }
-	@echo "$(YELLOW)-> Backing up...$(NC)"
-	@$(MAKE) -s backup
 	@echo "$(YELLOW)-> Pulling latest code...$(NC)"
 	@$(GIT_EXEC) git -C $(APP_DIR) pull origin main
 	@$(MAKE) -s _deploy
