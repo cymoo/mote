@@ -31,7 +31,6 @@ class Config:
     # SQLALCHEMY_DATABASE_URI: str = 'sqlite:///:memory:'
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
     SQLALCHEMY_ECHO: bool = False
-    DATABASE_AUTO_MIGRATE: bool = True
 
     # Redis
     REDIS_URL: str = 'redis://localhost:6379/0'

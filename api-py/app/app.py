@@ -69,7 +69,7 @@ def setup_logger(app: Flask) -> None:
 
 
 def init_extension(app: Flask) -> None:
-    from .extension import init_app, db, run_migration
+    from .extension import init_app, db
     from sqlalchemy import text
 
     init_app(app)
@@ -78,10 +78,6 @@ def init_extension(app: Flask) -> None:
     with app.app_context():
         db.session.execute(text("PRAGMA foreign_keys=ON"))
         db.session.execute(text("PRAGMA journal_mode=WAL"))
-
-    # Run migrations if enabled
-    if app.config['DATABASE_AUTO_MIGRATE']:
-        run_migration(app, db)
 
 
 def register_blueprints(app: Flask) -> None:

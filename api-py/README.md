@@ -42,33 +42,13 @@ conservative upper bound.
 
 NOTE: The `MOTE_PASSWORD` variable is used for login. Ensure it is complex and securely stored in production.
 
-### Database Migration
+### Database Initialization
 
 To create the sqlite database and tables if missing:
 
 ```bash
 flask create_tables
 ```
-
-1. Init migration
-
-```bash
-flask db init
-```
-
-2. Autogenerate a new revision file
-
-```bash
-flask db migrate
-```
-
-3. Upgrade to a new version
-
-```bash
-flask db upgrade
-```
-
-For more usage details about migration, run `flask db --help`
 
 ### Test
 

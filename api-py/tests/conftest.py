@@ -17,9 +17,6 @@ def app():
     # Per-test-suite tmp upload root for drive blobs/chunks/thumbs.
     upload_dir = tempfile.mkdtemp(prefix='mote-drive-test-')
     config.UPLOAD_PATH = upload_dir
-    # Tests use db.create_all() directly; skip Alembic to keep startup fast.
-    config.DATABASE_AUTO_MIGRATE = False
-
     app = create_app(config)
     with app.app_context():
         _db.create_all()

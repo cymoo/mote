@@ -3,7 +3,6 @@ from gevent import monkey
 monkey.patch_all()
 import click
 from flask.cli import AppGroup, with_appcontext
-from flask_migrate import Migrate
 
 from app import create_app
 from app.config import Config
@@ -47,10 +46,6 @@ def push_context():
 
 app.cli.add_command(user_cli)
 app.cli.add_command(push_context)
-
-# Database migrations
-# https://blog.miguelgrinberg.com/post/fixing-alter-table-errors-with-flask-migrate-and-sqlite
-migrate = Migrate(app, db, render_as_batch=True)
 
 
 if __name__ == '__main__':
