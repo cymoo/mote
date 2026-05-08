@@ -1,6 +1,13 @@
-import { CircleIcon, ExternalLinkIcon, CloudUploadIcon, LayoutGrid as GridIcon, Share2Icon } from 'lucide-react'
+import {
+  BarChart3Icon,
+  CircleIcon,
+  CloudUploadIcon,
+  ExternalLinkIcon,
+  LayoutGrid as GridIcon,
+  Share2Icon,
+} from 'lucide-react'
 import { ComponentProps } from 'react'
-import { useSearchParams } from 'react-router'
+import { useLocation, useSearchParams } from 'react-router'
 
 import { cx } from '@/utils/css.ts'
 
@@ -12,6 +19,7 @@ import { HIGHLIGHT_STYLE } from './sidebar.tsx'
 
 export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
   const navigate = useStableNavigate()
+  const location = useLocation()
   const [params, setParams] = useSearchParams()
 
   const colors = ['red', 'blue', 'green'] as const
@@ -26,7 +34,7 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
       {...props}
     >
       <Button
-        className={params.size === 0 ? HIGHLIGHT_STYLE : undefined}
+        className={location.pathname === '/' && params.size === 0 ? HIGHLIGHT_STYLE : undefined}
         variant="ghost"
         onClick={() => {
           void navigate('/', { replace: params.get('tag')?.includes('hidden') })
@@ -76,6 +84,17 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
           <T name={color} />
         </Button>
       ))}
+      <Button
+        className={location.pathname === '/stats' ? HIGHLIGHT_STYLE : undefined}
+        variant="ghost"
+        onClick={() => {
+          void navigate('/stats')
+          window.toggleSidebar()
+        }}
+      >
+        <BarChart3Icon className="mr-3 size-5" aria-hidden="true" />
+        <T name="statistics" />
+      </Button>
       <Button
         variant="ghost"
         onClick={() => {

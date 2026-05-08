@@ -144,15 +144,15 @@ func (s *PostService) GetActiveDays(ctx context.Context) (int64, error) {
 // GetDailyCounts returns daily post counts within a date range
 func (s *PostService) GetDailyCounts(ctx context.Context, startDate, endDate time.Time, offsetSeconds int) ([]int64, error) {
 	offsetMs := int64(offsetSeconds) * 1000
-	startTs := startDate.UnixMilli()
-	endTs := endDate.UnixMilli()
+	startTs, endTs := localDateRangeMillis(startDate, endDate, offsetSeconds)
 	dayMs := int64(3600 * 24 * 1000)
 
 	query := `
 		SELECT (created_at + ?) / ? as local_day, COUNT(*) as count
 		FROM posts
 		WHERE deleted_at IS NULL
-			AND created_at BETWEEN ? AND ?
+			AND created_at >= ?
+			AND created_at < ?
 		GROUP BY local_day
 		ORDER BY local_day
 	`
@@ -175,9 +175,9 @@ func (s *PostService) GetDailyCounts(ctx context.Context, startDate, endDate tim
 	}
 
 	// Calculate range and fill missing days with 0
-	days := (endDate.Sub(startDate).Hours() / 24) + 1
+	days := int64(endDate.Sub(startDate).Hours() / 24)
 	startDay := (startTs + offsetMs) / dayMs
-	endDay := startDay + int64(days) - 1
+	endDay := startDay + days - 1
 
 	counts := make([]int64, 0, int(days))
 	for day := startDay; day <= endDay; day++ {
@@ -185,6 +185,78 @@ func (s *PostService) GetDailyCounts(ctx context.Context, startDate, endDate tim
 	}
 
 	return counts, nil
+}
+
+func (s *PostService) GetStatsSummary(ctx context.Context, startDate, endDate *time.Time, offsetSeconds int) (*models.StatsSummary, error) {
+	offsetMs := int64(offsetSeconds) * 1000
+	dayMs := int64(3600 * 24 * 1000)
+	whereClause := "WHERE deleted_at IS NULL"
+	args := []interface{}{}
+	if startDate != nil && endDate != nil {
+		startTs, endTs := localDateRangeMillis(*startDate, *endDate, offsetSeconds)
+		whereClause += " AND created_at >= ? AND created_at < ?"
+		args = append(args, startTs, endTs)
+	}
+
+	summary := models.StatsSummary{
+		ColorCounts: []models.StatCount{},
+		TopTags:     []models.StatCount{},
+	}
+
+	overviewQuery := fmt.Sprintf(`
+		SELECT
+			COUNT(*) AS total_posts,
+			COUNT(DISTINCT (created_at + ?) / ?) AS active_days,
+			COALESCE(SUM(CASE WHEN shared THEN 1 ELSE 0 END), 0) AS shared_posts,
+			COALESCE(SUM(CASE WHEN %s THEN 1 ELSE 0 END), 0) AS posts_with_images,
+			COALESCE(SUM(CASE WHEN NOT EXISTS (
+				SELECT 1 FROM tag_post_assoc tpa WHERE tpa.post_id = posts.id
+			) THEN 1 ELSE 0 END), 0) AS untagged_posts,
+			MIN(created_at) AS first_post_at,
+			MAX(created_at) AS last_post_at
+		FROM posts
+		%s
+	`, hasImagesCondition("posts"), whereClause)
+	overviewArgs := append([]interface{}{offsetMs, dayMs}, args...)
+	if err := s.db.GetContext(ctx, &summary, overviewQuery, overviewArgs...); err != nil {
+		return nil, err
+	}
+
+	colorQuery := fmt.Sprintf(`
+		SELECT color AS name, COUNT(*) AS count
+		FROM posts
+		%s
+			AND color IN ('red', 'green', 'blue')
+		GROUP BY color
+		ORDER BY count DESC, color ASC
+	`, whereClause)
+	if err := s.db.SelectContext(ctx, &summary.ColorCounts, colorQuery, args...); err != nil {
+		return nil, err
+	}
+
+	postJoinConditions := "p.id = tpa.post_id AND p.deleted_at IS NULL"
+	postJoinArgs := []interface{}{}
+	if startDate != nil && endDate != nil {
+		startTs, endTs := localDateRangeMillis(*startDate, *endDate, offsetSeconds)
+		postJoinConditions += " AND p.created_at >= ? AND p.created_at < ?"
+		postJoinArgs = append(postJoinArgs, startTs, endTs)
+	}
+	tagQuery := fmt.Sprintf(`
+		SELECT t.name AS name, COUNT(DISTINCT p.id) AS count
+		FROM tags t
+		LEFT JOIN tags child ON child.name = t.name OR child.name LIKE (t.name || '/%%')
+		LEFT JOIN tag_post_assoc tpa ON tpa.tag_id = child.id
+		LEFT JOIN posts p ON %s
+		GROUP BY t.name
+		HAVING count > 0
+		ORDER BY count DESC, t.name ASC
+		LIMIT 12
+	`, postJoinConditions)
+	if err := s.db.SelectContext(ctx, &summary.TopTags, tagQuery, postJoinArgs...); err != nil {
+		return nil, err
+	}
+
+	return &summary, nil
 }
 
 // Filter retrieves posts based on filter options
@@ -244,9 +316,17 @@ func (s *PostService) Filter(ctx context.Context, options models.FilterPostReque
 	// Files filter
 	if options.HasFiles != nil {
 		if *options.HasFiles {
-			conditions = append(conditions, "p.files IS NOT NULL")
+			conditions = append(conditions, hasImagesCondition("p"))
 		} else {
-			conditions = append(conditions, "p.files IS NULL")
+			conditions = append(conditions, "NOT ("+hasImagesCondition("p")+")")
+		}
+	}
+
+	if options.Untagged != nil {
+		if *options.Untagged {
+			conditions = append(conditions, "NOT EXISTS (SELECT 1 FROM tag_post_assoc tpa WHERE tpa.post_id = p.id)")
+		} else {
+			conditions = append(conditions, "EXISTS (SELECT 1 FROM tag_post_assoc tpa WHERE tpa.post_id = p.id)")
 		}
 	}
 
@@ -682,6 +762,15 @@ func (s *PostService) attachTags(ctx context.Context, posts []models.Post) error
 	}
 
 	return nil
+}
+
+func localDateRangeMillis(startDate, endDate time.Time, offsetSeconds int) (int64, int64) {
+	offsetMs := int64(offsetSeconds) * 1000
+	return startDate.UnixMilli() - offsetMs, endDate.UnixMilli() - offsetMs
+}
+
+func hasImagesCondition(tableAlias string) string {
+	return fmt.Sprintf("%s.files IS NOT NULL AND json_array_length(%s.files) > 0", tableAlias, tableAlias)
 }
 
 // attachParents attaches parent posts to the given posts

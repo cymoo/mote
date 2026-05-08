@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/cymoo/mote/internal/models"
 	"github.com/jmoiron/sqlx"
@@ -250,5 +251,158 @@ func TestPost_GetCount(t *testing.T) {
 	n, _ = svc.GetCount(ctx)
 	if n != 5 {
 		t.Fatalf("soft-deleted post should not be counted: %d", n)
+	}
+}
+
+func TestPost_GetDailyCountsUsesLocalDateRange(t *testing.T) {
+	db := setupPostTestDB(t)
+	svc := NewPostService(db)
+	ctx := context.Background()
+
+	ts := time.Date(2024, 12, 31, 23, 30, 0, 0, time.UTC).UnixMilli()
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO posts (content, created_at, updated_at)
+		VALUES (?, ?, ?)
+	`, "boundary", ts, ts); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, 1)
+
+	got, err := svc.GetDailyCounts(ctx, start, end, 8*60*60)
+	if err != nil {
+		t.Fatalf("daily counts +8: %v", err)
+	}
+	if len(got) != 1 || got[0] != 1 {
+		t.Fatalf("offset +8 counts = %v, want [1]", got)
+	}
+
+	got, err = svc.GetDailyCounts(ctx, start, end, 0)
+	if err != nil {
+		t.Fatalf("daily counts UTC: %v", err)
+	}
+	if len(got) != 1 || got[0] != 0 {
+		t.Fatalf("offset 0 counts = %v, want [0]", got)
+	}
+}
+
+func TestPost_GetStatsSummary(t *testing.T) {
+	db := setupPostTestDB(t)
+	svc := NewPostService(db)
+	ctx := context.Background()
+
+	shared := true
+	red := "red"
+	blue := "blue"
+
+	p1, err := svc.Create(ctx, models.CreatePostRequest{
+		Content: `<span class="hash-tag">#tech/go</span> note`,
+		Color:   &red,
+		Shared:  &shared,
+		Files:   []models.FileInfo{{URL: "/upload/a.png"}},
+	})
+	if err != nil {
+		t.Fatalf("create p1: %v", err)
+	}
+	p2, err := svc.Create(ctx, models.CreatePostRequest{
+		Content: `<span class="hash-tag">#tech</span> second`,
+		Color:   &blue,
+	})
+	if err != nil {
+		t.Fatalf("create p2: %v", err)
+	}
+	p3, err := svc.Create(ctx, models.CreatePostRequest{Content: `<span class="hash-tag">#tech</span> deleted`})
+	if err != nil {
+		t.Fatalf("create p3: %v", err)
+	}
+	p4, err := svc.Create(ctx, models.CreatePostRequest{Content: "plain"})
+	if err != nil {
+		t.Fatalf("create p4: %v", err)
+	}
+
+	t1 := time.Date(2025, 1, 2, 9, 15, 0, 0, time.UTC).UnixMilli()
+	t2 := time.Date(2025, 1, 2, 21, 30, 0, 0, time.UTC).UnixMilli()
+	t3 := time.Date(2025, 1, 3, 10, 0, 0, 0, time.UTC).UnixMilli()
+	t4 := time.Date(2025, 1, 3, 11, 0, 0, 0, time.UTC).UnixMilli()
+	if _, err := db.ExecContext(ctx, `UPDATE posts SET created_at = ?, updated_at = ? WHERE id = ?`, t1, t1, p1.ID); err != nil {
+		t.Fatalf("update p1 time: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE posts SET created_at = ?, updated_at = ? WHERE id = ?`, t2, t2, p2.ID); err != nil {
+		t.Fatalf("update p2 time: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE posts SET created_at = ?, updated_at = ? WHERE id = ?`, t3, t3, p3.ID); err != nil {
+		t.Fatalf("update p3 time: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE posts SET created_at = ?, updated_at = ? WHERE id = ?`, t4, t4, p4.ID); err != nil {
+		t.Fatalf("update p4 time: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE posts SET files = ? WHERE id = ?`, "[]", p4.ID); err != nil {
+		t.Fatalf("update p4 empty files: %v", err)
+	}
+	if err := svc.Delete(ctx, p3.ID); err != nil {
+		t.Fatalf("delete p3: %v", err)
+	}
+
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 4, 0, 0, 0, 0, time.UTC)
+	summary, err := svc.GetStatsSummary(ctx, &start, &end, 0)
+	if err != nil {
+		t.Fatalf("stats summary: %v", err)
+	}
+
+	if summary.TotalPosts != 3 {
+		t.Fatalf("total posts = %d, want 3", summary.TotalPosts)
+	}
+	if summary.ActiveDays != 2 {
+		t.Fatalf("active days = %d, want 2", summary.ActiveDays)
+	}
+	if summary.SharedPosts != 1 {
+		t.Fatalf("shared posts = %d, want 1", summary.SharedPosts)
+	}
+	if summary.PostsWithImages != 1 {
+		t.Fatalf("posts with images = %d, want 1", summary.PostsWithImages)
+	}
+	if summary.UntaggedPosts != 1 {
+		t.Fatalf("untagged posts = %d, want 1", summary.UntaggedPosts)
+	}
+	if !summary.FirstPostAt.Valid || summary.FirstPostAt.Int64 != t1 {
+		t.Fatalf("first post at = %+v, want %d", summary.FirstPostAt, t1)
+	}
+	if !summary.LastPostAt.Valid || summary.LastPostAt.Int64 != t4 {
+		t.Fatalf("last post at = %+v, want %d", summary.LastPostAt, t4)
+	}
+
+	colorCounts := map[string]int64{}
+	for _, item := range summary.ColorCounts {
+		colorCounts[item.Name] = item.Count
+	}
+	if colorCounts["red"] != 1 || colorCounts["blue"] != 1 {
+		t.Fatalf("color counts = %#v, want red=1 blue=1", colorCounts)
+	}
+
+	tagCounts := map[string]int64{}
+	for _, item := range summary.TopTags {
+		tagCounts[item.Name] = item.Count
+	}
+	if tagCounts["tech"] != 2 {
+		t.Fatalf("tech top tag count = %d, want 2", tagCounts["tech"])
+	}
+
+	allSummary, err := svc.GetStatsSummary(ctx, nil, nil, 0)
+	if err != nil {
+		t.Fatalf("all-time stats summary: %v", err)
+	}
+	if allSummary.TotalPosts != 3 {
+		t.Fatalf("all-time total posts = %d, want 3", allSummary.TotalPosts)
+	}
+
+	untagged := true
+	posts, err := svc.Filter(ctx, models.FilterPostRequest{Untagged: &untagged}, 10)
+	if err != nil {
+		t.Fatalf("filter untagged: %v", err)
+	}
+	if len(posts) != 1 || posts[0].ID != p4.ID {
+		t.Fatalf("untagged posts = %+v, want only %d", posts, p4.ID)
 	}
 }

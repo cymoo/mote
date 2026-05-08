@@ -248,6 +248,24 @@ def get_stats() -> PostStats:
     )
 
 
+@api.get('/get-stats-summary')
+@validate(type='query')
+def get_stats_summary(payload: StatsRange) -> dict:
+    start_date = end_date = None
+    if payload.start_date or payload.end_date:
+        if not payload.start_date or not payload.end_date:
+            raise bad_request('start_date and end_date must be provided together')
+        start_date = parse_date_with_timezone(payload.start_date, payload.offset)
+        end_date = parse_date_with_timezone(
+            payload.end_date, payload.offset, end_of_day=True
+        )
+    return Post.get_stats_summary(
+        start_date=start_date,
+        end_date=end_date,
+        offset=payload.offset,
+    )
+
+
 # For quick test
 @api.get('/upload')
 def file_form() -> str:

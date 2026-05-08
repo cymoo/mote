@@ -1,5 +1,5 @@
 use crate::config::rd::RedisPool;
-use crate::errors::{not_found, ApiError, ApiResult};
+use crate::errors::{bad_request, not_found, ApiError, ApiResult};
 use crate::middleware::check_access::check_access;
 use crate::middleware::limit_request::limit_request;
 use crate::model::post::*;
@@ -38,6 +38,7 @@ pub fn create_routes(rd_pool: RedisPool) -> Router<AppState> {
         .route("/clear-posts", post(clear_posts))
         .route("/get-overall-counts", get(get_stats))
         .route("/get-daily-post-counts", get(get_daily_post_counts))
+        .route("/get-stats-summary", get(get_stats_summary))
         .route("/upload", get(file_form).post(upload_file))
         .route(
             "/_dangerously_rebuild_all_indexes",
@@ -257,6 +258,30 @@ async fn get_daily_post_counts(
         .await?,
     )
     .pipe(Ok)
+}
+
+async fn get_stats_summary(
+    State(state): State<AppState>,
+    ValidatedQuery(query): ValidatedQuery<StatsRange>,
+) -> ApiResult<Json<StatsSummary>> {
+    let start_date = query
+        .start_date
+        .as_ref()
+        .map(|date| parse_date_with_timezone(date, query.offset, false))
+        .transpose()?;
+    let end_date = query
+        .end_date
+        .as_ref()
+        .map(|date| parse_date_with_timezone(date, query.offset, true))
+        .transpose()?;
+
+    if start_date.is_some() != end_date.is_some() {
+        return Err(bad_request(
+            "start_date and end_date must be provided together",
+        ));
+    }
+
+    Json(Post::get_stats_summary(&state.db, start_date, end_date, query.offset).await?).pipe(Ok)
 }
 
 // For quick test

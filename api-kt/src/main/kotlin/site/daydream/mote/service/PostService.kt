@@ -138,6 +138,74 @@ class PostService(
     fun getCount() =
         dsl.fetchCount(POSTS, POSTS.DELETED_AT.isNull)
 
+    fun getStatsSummary(startDate: ZonedDateTime?, endDate: ZonedDateTime?, offset: Int): StatsSummary {
+        val offsetMs = (startDate?.offset?.totalSeconds?.toLong() ?: offset.toLong() * 60) * 1000L
+        val startTimestamp = startDate?.toInstant()?.toEpochMilli()
+        val endTimestamp = endDate?.toInstant()?.toEpochMilli()
+
+        var condition = POSTS.DELETED_AT.isNull
+        startTimestamp?.let { condition = condition.and(POSTS.CREATED_AT.greaterOrEqual(it)) }
+        endTimestamp?.let { condition = condition.and(POSTS.CREATED_AT.lessThan(it)) }
+
+        val imageCondition = POSTS.FILES.isNotNull.and(
+            field("json_array_length({0})", Int::class.java, POSTS.FILES).gt(0)
+        )
+        val untaggedCondition = notExists(
+            selectOne().from(ASSOC).where(ASSOC.POST_ID.eq(POSTS.ID))
+        )
+
+        val summary = dsl.select(
+            count().`as`("total_posts"),
+            countDistinct(floor((POSTS.CREATED_AT.plus(offsetMs)).div(86400000L))).`as`("active_days"),
+            count().filterWhere(POSTS.SHARED.eq(true)).`as`("shared_posts"),
+            count().filterWhere(imageCondition).`as`("posts_with_images"),
+            count().filterWhere(untaggedCondition).`as`("untagged_posts"),
+            min(POSTS.CREATED_AT).`as`("first_post_at"),
+            max(POSTS.CREATED_AT).`as`("last_post_at"),
+        ).from(POSTS)
+            .where(condition)
+            .fetchOne()
+
+        val colorCounts = dsl.select(POSTS.COLOR.`as`("name"), count().`as`("count"))
+            .from(POSTS)
+            .where(condition.and(POSTS.COLOR.isNotNull))
+            .groupBy(POSTS.COLOR)
+            .orderBy(field("count").desc())
+            .fetch { StatCount(it.get("name", String::class.java), it.get("count", Int::class.java)) }
+
+        val topTags = dsl.resultQuery(
+            """
+            SELECT t.name AS name, COUNT(DISTINCT p.id) AS count
+            FROM tags t
+            JOIN tags child ON child.name = t.name OR child.name LIKE t.name || '/%'
+            JOIN tag_post_assoc tp ON tp.tag_id = child.id
+            JOIN posts p ON p.id = tp.post_id
+            WHERE p.deleted_at IS NULL
+              AND (? IS NULL OR p.created_at >= ?)
+              AND (? IS NULL OR p.created_at < ?)
+            GROUP BY t.name
+            ORDER BY count DESC, t.name ASC
+            LIMIT 12
+            """.trimIndent(),
+            startTimestamp,
+            startTimestamp,
+            endTimestamp,
+            endTimestamp,
+        ).fetch { StatCount(it.get("name", String::class.java), it.get("count", Int::class.java)) }
+
+        return StatsSummary(
+            totalPosts = summary?.get("total_posts", Int::class.java) ?: 0,
+            activeDays = summary?.get("active_days", Int::class.java) ?: 0,
+            sharedPosts = summary?.get("shared_posts", Int::class.java) ?: 0,
+            postsWithImages = summary?.get("posts_with_images", Int::class.java) ?: 0,
+            untaggedPosts = summary?.get("untagged_posts", Int::class.java) ?: 0,
+            firstPostAt = summary?.get("first_post_at", Long::class.java),
+            lastPostAt = summary?.get("last_post_at", Long::class.java),
+            colorCounts = colorCounts,
+            topTags = topTags,
+        )
+    }
+
     fun filterPosts(options: FilterPostRequest, perPage: Int = 20): List<Post> {
         var condition: Condition = trueCondition()
 
@@ -181,11 +249,21 @@ class PostService(
             }
 
             hasFiles?.let {
+                val imageCondition = POSTS.FILES.isNotNull.and(
+                    field("json_array_length({0})", Int::class.java, POSTS.FILES).gt(0)
+                )
                 condition = if (it) {
-                    condition.and(POSTS.FILES.isNotNull)
+                    condition.and(imageCondition)
                 } else {
-                    condition.and(POSTS.FILES.isNull)
+                    condition.and(POSTS.FILES.isNull.or(imageCondition.not()))
                 }
+            }
+
+            untagged?.let {
+                val tagExists = exists(
+                    selectOne().from(ASSOC).where(ASSOC.POST_ID.eq(POSTS.ID))
+                )
+                condition = condition.and(if (it) tagExists.not() else tagExists)
             }
 
             val orderField = when (orderBy) {
