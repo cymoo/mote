@@ -35,6 +35,7 @@ from app.config import Config
 
 def test_config_upload_path_is_absolute_after_validation():
     cfg = Config()
+    cfg.SECRET_KEY = 'test-secret-key'
     tmp = tempfile.mkdtemp(prefix='mote-cfg-test-')
     try:
         cfg.UPLOAD_PATH = os.path.relpath(tmp, os.getcwd())

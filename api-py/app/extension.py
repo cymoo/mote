@@ -1,4 +1,6 @@
 import os
+import fcntl
+from contextlib import contextmanager
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData
@@ -57,28 +59,40 @@ def run_migration(app: Flask, sa: SQLAlchemy) -> None:
     # for developers; we don't use any of its runtime helpers here.
     Migrate(app, sa)
 
-    if not os.path.exists(MIGRATIONS_DIR):
-        logger.warning(
-            "Migrations folder not found; creating tables directly. "
-            "Run `flask db init && flask db migrate && flask db upgrade` "
-            "to enable proper schema versioning."
-        )
-        with app.app_context():
-            sa.create_all()
-        return
-
-    with app.app_context():
-        current = _current_revision(sa)
-        head = _head_revision()
-        if current == head:
+    with _migration_lock():
+        if not os.path.exists(MIGRATIONS_DIR):
+            logger.warning(
+                "Migrations folder not found; creating tables directly. "
+                "Run `flask db init && flask db migrate && flask db upgrade` "
+                "to enable proper schema versioning."
+            )
+            with app.app_context():
+                sa.create_all()
             return
 
+        with app.app_context():
+            current = _current_revision(sa)
+            head = _head_revision()
+            if current == head:
+                return
+
+            try:
+                _alembic_upgrade()
+                logger.info('Database migrated to %s', head)
+            except Exception as e:
+                logger.error('Database migration failed: %s', e)
+                raise
+
+
+@contextmanager
+def _migration_lock():
+    lock_path = os.path.join(PY_ROOT, '.migration.lock')
+    with open(lock_path, 'w') as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         try:
-            _alembic_upgrade()
-            logger.info('Database migrated to %s', head)
-        except Exception as e:
-            logger.error('Database migration failed: %s', e)
-            raise
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def _alembic_config():

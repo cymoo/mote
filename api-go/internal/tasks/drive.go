@@ -7,16 +7,19 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/cymoo/mita"
-	"github.com/jmoiron/sqlx"
 )
 
 // PurgeExpiredDriveUploads removes drive_uploads rows whose expires_at has passed
 // and deletes their on-disk chunk directories.
 func PurgeExpiredDriveUploads(ctx context.Context) error {
-	db := ctx.Value(mita.CtxtKey("db")).(*sqlx.DB)
-	uploadPath := ctx.Value(mita.CtxtKey("upload_path")).(string)
+	db, err := dbFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	uploadPath, err := uploadPathFromContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	now := time.Now().UnixMilli()
 	var ids []string
@@ -37,7 +40,10 @@ func PurgeExpiredDriveUploads(ctx context.Context) error {
 // PurgeExpiredDriveShares deletes drive_shares rows whose expires_at has
 // passed. Active shares (NULL expiry) are kept indefinitely.
 func PurgeExpiredDriveShares(ctx context.Context) error {
-	db := ctx.Value(mita.CtxtKey("db")).(*sqlx.DB)
+	db, err := dbFromContext(ctx)
+	if err != nil {
+		return err
+	}
 	res, err := db.ExecContext(ctx,
 		`DELETE FROM drive_shares WHERE expires_at IS NOT NULL AND expires_at <= ?`,
 		time.Now().UnixMilli())
@@ -53,8 +59,14 @@ func PurgeExpiredDriveShares(ctx context.Context) error {
 // PurgeOldDriveTrash hard-deletes drive_nodes that have been in the recycle bin
 // for longer than 30 days and removes their blob files.
 func PurgeOldDriveTrash(ctx context.Context) error {
-	db := ctx.Value(mita.CtxtKey("db")).(*sqlx.DB)
-	uploadPath := ctx.Value(mita.CtxtKey("upload_path")).(string)
+	db, err := dbFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	uploadPath, err := uploadPathFromContext(ctx)
+	if err != nil {
+		return err
+	}
 
 	cutoff := time.Now().UTC().AddDate(0, 0, -30).UnixMilli()
 

@@ -16,7 +16,7 @@ def create_app(config) -> Flask:
     """Create Flask application instance"""
 
     from .exception import register_error_handlers
-    from .task import huey
+    from .task import start_huey
 
     app = Flask(
         'app',
@@ -39,8 +39,8 @@ def create_app(config) -> Flask:
     register_file_uploads(app)
     register_error_handlers(app)
 
-    # Run periodic tasks
-    huey.start()
+    # Run periodic tasks once per process.
+    start_huey()
 
     return app
 

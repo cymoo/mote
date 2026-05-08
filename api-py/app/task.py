@@ -1,10 +1,36 @@
 from datetime import datetime, timedelta, UTC
-from app.model import db, Post
+from app.extension import db
+from app.models import Post
 
 from huey import crontab
 from huey.contrib.mini import MiniHuey, logger
+from app import extension as ext
 
 huey = MiniHuey()
+_started = False
+
+
+def start_huey() -> None:
+    global _started
+    if _started:
+        return
+    huey.start()
+    _started = True
+
+
+@huey.task()
+def index_post(post_id: int, content: str):
+    ext.fts.index(post_id, content)
+
+
+@huey.task()
+def reindex_post(post_id: int, content: str):
+    ext.fts.reindex(post_id, content)
+
+
+@huey.task()
+def deindex_post(post_id: int):
+    ext.fts.deindex(post_id)
 
 
 @huey.task(crontab(minute='0', hour='3'))

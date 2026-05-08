@@ -15,7 +15,7 @@ class Config:
 
     # Flask
     FLASK_ENV: str = os.getenv("FLASK_ENV", "production").lower()
-    SECRET_KEY: str = 'fool-said-i-you-do-not-know'
+    SECRET_KEY: str | None = None
     MAX_CONTENT_LENGTH: int = 10 * 1024 * 1024  # 10 MB
 
     # Basic app info
@@ -112,6 +112,9 @@ class Config:
 
                 setattr(config, field.name, value)
 
+        if not config.SECRET_KEY:
+            config.SECRET_KEY = os.getenv("MOTE_SECRET_KEY") or os.getenv("MOTE_PASSWORD")
+
         config.validate()
         return config
 
@@ -124,6 +127,8 @@ class Config:
             errors.append("POSTS_PER_PAGE must be greater than 0")
         if self.POSTS_PER_PAGE > 1000:
             errors.append("POSTS_PER_PAGE cannot exceed 1000")
+        if not self.SECRET_KEY:
+            errors.append("SECRET_KEY, MOTE_SECRET_KEY, or MOTE_PASSWORD must be set")
 
         # Validate Upload config
         if not self.UPLOAD_URL:
@@ -178,9 +183,12 @@ def load_env_files(env: str) -> None:
         env: Explicitly specify the environment (e.g., 'dev', 'prod', 'test').
     """
 
+    root = Path(PY_ROOT)
+
     # 1. Load base .env file if exists
-    if os.path.exists(".env"):
-        load_dotenv(".env")
+    env_path = root / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
 
     # 2. Load environment-specific file
     env_mappings = {
@@ -192,12 +200,15 @@ def load_env_files(env: str) -> None:
     }
 
     env_file = env_mappings.get(env)
-    if env_file and os.path.exists(env_file):
-        load_dotenv(env_file, override=True)
+    if env_file:
+        env_path = root / env_file
+        if env_path.exists():
+            load_dotenv(env_path, override=True)
 
     # 3. Always load .env.local last for final overrides
-    if os.path.exists(".env.local"):
-        load_dotenv(".env.local", override=True)
+    env_path = root / ".env.local"
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
 
 
 def parse_size(s: str) -> float:

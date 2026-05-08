@@ -6,7 +6,7 @@ use crate::model::post::*;
 use crate::model::tag::*;
 use crate::service::auth_service::AuthService;
 use crate::service::upload_service::FileUploadService;
-use crate::util::extractor::{Json, Query, ValidatedJson, ValidatedQuery};
+use crate::util::extractor::{Json, ValidatedJson, ValidatedQuery};
 use crate::util::fp::Pipe;
 use crate::AppState;
 use anyhow::Result;
@@ -19,6 +19,7 @@ use chrono::{DateTime, FixedOffset, NaiveDate, NaiveTime, TimeZone};
 use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::future::Future;
 use tracing::error;
 
 pub fn create_routes(rd_pool: RedisPool) -> Router<AppState> {
@@ -69,7 +70,7 @@ async fn get_tags(State(state): State<AppState>) -> ApiResult<Json<Vec<TagWithPo
 
 async fn rename_tag(
     State(state): State<AppState>,
-    Json(tag): Json<RenameTagRequest>,
+    ValidatedJson(tag): ValidatedJson<RenameTagRequest>,
 ) -> ApiResult<StatusCode> {
     Tag::rename_or_merge(&state.db, &tag.name, &tag.new_name).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -77,7 +78,7 @@ async fn rename_tag(
 
 async fn delete_tag(
     State(state): State<AppState>,
-    Json(name): Json<Name>,
+    ValidatedJson(name): ValidatedJson<Name>,
 ) -> ApiResult<StatusCode> {
     Tag::delete_associated_posts(&state.db, &name.name).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -85,7 +86,7 @@ async fn delete_tag(
 
 async fn stick_tag(
     State(state): State<AppState>,
-    Json(tag): Json<StickyTagRequest>,
+    ValidatedJson(tag): ValidatedJson<StickyTagRequest>,
 ) -> ApiResult<StatusCode> {
     Tag::insert_or_update(&state.db, &tag.name, tag.sticky).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -93,7 +94,7 @@ async fn stick_tag(
 
 async fn get_posts(
     State(state): State<AppState>,
-    Query(query): Query<FilterPostRequest>,
+    ValidatedQuery(query): ValidatedQuery<FilterPostRequest>,
 ) -> ApiResult<Json<PostPagination>> {
     let posts = Post::filter_posts(&state.db, &query, 30).await?;
     let size = posts.len() as i64;
@@ -110,7 +111,10 @@ async fn get_posts(
     .pipe(Ok)
 }
 
-async fn get_post(State(state): State<AppState>, Query(query): Query<Id>) -> ApiResult<Json<Post>> {
+async fn get_post(
+    State(state): State<AppState>,
+    ValidatedQuery(query): ValidatedQuery<Id>,
+) -> ApiResult<Json<Post>> {
     let post = Post::find_with_parent(&state.db, query.id).await?;
     Ok(Json(post))
 }
@@ -167,18 +171,15 @@ async fn create_post(
     let content = post.content.clone();
     let res = Post::create(&state.db, &post).await?;
 
-    tokio::spawn(async move {
-        let rv = state.fts.index(res.id, &content).await;
-        if rv.is_err() {
-            error!("Cannot index post: {:?}", rv);
-        }
+    spawn_background_task("index post", async move {
+        state.fts.index(res.id, &content).await
     });
     Ok(Json(res))
 }
 
 async fn update_post(
     State(state): State<AppState>,
-    Json(post): Json<UpdatePostRequest>,
+    ValidatedJson(post): ValidatedJson<UpdatePostRequest>,
 ) -> ApiResult<StatusCode> {
     let record = Post::find_by_id(&state.db, post.id).await?;
 
@@ -189,11 +190,8 @@ async fn update_post(
     Post::update(&state.db, &post).await?;
 
     if post.content.is_present() {
-        tokio::spawn(async move {
-            let rv = state.fts.reindex(post.id, post.content.get()).await;
-            if rv.is_err() {
-                error!("Cannot rebuild index: {:?}", rv);
-            }
+        spawn_background_task("rebuild index", async move {
+            state.fts.reindex(post.id, post.content.get()).await
         });
     }
 
@@ -202,16 +200,13 @@ async fn update_post(
 
 async fn delete_post(
     State(state): State<AppState>,
-    Json(payload): Json<DeletePostRequest>,
+    ValidatedJson(payload): ValidatedJson<DeletePostRequest>,
 ) -> ApiResult<StatusCode> {
     if payload.hard {
         Post::clear(&state.db, payload.id).await?;
 
-        tokio::spawn(async move {
-            let rv = state.fts.deindex(payload.id).await;
-            if rv.is_err() {
-                error!("Cannot delete index: {:?}", rv);
-            }
+        spawn_background_task("delete index", async move {
+            state.fts.deindex(payload.id).await
         });
     } else {
         Post::delete(&state.db, payload.id).await?;
@@ -222,14 +217,11 @@ async fn delete_post(
 async fn clear_posts(State(state): State<AppState>) -> ApiResult<StatusCode> {
     let ids = Post::clear_all(&state.db).await?;
 
-    tokio::spawn(async move {
+    spawn_background_task("clear post indexes", async move {
         for id in ids {
-            let rv = state.fts.deindex(id).await;
-            if rv.is_err() {
-                error!("Cannot delete index: {:?}", rv);
-                break;
-            }
+            state.fts.deindex(id).await?;
         }
+        Ok(())
     });
 
     Ok(StatusCode::NO_CONTENT)
@@ -237,7 +229,7 @@ async fn clear_posts(State(state): State<AppState>) -> ApiResult<StatusCode> {
 
 async fn restore_post(
     State(state): State<AppState>,
-    Json(payload): Json<Id>,
+    ValidatedJson(payload): ValidatedJson<Id>,
 ) -> ApiResult<StatusCode> {
     Post::restore(&state.db, payload.id).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -303,23 +295,30 @@ async fn rebuild_all_indexes(State(state): State<AppState>) -> ApiResult<&'stati
         .fetch_all(&state.db.pool)
         .await?;
 
-    tokio::spawn(async move {
-        let rv = state.fts.clear_all_indexes().await;
-        if rv.is_err() {
-            error!("Cannot clear indexes: {:?}", rv);
-            return;
-        }
+    spawn_background_task("rebuild all indexes", async move {
+        state.fts.clear_all_indexes().await?;
 
         for post in posts {
-            let rv = state.fts.index(post.id, &post.content).await;
-            if rv.is_err() {
-                error!("Cannot rebuild index: {:?}", rv);
-                break;
-            }
+            state.fts.index(post.id, &post.content).await?;
         }
+        Ok(())
     });
 
     Ok("Indexing...")
+}
+
+fn spawn_background_task<F>(name: &'static str, task: F)
+where
+    F: Future<Output = Result<()>> + Send + 'static,
+{
+    let handle = tokio::spawn(task);
+    tokio::spawn(async move {
+        match handle.await {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => error!("Background task '{name}' failed: {err:?}"),
+            Err(err) => error!("Background task '{name}' panicked or was cancelled: {err}"),
+        }
+    });
 }
 
 // Helper functions

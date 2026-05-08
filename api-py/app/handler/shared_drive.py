@@ -9,6 +9,7 @@ import hmac
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     make_response,
@@ -17,6 +18,7 @@ from flask import (
     request,
 )
 
+from ..exception import APIError
 from ..services.drive import (
     DriveNotFound,
 )
@@ -105,9 +107,9 @@ def _resolve_or_abort(token: str):
     try:
         return _share().resolve(token)
     except (ShareNotFound, DriveNotFound):
-        abort(404)
+        raise APIError(404, 'Not Found')
     except ShareExpired:
-        abort(410, description='share expired')
+        raise APIError(410, 'Gone', 'share expired')
 
 
 def _password_ok(share, token: str) -> bool:
@@ -121,7 +123,7 @@ def _password_ok(share, token: str) -> bool:
 
 def _share_password_cookie_value(share, token: str) -> str:
     if share.password_hash is None:
-        abort(400, description='share has no password')
+        raise APIError(400, 'Bad Request', 'share has no password')
     return hmac.new(
         share.password_hash.encode(),
         token.encode(),
@@ -186,11 +188,11 @@ def landing(token: str):
 @shared_bp.post('/<token>/auth')
 def auth(token: str):
     if not _rate_limit(token, _client_ip()):
-        abort(429, description='rate limited')
+        raise APIError(429, 'Too Many Requests', 'rate limited')
     share, _ = _resolve_or_abort(token)
     pw = request.form.get('password', '')
     if not _share().verify_password(share, pw):
-        abort(401, description='wrong password')
+        raise APIError(401, 'Unauthorized', 'wrong password')
     resp = make_response(redirect(f'/shared-files/{token}', code=303))
     resp.set_cookie(
         share_password_cookie_name(token),
@@ -208,7 +210,7 @@ def _serve_share(token: str, force_attachment: bool):
     if share.password_hash is not None and not _password_ok(share, token):
         return redirect(f'/shared-files/{token}', code=303)
     if not node.blob_path:
-        abort(404)
+        raise APIError(404, 'Not Found')
     abs_path = _drive().blob_abs_path(node.blob_path)
     return serve_drive_blob(
         abs_path,

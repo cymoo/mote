@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from ..extension import db
-from ..model import utc_now_ms
+from ..models import utc_now_ms
 
 # ---------------------------------------------------------------------------
 # Errors

@@ -8,8 +8,15 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
-	application := app.New(cfg)
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("configuration error: %v", err)
+	}
+
+	application, err := app.New(cfg)
+	if err != nil {
+		log.Fatalf("failed to initialize application: %v", err)
+	}
 
 	if err := application.Run(); err != nil {
 		log.Fatalf("application error: %v", err)

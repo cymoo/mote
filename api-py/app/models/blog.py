@@ -1,22 +1,16 @@
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple, Self, Iterable, Literal
-
-from flask import abort
-
-from sqlalchemy.dialects.sqlite import insert
+from datetime import datetime, timedelta
+from typing import Iterable, Literal, Optional, Self, Tuple
 
 from sqlalchemy import func, or_, text
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import backref, subqueryload
 
-from .extension import db
-
+from ..exception import bad_request
+from ..extension import db
+from .base import utc_now_ms
 
 HASH_PATTERN = re.compile(r'<span class="hash-tag">#(.+?)</span>')
-
-
-def utc_now_ms() -> int:
-    return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
 tag_post_assoc = db.Table(
@@ -36,6 +30,19 @@ tag_post_assoc = db.Table(
         nullable=False,
     ),
 )
+
+
+def replace_prefix(s: str, from_str: str, to: str) -> str:
+    """Replace the prefix of a string if it matches a given substring.
+    >>> replace_prefix('foobar', 'foo', 'baz')
+    'bazbar'
+    >>> replace_prefix('foobar', 'bar', 'baz')
+    'foobar'
+    """
+    if s.startswith(from_str):
+        return to + s[len(from_str) :]
+    else:
+        return s
 
 
 class Tag(db.Model):
@@ -124,7 +131,7 @@ class Tag(db.Model):
             return
 
         if new_name.startswith(name) and new_name.count('/') > name.count('/'):
-            abort(400, f'cannot move "{name}" to a subtag of itself "{new_name}"')
+            bad_request(f'cannot move "{name}" to a subtag of itself "{new_name}"')
 
         source_tag = Tag.find_or_create(name=name)
         target_tag = Tag.find_by_name(new_name)
@@ -162,7 +169,6 @@ class Tag(db.Model):
             post.content = post.content.replace(f'>#{old_name}<', f'>#{new_name}<')
             db.session.add(post)
 
-        # delete the old tag
         db.session.delete(self)
 
     @property
@@ -183,20 +189,28 @@ class Tag(db.Model):
         """Soft delete all posts under this tag and its descendant tags."""
 
         deleted_at = utc_now_ms()
-        for tag in [self] + self.descendants:
-            for post in tag.posts:  # noqa
-                post.deleted_at = deleted_at
-                db.session.add(post)
+        tag_ids = [tag.id for tag in [self] + self.descendants]
+        post_ids = db.session.query(tag_post_assoc.c.post_id).filter(
+            tag_post_assoc.c.tag_id.in_(tag_ids)
+        )
+        Post.query.filter(Post.id.in_(post_ids)).update(
+            {Post.deleted_at: deleted_at},
+            synchronize_session=False,
+        )
 
         db.session.commit()
 
     def restore(self) -> None:
         """Restore all posts under this tag and its descendant tags."""
 
-        for tag in [self] + self.descendants:
-            for post in tag.posts:  # noqa
-                post.deleted_at = None
-                db.session.add(post)
+        tag_ids = [tag.id for tag in [self] + self.descendants]
+        post_ids = db.session.query(tag_post_assoc.c.post_id).filter(
+            tag_post_assoc.c.tag_id.in_(tag_ids)
+        )
+        Post.query.filter(Post.id.in_(post_ids)).update(
+            {Post.deleted_at: None},
+            synchronize_session=False,
+        )
         db.session.commit()
 
     def save(self) -> Self:
@@ -257,13 +271,11 @@ class Post(db.Model):
     def get_daily_counts(cls, start_date: datetime, end_date: datetime) -> list[int]:
         """Get the number of posts for each day within a specified date range."""
 
-        # Convert `datetime` to timestamp (in milliseconds)
         start_timestamp = int(start_date.timestamp() * 1000)
         end_timestamp = int(end_date.timestamp() * 1000)
 
         offset = int(start_date.utcoffset().total_seconds())
 
-        # Use SQLite functions to group and count posts by date
         daily_counts = (
             db.session.query(
                 func.date(Post.created_at / 1000 + offset, 'unixepoch').label('date'),
@@ -277,7 +289,6 @@ class Post(db.Model):
 
         daily_counts_map = dict(daily_counts)
 
-        # Get daily post counts
         days = (end_date.date() - start_date.date()).days + 1
         return [
             daily_counts_map.get(
@@ -307,7 +318,10 @@ class Post(db.Model):
             # `subqueryload` generates a subquery for the related data,
             # loads all the required related data into memory in a single query,
             # and then SQLAlchemy associates this data with the main query result set, avoiding "N+1" query.
-            .options(subqueryload(Post.tags))  # noqa
+            .options(
+                subqueryload(Post.tags),
+                subqueryload(Post.parent).subqueryload(Post.tags),
+            )
             .filter(Post.deleted_at.is_(None))
             .filter(Post.id.in_(ids))
         )
@@ -337,7 +351,10 @@ class Post(db.Model):
         # The default is `lazyload`, meaning a query is triggered each time `post.tags` is accessed.
         # Other common modes include `joinedload` and `contains_eager`.
         # https://python.plainenglish.io/relationships-with-sqlalchemy-958b7358e16
-        query = db.session.query(Post).options(subqueryload(Post.tags))  # noqa
+        query = db.session.query(Post).options(
+            subqueryload(Post.tags),
+            subqueryload(Post.parent).subqueryload(Post.tags),
+        )
 
         if deleted:
             query = query.filter(Post.deleted_at.isnot(None))
@@ -439,124 +456,3 @@ class Post(db.Model):
         db.session.add(self)
         db.session.commit()
         return self
-
-
-# Helper functions
-
-
-# ============================================================================
-# Drive models
-# ============================================================================
-#
-# Plain row-container ORM classes for the cloud-drive feature. Mirrors the
-# shape of api-go/internal/models/drive.go. We deliberately don't define
-# SQLAlchemy relationships — the drive services issue raw SQL (recursive CTEs,
-# partial-unique-index conflict handling, bitmask updates) that the ORM layer
-# can't model gracefully. These rows exist mainly so `db.create_all()` can
-# build the tables in tests, and so handlers can return them as dataclass-ish
-# objects.
-
-from sqlalchemy import Index, CheckConstraint, ForeignKey, text  # noqa: E402
-
-
-class DriveNode(db.Model):
-    __tablename__ = 'drive_nodes'
-
-    id = db.Column(db.Integer, primary_key=True, nullable=False)
-    parent_id = db.Column(
-        db.Integer,
-        ForeignKey('drive_nodes.id', ondelete='CASCADE'),
-        nullable=True,
-    )
-    type = db.Column(db.Text, nullable=False)
-    name = db.Column(db.Text, nullable=False)
-    blob_path = db.Column(db.Text, nullable=True)
-    size = db.Column(db.BigInteger, nullable=True)
-    hash = db.Column(db.Text, nullable=True)
-    deleted_at = db.Column(db.BigInteger, nullable=True)
-    delete_batch_id = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.BigInteger, nullable=False)
-    updated_at = db.Column(db.BigInteger, nullable=False)
-
-    __table_args__ = (
-        CheckConstraint("type IN ('folder', 'file')", name='ck_drive_nodes_type'),
-        CheckConstraint(
-            "(type = 'folder' AND blob_path IS NULL AND size IS NULL)"
-            " OR (type = 'file' AND blob_path IS NOT NULL AND size IS NOT NULL)",
-            name='ck_drive_nodes_shape',
-        ),
-        Index(
-            'drive_nodes_unique_active',
-            text('COALESCE(parent_id, 0)'),
-            text('LOWER(name)'),
-            unique=True,
-            sqlite_where=text('deleted_at IS NULL'),
-        ),
-        Index('drive_nodes_parent', 'parent_id', 'deleted_at'),
-        Index('drive_nodes_deleted', 'deleted_at'),
-        Index('drive_nodes_name', text('LOWER(name)')),
-        Index('drive_nodes_delete_batch', 'delete_batch_id'),
-    )
-
-
-class DriveUpload(db.Model):
-    __tablename__ = 'drive_uploads'
-
-    id = db.Column(db.Text, primary_key=True, nullable=False)
-    parent_id = db.Column(
-        db.Integer,
-        ForeignKey('drive_nodes.id', ondelete='SET NULL'),
-        nullable=True,
-    )
-    name = db.Column(db.Text, nullable=False)
-    size = db.Column(db.BigInteger, nullable=False)
-    chunk_size = db.Column(db.BigInteger, nullable=False)
-    total_chunks = db.Column(db.Integer, nullable=False)
-    received_mask = db.Column(db.LargeBinary, nullable=False)
-    status = db.Column(db.Text, nullable=False)
-    expires_at = db.Column(db.BigInteger, nullable=False)
-    created_at = db.Column(db.BigInteger, nullable=False)
-    updated_at = db.Column(db.BigInteger, nullable=False)
-
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('uploading', 'assembling', 'done', 'failed')",
-            name='ck_drive_uploads_status',
-        ),
-        Index('drive_uploads_expires', 'expires_at'),
-    )
-
-
-class DriveShare(db.Model):
-    __tablename__ = 'drive_shares'
-
-    id = db.Column(db.Integer, primary_key=True, nullable=False)
-    node_id = db.Column(
-        db.Integer,
-        ForeignKey('drive_nodes.id', ondelete='CASCADE'),
-        nullable=False,
-    )
-    token_hash = db.Column(db.Text, nullable=False, unique=True)
-    token_prefix = db.Column(db.Text, nullable=False)
-    token = db.Column(db.Text, nullable=True)
-    password_hash = db.Column(db.Text, nullable=True)
-    expires_at = db.Column(db.BigInteger, nullable=True)
-    created_at = db.Column(db.BigInteger, nullable=False)
-
-    __table_args__ = (
-        Index('drive_shares_prefix', 'token_prefix'),
-        Index('drive_shares_node', 'node_id'),
-    )
-
-
-def replace_prefix(s: str, from_str: str, to: str) -> str:
-    """Replace the prefix of a string if it matches a given substring.
-    >>> replace_prefix('foobar', 'foo', 'baz')
-    'bazbar'
-    >>> replace_prefix('foobar', 'bar', 'baz')
-    'foobar'
-    """
-    if s.startswith(from_str):
-        return to + s[len(from_str) :]
-    else:
-        return s

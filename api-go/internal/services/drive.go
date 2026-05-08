@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -218,28 +219,63 @@ GROUP BY node_id`, ids, time.Now().UnixMilli())
 // populatePaths fills DriveNode.Path with the slash-joined ancestor names
 // (excluding the node itself) for each input row.
 func (s *DriveService) populatePaths(ctx context.Context, nodes []models.DriveNode) error {
-	cache := map[int64]string{}
+	parentIDs := make([]int64, 0, len(nodes))
+	seen := make(map[int64]bool, len(nodes))
 	for i := range nodes {
 		if !nodes[i].ParentID.Valid {
 			continue
 		}
 		pid := nodes[i].ParentID.Int64
-		if p, ok := cache[pid]; ok {
-			nodes[i].Path = p
-			continue
+		if !seen[pid] {
+			seen[pid] = true
+			parentIDs = append(parentIDs, pid)
 		}
-		bcs, err := s.Breadcrumbs(ctx, pid)
-		if err != nil {
-			return err
-		}
-		parts := make([]string, 0, len(bcs))
-		for _, bc := range bcs {
-			parts = append(parts, bc.Name)
-		}
-		p := strings.Join(parts, "/")
-		cache[pid] = p
-		nodes[i].Path = p
 	}
+	if len(parentIDs) == 0 {
+		return nil
+	}
+
+	idsJSON, err := json.Marshal(parentIDs)
+	if err != nil {
+		return fmt.Errorf("marshaling parent ids: %w", err)
+	}
+
+	type pathPart struct {
+		ParentID int64  `db:"parent_id"`
+		Name     string `db:"name"`
+	}
+
+	var rows []pathPart
+	if err := s.db.SelectContext(ctx, &rows, `
+WITH RECURSIVE chain(parent_id, id, name, ancestor_parent_id, depth) AS (
+  SELECT p.id, p.id, p.name, p.parent_id, 0
+  FROM drive_nodes p
+  WHERE p.id IN (SELECT value FROM json_each(?))
+  UNION ALL
+  SELECT chain.parent_id, n.id, n.name, n.parent_id, chain.depth + 1
+  FROM drive_nodes n
+  JOIN chain ON n.id = chain.ancestor_parent_id
+)
+SELECT parent_id, name
+FROM chain
+ORDER BY parent_id, depth DESC`, string(idsJSON)); err != nil {
+		return err
+	}
+
+	partsByParent := make(map[int64][]string, len(parentIDs))
+	for _, row := range rows {
+		partsByParent[row.ParentID] = append(partsByParent[row.ParentID], row.Name)
+	}
+	paths := make(map[int64]string, len(partsByParent))
+	for parentID, parts := range partsByParent {
+		paths[parentID] = strings.Join(parts, "/")
+	}
+	for i := range nodes {
+		if nodes[i].ParentID.Valid {
+			nodes[i].Path = paths[nodes[i].ParentID.Int64]
+		}
+	}
+
 	return nil
 }
 
