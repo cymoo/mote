@@ -68,6 +68,7 @@ func NewApiRouter(app *App) *chi.Mux {
 
 	r.Get("/get-overall-counts", m.H(postHandler.GetStats))
 	r.Get("/get-daily-post-counts", m.H(postHandler.GetDailyCounts))
+	r.Get("/get-stats-summary", m.H(postHandler.GetStatsSummary))
 
 	r.Post("/upload", m.H(uploadHandler.UploadFile))
 	r.Get("/upload", m.H(uploadHandler.SimpleFileForm))

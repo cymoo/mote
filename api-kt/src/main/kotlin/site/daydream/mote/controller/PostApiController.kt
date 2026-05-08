@@ -187,6 +187,19 @@ class PostApiController(
         )
     }
 
+    @GetMapping("/get-stats-summary")
+    fun getStatsSummary(@Validated @ModelAttribute dateRange: StatsRange): StatsSummary {
+        if ((dateRange.startDate == null) != (dateRange.endDate == null)) {
+            throw IllegalArgumentException("start_date and end_date must be provided together")
+        }
+
+        return postService.getStatsSummary(
+            startDate = dateRange.startDate?.toZonedDateTime(dateRange.offset),
+            endDate = dateRange.endDate?.toZonedDateTime(dateRange.offset, endOfDay = true),
+            offset = dateRange.offset,
+        )
+    }
+
     // For quick test
     @GetMapping("/upload")
     fun showFile() = """

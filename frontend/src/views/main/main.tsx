@@ -24,6 +24,7 @@ export function Main() {
   const shared = params.get('shared') === 'true'
   const color = params.get('color') as PostColor | null
   const tag = params.get('tag') ?? undefined
+  const untagged = params.get('untagged') === 'true'
   const modal = useModal()
 
   const sm = useIsSmallDevice()
@@ -63,7 +64,7 @@ export function Main() {
     <>
       {deleted ? (
         <RecycleAlert className="mt-3 mb-5" />
-      ) : sm ? (
+      ) : untagged ? null : sm ? (
         <Button
           id="main-editor-trigger"
           className="border-primary fixed left-0 right-0 mx-auto bottom-6 z-50 size-10 rounded-full! p-3! opacity-95"

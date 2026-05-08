@@ -95,6 +95,8 @@ data class FilterPostRequest(
     @BindParam("has_files")
     val hasFiles: Boolean?,
 
+    val untagged: Boolean?,
+
     @BindParam("order_by")
     val orderBy: SortingField = SortingField.CREATED_AT,
 
@@ -114,6 +116,16 @@ data class DateRange(
     @BindParam("end_date")
     @field:ValidDate
     val endDate: String,
+
+    val offset: Int = 480, // timezone offset in minutes
+)
+
+data class StatsRange(
+    @BindParam("start_date")
+    val startDate: String? = null,
+
+    @BindParam("end_date")
+    val endDate: String? = null,
 
     val offset: Int = 480, // timezone offset in minutes
 )
@@ -162,10 +174,26 @@ data class PostStats(
     val dayCount: Int,
 )
 
+data class StatCount(
+    val name: String,
+    val count: Int,
+)
+
+data class StatsSummary(
+    val totalPosts: Int,
+    val activeDays: Int,
+    val sharedPosts: Int,
+    val postsWithImages: Int,
+    val untaggedPosts: Int,
+    val firstPostAt: Long?,
+    val lastPostAt: Long?,
+    val colorCounts: List<StatCount>,
+    val topTags: List<StatCount>,
+)
+
 class DefaultEmptyListSerializer : JsonSerializer<List<*>?>() {
     override fun serialize(value: List<*>?, gen: JsonGenerator, provider: SerializerProvider) {
         gen.writeStartArray()
         gen.writeEndArray() // Return an empty array [] when null
     }
 }
-

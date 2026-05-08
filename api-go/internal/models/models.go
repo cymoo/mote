@@ -182,6 +182,7 @@ type FilterPostRequest struct {
 	Tag       *string `schema:"tag"`
 	Shared    *bool   `schema:"shared"`
 	HasFiles  *bool   `schema:"has_files"`
+	Untagged  *bool   `schema:"untagged"`
 	OrderBy   string  `schema:"order_by"`
 	Ascending bool    `schema:"ascending"`
 	StartDate *int64  `schema:"start_date"`
@@ -200,6 +201,23 @@ type PostStats struct {
 	PostCount int64 `json:"post_count"`
 	TagCount  int64 `json:"tag_count"`
 	DayCount  int64 `json:"day_count"`
+}
+
+type StatCount struct {
+	Name  string `json:"name" db:"name"`
+	Count int64  `json:"count" db:"count"`
+}
+
+type StatsSummary struct {
+	TotalPosts      int64       `json:"total_posts" db:"total_posts"`
+	ActiveDays      int64       `json:"active_days" db:"active_days"`
+	SharedPosts     int64       `json:"shared_posts" db:"shared_posts"`
+	PostsWithImages int64       `json:"posts_with_images" db:"posts_with_images"`
+	UntaggedPosts   int64       `json:"untagged_posts" db:"untagged_posts"`
+	FirstPostAt     NullInt64   `json:"first_post_at" db:"first_post_at"`
+	LastPostAt      NullInt64   `json:"last_post_at" db:"last_post_at"`
+	ColorCounts     []StatCount `json:"color_counts"`
+	TopTags         []StatCount `json:"top_tags"`
 }
 
 // CreateResponse represents the response after creating a post

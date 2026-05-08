@@ -51,6 +51,9 @@ const TrashPage = lazy(() =>
 const SharedPage = lazy(() =>
   import('./views/files/shared-page.tsx').then((m) => ({ default: m.SharedPage })),
 )
+const StatsPage = lazy(() =>
+  import('./views/stats/stats-page.tsx').then((m) => ({ default: m.StatsPage })),
+)
 
 export const App = () => {
   const location = useLocation()
@@ -87,6 +90,14 @@ export const App = () => {
               <ContentContainer>
                 <SearchPage />
               </ContentContainer>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/stats"
+          element={
+            <RequireAuth>
+              <PrimaryLayout side={<Sidebar />} main={<StatsPage />} />
             </RequireAuth>
           }
         />

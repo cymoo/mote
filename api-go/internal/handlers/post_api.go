@@ -208,6 +208,44 @@ func (h *PostHandler) GetDailyCounts(r *http.Request, query m.Query[models.DateR
 	return counts, nil
 }
 
+func (h *PostHandler) GetStatsSummary(r *http.Request, query m.Query[models.DateRange]) (*models.StatsSummary, error) {
+	startDateStr := query.Value.StartDate
+	endDateStr := query.Value.EndDate
+	var startDate *time.Time
+	var endDate *time.Time
+
+	if startDateStr != "" || endDateStr != "" {
+		if startDateStr == "" || endDateStr == "" {
+			return nil, e.BadRequest("start_date and end_date must be provided together")
+		}
+
+		parsedStartDate, err := time.Parse(time.DateOnly, startDateStr)
+		if err != nil {
+			return nil, e.BadRequest(fmt.Sprintf("invalid date '%s': must be in YYYY-MM-DD format", startDateStr))
+		}
+
+		parsedEndDate, err := time.Parse(time.DateOnly, endDateStr)
+		if err != nil {
+			return nil, e.BadRequest(fmt.Sprintf("invalid date '%s': must be in YYYY-MM-DD format", endDateStr))
+		}
+		parsedEndDate = parsedEndDate.AddDate(0, 0, 1)
+
+		if parsedEndDate.Before(parsedStartDate) {
+			return nil, e.BadRequest("end_date must be after start_date")
+		}
+
+		startDate = &parsedStartDate
+		endDate = &parsedEndDate
+	}
+
+	summary, err := h.postService.GetStatsSummary(r.Context(), startDate, endDate, query.Value.Offset*60)
+	if err != nil {
+		log.Printf("error getting stats summary: %v", err)
+		return nil, err
+	}
+	return summary, nil
+}
+
 // CreatePost creates a new post
 // It returns the created post's ID.
 // After creation, it indexes the post content in the background.

@@ -5,6 +5,7 @@ export const LOGIN = '/api/login'
 // Stat
 export const GET_OVERALL_COUNTS = '/api/get-overall-counts'
 export const GET_DAILY_POST_COUNTS = '/api/get-daily-post-counts'
+export const GET_STATS_SUMMARY = '/api/get-stats-summary'
 
 // Post
 export const SEARCH = '/api/search'

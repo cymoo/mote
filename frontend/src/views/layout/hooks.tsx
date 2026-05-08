@@ -1,6 +1,6 @@
 import { Circle as CircleIcon } from 'lucide-react'
 import { ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
+import { useLocation, useSearchParams } from 'react-router'
 
 import { formatDate } from '@/utils/date.ts'
 import { useWindowSize } from '@/utils/hooks/use-window-size.ts'
@@ -17,6 +17,7 @@ export function useIsSmallDevice() {
 
 export function useMemoTitle(): ReactNode {
   const { lang } = useLang()
+  const location = useLocation()
   const [params] = useSearchParams()
 
   let title: ReactNode
@@ -25,9 +26,14 @@ export function useMemoTitle(): ReactNode {
   const deleted = params.get('deleted')
   const startDate = params.get('start_date')
   const shared = params.get('shared')
+  const untagged = params.get('untagged')
 
-  if (deleted === 'true') {
+  if (location.pathname === '/stats') {
+    title = t('statistics', lang)
+  } else if (deleted === 'true') {
     title = t('recycler', lang)
+  } else if (untagged === 'true') {
+    title = t('untaggedMemos', lang)
   } else if (shared === 'true') {
     title = t('shared', lang)
   } else if (color && ['red', 'green', 'blue'].includes(color)) {

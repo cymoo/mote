@@ -152,5 +152,21 @@
   "uploadFailed": "upload failed",
   "searchNoResults": "no files matching \"{0}\"",
   "dotFilesShown": "Showing dotfiles",
-  "dotFilesHidden": "Hiding dotfiles"
+  "dotFilesHidden": "Hiding dotfiles",
+  "statistics": "statistics",
+  "activityReview": "activity review",
+  "activityReviewDescription": "A quiet map of when you captured ideas and where to revisit them.",
+  "previousYear": "previous year",
+  "nextYear": "next year",
+  "activeDays": "active days",
+  "allTime": "all time",
+  "reviewRange": "review range",
+  "heatmap": "heatmap",
+  "yearlyActivityHint": "Click a lit day to revisit that day's memos.",
+  "topTags": "top tags",
+  "colorDistribution": "color distribution",
+  "sharedMemos": "shared memos",
+  "memosWithImages": "memos with images",
+  "untaggedMemos": "untagged memos",
+  "noStatsYet": "No activity in this range yet"
 }

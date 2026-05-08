@@ -341,6 +341,7 @@ class Post(db.Model):
         end_date: int | None = None,
         shared: Optional[bool] = None,
         has_files: bool | None = None,
+        untagged: bool | None = None,
         order_by: Literal['created_at', 'updated_at', 'deleted_at'] = 'created_at',
         ascending: bool = False,
         per_page: int = 20,
@@ -389,9 +390,17 @@ class Post(db.Model):
 
         if has_files is not None:
             if has_files:
-                query = query.filter(Post.files.isnot(None))
+                query = query.filter(Post.files.isnot(None), func.json_array_length(Post.files) > 0)
             else:
-                query = query.filter(Post.files.is_(None))
+                query = query.filter(
+                    or_(Post.files.is_(None), func.json_array_length(Post.files) <= 0)
+                )
+
+        if untagged is not None:
+            if untagged:
+                query = query.filter(~Post.tags.any())
+            else:
+                query = query.filter(Post.tags.any())
 
         order_field = getattr(Post, order_by)
         query = query.order_by(order_field.asc() if ascending else order_field.desc())
@@ -404,6 +413,62 @@ class Post(db.Model):
         query = query.limit(per_page)
 
         return query.all()
+
+    @classmethod
+    def get_stats_summary(
+        cls,
+        *,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        offset: int = 0,
+    ):
+        query = Post.query.filter(Post.deleted_at.is_(None))
+        if start_date is not None and end_date is not None:
+            start_timestamp = int(start_date.timestamp() * 1000)
+            end_timestamp = int(end_date.timestamp() * 1000)
+            query = query.filter(Post.created_at >= start_timestamp, Post.created_at < end_timestamp)
+
+        rows = query.all()
+        local_offset = timedelta(minutes=offset)
+        total_posts = len(rows)
+        active_days = len({
+            (datetime.fromtimestamp(post.created_at / 1000) + local_offset).date()
+            for post in rows
+        })
+        shared_posts = sum(1 for post in rows if post.shared)
+        posts_with_images = sum(1 for post in rows if post.files)
+        untagged_posts = sum(1 for post in rows if not post.tags)
+        first_post_at = min((post.created_at for post in rows), default=None)
+        last_post_at = max((post.created_at for post in rows), default=None)
+
+        color_counts = [
+            {'name': color, 'count': sum(1 for post in rows if post.color == color)}
+            for color in ('red', 'green', 'blue')
+        ]
+        color_counts = [item for item in color_counts if item['count'] > 0]
+
+        tag_counts = []
+        for tag in Tag.query.all():
+            count = sum(
+                1
+                for post in rows
+                if any(t.name == tag.name or t.name.startswith(tag.name + '/') for t in post.tags)
+            )
+            if count > 0:
+                tag_counts.append({'name': tag.name, 'count': count})
+        tag_counts.sort(key=lambda item: (-item['count'], item['name']))
+
+        return {
+            'total_posts': total_posts,
+            'active_days': active_days,
+            'shared_posts': shared_posts,
+            'posts_with_images': posts_with_images,
+            'untagged_posts': untagged_posts,
+            'first_post_at': first_post_at,
+            'last_post_at': last_post_at,
+            'color_counts': color_counts,
+            'top_tags': tag_counts[:12],
+        }
 
     @classmethod
     def clear_all(cls) -> list[int]:

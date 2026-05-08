@@ -114,6 +114,7 @@ pub struct FilterPostRequest {
     pub tag: Option<String>,
     pub shared: Option<bool>,
     pub has_files: Option<bool>,
+    pub untagged: Option<bool>,
     pub order_by: SortingField,
     pub ascending: bool,
     pub start_date: Option<i64>,
@@ -164,6 +165,13 @@ pub struct DateRange {
     pub offset: i32,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct StatsRange {
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub offset: i32,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CreateResponse {
     pub id: i64,
@@ -183,6 +191,25 @@ pub struct PostStats {
     pub post_count: i64,
     pub tag_count: i64,
     pub day_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StatCount {
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StatsSummary {
+    pub total_posts: i64,
+    pub active_days: i64,
+    pub shared_posts: i64,
+    pub posts_with_images: i64,
+    pub untagged_posts: i64,
+    pub first_post_at: Option<i64>,
+    pub last_post_at: Option<i64>,
+    pub color_counts: Vec<StatCount>,
+    pub top_tags: Vec<StatCount>,
 }
 
 fn serialize_raw_json<S>(value: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>

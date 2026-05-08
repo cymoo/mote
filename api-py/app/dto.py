@@ -93,6 +93,12 @@ class DateRange(BaseModel):
     offset: int = 480  # timezone offset in minutes
 
 
+class StatsRange(BaseModel):
+    start_date: Optional[Annotated[str, AfterValidator(check_date)]] = None
+    end_date: Optional[Annotated[str, AfterValidator(check_date)]] = None
+    offset: int = 480  # timezone offset in minutes
+
+
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
     partial: bool = False
@@ -107,6 +113,7 @@ class FilterPostRequest(BaseModel):
     tag: Optional[str] = None
     shared: Optional[bool] = None
     has_files: Optional[bool] = None
+    untagged: Optional[bool] = None
     order_by: SortingField = SortingField.CREATED_AT
     ascending: bool = False
 
@@ -286,3 +293,22 @@ class PostStats:
     post_count: int
     tag_count: int
     day_count: int
+
+
+@dataclass
+class StatCount:
+    name: str
+    count: int
+
+
+@dataclass
+class StatsSummary:
+    total_posts: int
+    active_days: int
+    shared_posts: int
+    posts_with_images: int
+    untagged_posts: int
+    first_post_at: Optional[int]
+    last_post_at: Optional[int]
+    color_counts: list[StatCount]
+    top_tags: list[StatCount]

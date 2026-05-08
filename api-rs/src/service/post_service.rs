@@ -1,6 +1,7 @@
 use crate::errors::{ApiError, ApiResult};
 use crate::model::post::{
-    CreatePostRequest, CreateResponse, FilterPostRequest, Post, PostRow, UpdatePostRequest,
+    CreatePostRequest, CreateResponse, FilterPostRequest, Post, PostRow, StatCount, StatsSummary,
+    UpdatePostRequest,
 };
 use crate::model::tag::Tag;
 use chrono::{DateTime, FixedOffset, Utc};
@@ -165,6 +166,115 @@ WHERE parent.deleted_at IS NULL
             .collect())
     }
 
+    pub async fn get_stats_summary(
+        pool: &SqlitePool,
+        start_date: Option<DateTime<FixedOffset>>,
+        end_date: Option<DateTime<FixedOffset>>,
+        offset_minutes: i32,
+    ) -> ApiResult<StatsSummary> {
+        let offset_ms = start_date
+            .as_ref()
+            .map(|date| date.offset().local_minus_utc() as i64 * 1000)
+            .unwrap_or(offset_minutes as i64 * 60 * 1000);
+        let day_ms = 3600 * 24 * 1000;
+        let start_ts = start_date.as_ref().map(DateTime::timestamp_millis);
+        let end_ts = end_date.as_ref().map(DateTime::timestamp_millis);
+
+        let summary = sqlx::query!(
+            r#"
+            SELECT
+                COUNT(*) AS total_posts,
+                COUNT(DISTINCT (created_at + ?) / ?) AS active_days,
+                SUM(CASE WHEN shared THEN 1 ELSE 0 END) AS shared_posts,
+                SUM(CASE WHEN files IS NOT NULL AND json_array_length(files) > 0 THEN 1 ELSE 0 END) AS posts_with_images,
+                SUM(CASE WHEN NOT EXISTS (
+                    SELECT 1 FROM tag_post_assoc tp WHERE tp.post_id = posts.id
+                ) THEN 1 ELSE 0 END) AS untagged_posts,
+                MIN(created_at) AS first_post_at,
+                MAX(created_at) AS last_post_at
+            FROM posts
+            WHERE deleted_at IS NULL
+                AND (? IS NULL OR created_at >= ?)
+                AND (? IS NULL OR created_at < ?)
+            "#,
+            offset_ms,
+            day_ms,
+            start_ts,
+            start_ts,
+            end_ts,
+            end_ts,
+        )
+        .fetch_one(pool)
+        .await?;
+
+        let color_counts = sqlx::query!(
+            r#"
+            SELECT color AS name, COUNT(*) AS count
+            FROM posts
+            WHERE deleted_at IS NULL
+                AND color IS NOT NULL
+                AND (? IS NULL OR created_at >= ?)
+                AND (? IS NULL OR created_at < ?)
+            GROUP BY color
+            ORDER BY count DESC
+            "#,
+            start_ts,
+            start_ts,
+            end_ts,
+            end_ts,
+        )
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .filter_map(|row| {
+            row.name.map(|name| StatCount {
+                name,
+                count: row.count,
+            })
+        })
+        .collect();
+
+        let top_tags = sqlx::query!(
+            r#"
+            SELECT t.name AS name, COUNT(DISTINCT p.id) AS count
+            FROM tags t
+            JOIN tags child ON child.name = t.name OR child.name LIKE t.name || '/%'
+            JOIN tag_post_assoc tp ON tp.tag_id = child.id
+            JOIN posts p ON p.id = tp.post_id
+            WHERE p.deleted_at IS NULL
+                AND (? IS NULL OR p.created_at >= ?)
+                AND (? IS NULL OR p.created_at < ?)
+            GROUP BY t.name
+            ORDER BY count DESC, t.name ASC
+            LIMIT 12
+            "#,
+            start_ts,
+            start_ts,
+            end_ts,
+            end_ts,
+        )
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(|row| StatCount {
+            name: row.name,
+            count: row.count,
+        })
+        .collect();
+
+        Ok(StatsSummary {
+            total_posts: summary.total_posts,
+            active_days: summary.active_days,
+            shared_posts: summary.shared_posts.unwrap_or(0),
+            posts_with_images: summary.posts_with_images.unwrap_or(0),
+            untagged_posts: summary.untagged_posts.unwrap_or(0),
+            first_post_at: summary.first_post_at,
+            last_post_at: summary.last_post_at,
+            color_counts,
+            top_tags,
+        })
+    }
+
     pub async fn filter_posts(
         pool: &SqlitePool,
         options: &FilterPostRequest,
@@ -227,9 +337,17 @@ WHERE parent.deleted_at IS NULL
         // Files filter
         if let Some(has_files) = options.has_files {
             builder.push(if has_files {
-                " AND p.files IS NOT NULL "
+                " AND p.files IS NOT NULL AND json_array_length(p.files) > 0 "
             } else {
-                " AND p.files IS NULL "
+                " AND (p.files IS NULL OR json_array_length(p.files) <= 0) "
+            });
+        }
+
+        if let Some(untagged) = options.untagged {
+            builder.push(if untagged {
+                " AND NOT EXISTS (SELECT 1 FROM tag_post_assoc tp WHERE tp.post_id = p.id) "
+            } else {
+                " AND EXISTS (SELECT 1 FROM tag_post_assoc tp WHERE tp.post_id = p.id) "
             });
         }
 

@@ -152,5 +152,21 @@
   "uploadFailed": "上传失败",
   "searchNoResults": "未找到与 \"{0}\" 相关的文件",
   "dotFilesShown": "已显示点文件",
-  "dotFilesHidden": "已隐藏点文件"
+  "dotFilesHidden": "已隐藏点文件",
+  "statistics": "统计",
+  "activityReview": "活动回顾",
+  "activityReviewDescription": "看看你何时捕捉灵感，并从时间线重新发现内容。",
+  "previousYear": "上一年",
+  "nextYear": "下一年",
+  "activeDays": "活跃天数",
+  "allTime": "全部时间",
+  "reviewRange": "回顾范围",
+  "heatmap": "Heatmap",
+  "yearlyActivityHint": "点击亮起的日期，回看当天的 memo。",
+  "topTags": "高频标签",
+  "colorDistribution": "颜色分布",
+  "sharedMemos": "已分享 memo",
+  "memosWithImages": "带图片的 memo",
+  "untaggedMemos": "无标签 memo",
+  "noStatsYet": "这个范围内还没有活动"
 }
