@@ -4,8 +4,7 @@ go 1.25.0
 
 require (
 	github.com/cymoo/mint v0.4.0
-	github.com/cymoo/mita v0.1.1
-	golang.org/x/crypto v0.50.0
+	github.com/cymoo/mita v0.2.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-ego/gse v0.80.3
@@ -15,6 +14,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.16.0
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
+	golang.org/x/crypto v0.50.0
 	golang.org/x/image v0.32.0
 	modernc.org/sqlite v1.39.1
 )
