@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cymoo/mote/assets"
+	mw "github.com/cymoo/mote/internal/middlewares"
 	"github.com/cymoo/mote/internal/services"
 
 	"github.com/go-chi/chi/v5"
@@ -22,13 +23,13 @@ func (app *App) setupRoutes() {
 	}
 
 	appEnv := app.config.AppEnv
-	r.Use(PanicRecovery(appEnv == "development" || appEnv == "dev"))
-	r.Use(CORS(app.config.HTTP.CORS))
+	r.Use(mw.PanicRecovery(appEnv == "development" || appEnv == "dev"))
+	r.Use(mw.CORS(app.config.HTTP.CORS))
 
 	uploadURL := app.config.Upload.BaseURL
 	uploadPath := app.config.Upload.BasePath
 	authService := services.NewAuthService()
-	r.With(SimpleAuthCheck(authService)).Handle(uploadURL+"/*", http.StripPrefix(uploadURL, http.FileServer(http.Dir(uploadPath))))
+	r.With(mw.SimpleAuthCheck(authService)).Handle(uploadURL+"/*", http.StripPrefix(uploadURL, http.FileServer(http.Dir(uploadPath))))
 
 	staticURL := app.config.StaticURL
 	staticPath := app.config.StaticPath

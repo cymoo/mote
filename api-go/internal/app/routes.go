@@ -8,6 +8,7 @@ import (
 	"github.com/cymoo/mote/assets"
 	e "github.com/cymoo/mote/internal/errors"
 	"github.com/cymoo/mote/internal/handlers"
+	mw "github.com/cymoo/mote/internal/middlewares"
 	"github.com/cymoo/mote/internal/models"
 	"github.com/cymoo/mote/internal/services"
 	"github.com/go-chi/chi/v5"
@@ -30,7 +31,7 @@ func NewApiRouter(app *App) *chi.Mux {
 	authService := services.NewAuthService()
 
 	// Use simple auth check middleware for all routes except /api/login
-	r.Use(SimpleAuthCheck(authService, "/api/login"))
+	r.Use(mw.SimpleAuthCheck(authService, "/api/login"))
 
 	// handleLogin processes login requests by validating the provided password
 	handleLogin := func(payload m.JSON[models.LoginRequest]) (m.StatusCode, error) {
@@ -42,7 +43,7 @@ func NewApiRouter(app *App) *chi.Mux {
 	}
 
 	// Use rate limiting middleware for login route
-	r.With(RateLimit(app.redis, 60*time.Second, 5)).Post("/login", m.H(handleLogin))
+	r.With(mw.RateLimit(app.redis, 60*time.Second, 5)).Post("/login", m.H(handleLogin))
 
 	// A simple endpoint to verify authentication
 	// Nginx can use this to check if the token is valid, and handle uploads accordingly
