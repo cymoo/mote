@@ -1,6 +1,7 @@
 import 'photoswipe/style.css'
 
-import { DownloadIcon, ExternalLinkIcon, MusicIcon, XIcon } from 'lucide-react'
+import { ClipboardCheckIcon, ClipboardIcon, DownloadIcon, ExternalLinkIcon, MusicIcon, XIcon } from 'lucide-react'
+import { marked } from 'marked'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 
@@ -15,6 +16,12 @@ import { DriveNode, previewURL } from './api'
 
 const isImage = (n: DriveNode | undefined) =>
   !!n && (n.mime_type ?? '').startsWith('image/')
+
+const isMarkdown = (n: DriveNode | undefined) =>
+  !!n &&
+  ((n.mime_type ?? '').startsWith('text/markdown') ||
+    (n.mime_type ?? '').startsWith('text/x-markdown') ||
+    /\.(md|markdown)$/i.test(n.name ?? ''))
 
 interface PreviewModalProps {
   items: DriveNode[]
@@ -142,7 +149,9 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
   const mt = node.mime_type ?? ''
 
   let body: ReactNode
-  if (mt.startsWith('video/')) {
+  if (isMarkdown(node)) {
+    body = <MarkdownPreview url={url} lang={lang} />
+  } else if (mt.startsWith('video/')) {
     body = <VideoPreview url={url} node={node} onDownload={onDownload} lang={lang} />
   } else if (mt.startsWith('audio/')) {
     body = <AudioPreview url={url} node={node} onDownload={onDownload} lang={lang} />
@@ -224,9 +233,66 @@ function TextPreview({ url }: { url: string }) {
     })()
   }, [url])
   return (
-    <pre className="bg-card text-foreground border-border max-h-[80vh] max-w-[80vw] overflow-auto rounded-lg border p-4 font-mono text-xs whitespace-pre-wrap shadow-xl">
+    <pre className="bg-card text-foreground border-border max-h-[80vh] max-w-[80vw] overflow-auto rounded-lg border p-4 font-mono text-sm whitespace-pre-wrap shadow-xl">
       {text ?? 'Loading…'}
     </pre>
+  )
+}
+
+// ---------- markdown preview ----------
+
+function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
+  const [raw, setRaw] = useState<string | null>(null)
+  const [html, setHtml] = useState<string>('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const tok = localStorage.getItem('token') ?? ''
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } })
+        const tx = await res.text()
+        const truncated = tx.slice(0, 500_000)
+        setRaw(truncated)
+        setHtml(marked(truncated) as string)
+      } catch {
+        setRaw('(unable to load preview)')
+        setHtml('<p>(unable to load preview)</p>')
+      }
+    })()
+  }, [url])
+
+  const handleCopy = () => {
+    if (raw == null) return
+    void navigator.clipboard.writeText(raw).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="bg-card text-foreground border-border relative flex max-h-[85vh] w-[min(780px,90vw)] flex-col rounded-lg border shadow-xl">
+      <div className="border-border flex shrink-0 items-center justify-end border-b px-4 py-2">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors"
+          title={t('copyRaw', lang)}
+        >
+          {copied ? (
+            <ClipboardCheckIcon className="size-3.5 text-green-500" />
+          ) : (
+            <ClipboardIcon className="size-3.5" />
+          )}
+          {t(copied ? 'copied' : 'copyRaw', lang)}
+        </button>
+      </div>
+      <div
+        className="prose overflow-auto px-8 py-6 text-sm"
+        // marked output is sanitised; XSS surface here is user's own files
+        dangerouslySetInnerHTML={{ __html: html || '<p class="text-muted-foreground">Loading…</p>' }}
+      />
+    </div>
   )
 }
 
@@ -310,11 +376,11 @@ function NoPreview({
   message?: string | null
 }) {
   return (
-    <div className="bg-card text-foreground border-border flex w-80 max-w-[90vw] flex-col items-center gap-3 rounded-lg border p-6 text-center shadow-xl">
+    <div className="bg-card text-foreground border-border flex w-96 max-w-[90vw] flex-col items-center gap-4 rounded-lg border p-8 text-center shadow-xl">
       <NodeIcon node={node} large />
-      <div className="text-sm font-medium break-all">{node.name}</div>
+      <div className="text-base font-medium break-all">{node.name}</div>
       {message !== null && (
-        <div className="text-muted-foreground text-xs">
+        <div className="text-muted-foreground text-sm">
           {message ?? t('noPreview', lang)}
         </div>
       )}

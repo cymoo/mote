@@ -147,6 +147,7 @@ class DriveNodeRow:
         # Common A/V extensions absent from sparse system MIME databases
         # (e.g. Alpine Linux in Docker). Checked first for consistent results.
         _static: dict[str, str] = {
+            '.md': 'text/markdown', '.markdown': 'text/markdown',
             '.mp4': 'video/mp4', '.m4v': 'video/x-m4v', '.mov': 'video/quicktime',
             '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska',
             '.wmv': 'video/x-ms-wmv', '.webm': 'video/webm',

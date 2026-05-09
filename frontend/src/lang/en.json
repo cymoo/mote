@@ -109,6 +109,7 @@
   "dropFiles": "drop files here, or click upload",
   "tapUpload": "tap the upload button above to add files",
   "noPreview": "preview not supported for this file type",
+  "copyRaw": "copy raw",
   "downloadToView": "download to view",
   "open": "open",
   "trashEmpty": "trash is empty",

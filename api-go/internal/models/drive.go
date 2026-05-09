@@ -48,6 +48,9 @@ func (n DriveNode) Ext() string {
 // system MIME database (e.g. Alpine Linux in Docker). Checked first to
 // ensure predictable behaviour across deployment environments.
 var staticMIME = map[string]string{
+	// markdown
+	".md":       "text/markdown",
+	".markdown": "text/markdown",
 	// video
 	".mp4":  "video/mp4",
 	".m4v":  "video/x-m4v",
