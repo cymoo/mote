@@ -116,6 +116,39 @@ class TagServiceTest(
         }
 
         @Test
+        fun `test rename virtual parent with subtags`() {
+            // given
+            val post1 = createPost("hello #foo1/bar world")
+            createPost("hello #foo world")
+
+            // when
+            tagService.renameOrMerge("foo1", "foo")
+
+            // then
+            assertNull(tagService.findByName("foo1"))
+            assertNull(tagService.findByName("foo1/bar"))
+            assertNotNull(tagService.findByName("foo"))
+            assertNotNull(tagService.findByName("foo/bar"))
+
+            val updatedPost1 = postService.findById(post1.id)!!
+            assertTrue(updatedPost1.content.contains("#foo/bar"))
+            assertFalse(updatedPost1.content.contains("#foo1/bar"))
+        }
+
+        @Test
+        fun `test rename virtual parent creates target parent`() {
+            // given
+            createPost("hello #foo1/bar world")
+
+            // when
+            tagService.renameOrMerge("foo1", "foo")
+
+            // then
+            assertNotNull(tagService.findByName("foo"))
+            assertNotNull(tagService.findByName("foo/bar"))
+        }
+
+        @Test
         fun `test rename to invalid hierarchical path throws exception`() {
             // given
             createPost("hello #parent world")

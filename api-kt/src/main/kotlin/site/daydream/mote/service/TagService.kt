@@ -111,11 +111,11 @@ class TagService(private val dsl: DSLContext) {
      */
     fun renameOrMerge(name: String, newName: String) {
         if (name == newName) return
-        if (newName.startsWith(name) && newName.count('/') > name.count('/')) {
+        if (newName.startsWith("$name/")) {
             throw BadRequestException("""Cannot move "$name" to a subtag of itself "$newName"""")
         }
 
-        // Get all affected tags in a single query
+        // Get all source-side affected tags and the direct merge target.
         val affectedTags = dsl
             .selectFrom(TAGS)
             .where(
@@ -126,7 +126,10 @@ class TagService(private val dsl: DSLContext) {
             .fetchAllIntoClass<Tag>()
 
         // Split into source tag, target tag and descendants
-        val sourceTag = affectedTags.find { it.name == name } ?: create(name)
+        val sourceTag = affectedTags.find { it.name == name }
+        if (sourceTag == null && affectedTags.none { it.name.startsWith("$name/") }) {
+            throw BadRequestException("tag not found")
+        }
         val targetTag = affectedTags.find { it.name == newName }
         val descendants = affectedTags
             .filter { it.name != name && it.name != newName }
@@ -144,10 +147,14 @@ class TagService(private val dsl: DSLContext) {
             }
         }
 
-        if (targetTag != null) {
-            merge(sourceTag, targetTag)
-        } else {
-            rename(sourceTag, newName)
+        if (sourceTag != null) {
+            if (targetTag != null) {
+                merge(sourceTag, targetTag)
+            } else {
+                rename(sourceTag, newName)
+            }
+        } else if (targetTag == null) {
+            create(newName)
         }
     }
 
@@ -192,33 +199,33 @@ class TagService(private val dsl: DSLContext) {
             .where(ASSOC.TAG_ID.eq(sourceTag.id))
             .fetch(ASSOC.POST_ID)
 
-        if (postIds.isEmpty()) return
-
         // Update post content
-        dsl.update(POSTS)
-            .set(
-                POSTS.CONTENT,
-                DSL.replace(POSTS.CONTENT, ">#${sourceTag.name}<", ">#${targetTag.name}<")
-            )
-            .where(POSTS.ID.`in`(postIds))
-            .execute()
+        if (postIds.isNotEmpty()) {
+            dsl.update(POSTS)
+                .set(
+                    POSTS.CONTENT,
+                    DSL.replace(POSTS.CONTENT, ">#${sourceTag.name}<", ">#${targetTag.name}<")
+                )
+                .where(POSTS.ID.`in`(postIds))
+                .execute()
 
-        // Insert new tag associations (ignoring if they already exist)
-        dsl.insertInto(ASSOC)
-            .columns(ASSOC.POST_ID, ASSOC.TAG_ID)
-            .select(
-                dsl.select(ASSOC.POST_ID, DSL.value(targetTag.id).`as`("tag_id"))
-                    .from(ASSOC)
-                    .where(ASSOC.TAG_ID.eq(sourceTag.id))
-            )
-            // SQLite syntax, for PostgreSQL use `onDuplicateKeyIgnore` instead
-            .onConflictDoNothing()
-            .execute()
+            // Insert new tag associations (ignoring if they already exist)
+            dsl.insertInto(ASSOC)
+                .columns(ASSOC.POST_ID, ASSOC.TAG_ID)
+                .select(
+                    dsl.select(ASSOC.POST_ID, DSL.value(targetTag.id).`as`("tag_id"))
+                        .from(ASSOC)
+                        .where(ASSOC.TAG_ID.eq(sourceTag.id))
+                )
+                // SQLite syntax, for PostgreSQL use `onDuplicateKeyIgnore` instead
+                .onConflictDoNothing()
+                .execute()
 
-        // Delete old tag associations
-        dsl.deleteFrom(ASSOC)
-            .where(ASSOC.TAG_ID.eq(sourceTag.id))
-            .execute()
+            // Delete old tag associations
+            dsl.deleteFrom(ASSOC)
+                .where(ASSOC.TAG_ID.eq(sourceTag.id))
+                .execute()
+        }
 
         // Delete the source tag itself
         dsl.deleteFrom(TAGS)

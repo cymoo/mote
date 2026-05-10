@@ -586,6 +586,86 @@ func TestRenameOrMerge_MergeWithSubtags(t *testing.T) {
 	}
 }
 
+func TestRenameOrMerge_VirtualParentWithSubtags(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	service := NewTagService(db)
+	ctx := context.Background()
+
+	sourceChildID := createTestTag(t, db, "foo1/bar", false)
+	targetID := createTestTag(t, db, "foo", false)
+	post1ID := createTestPost(t, db, "Post about >#foo1/bar<", nil)
+	post2ID := createTestPost(t, db, "Post about >#foo<", nil)
+	associateTagPost(t, db, sourceChildID, post1ID)
+	associateTagPost(t, db, targetID, post2ID)
+
+	err := service.RenameOrMerge(ctx, "foo1", "foo")
+	if err != nil {
+		t.Fatalf("RenameOrMerge failed: %v", err)
+	}
+
+	var tags []models.Tag
+	err = db.Select(&tags, "SELECT * FROM tags ORDER BY name")
+	if err != nil {
+		t.Fatalf("failed to get tags: %v", err)
+	}
+
+	expectedNames := []string{"foo", "foo/bar"}
+	if len(tags) != len(expectedNames) {
+		t.Fatalf("expected %d tags, got %d", len(expectedNames), len(tags))
+	}
+
+	for i, tag := range tags {
+		if tag.Name != expectedNames[i] {
+			t.Errorf("expected tag name %s, got %s", expectedNames[i], tag.Name)
+		}
+	}
+
+	var post models.Post
+	err = db.Get(&post, "SELECT * FROM posts WHERE id = ?", post1ID)
+	if err != nil {
+		t.Fatalf("failed to get post: %v", err)
+	}
+	if post.Content != "Post about >#foo/bar<" {
+		t.Errorf("expected post content to be updated, got: %s", post.Content)
+	}
+}
+
+func TestRenameOrMerge_VirtualParentCreatesTargetParent(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	service := NewTagService(db)
+	ctx := context.Background()
+
+	sourceChildID := createTestTag(t, db, "foo1/bar", false)
+	postID := createTestPost(t, db, "Post about >#foo1/bar<", nil)
+	associateTagPost(t, db, sourceChildID, postID)
+
+	err := service.RenameOrMerge(ctx, "foo1", "foo")
+	if err != nil {
+		t.Fatalf("RenameOrMerge failed: %v", err)
+	}
+
+	var tags []models.Tag
+	err = db.Select(&tags, "SELECT * FROM tags ORDER BY name")
+	if err != nil {
+		t.Fatalf("failed to get tags: %v", err)
+	}
+
+	expectedNames := []string{"foo", "foo/bar"}
+	if len(tags) != len(expectedNames) {
+		t.Fatalf("expected %d tags, got %d", len(expectedNames), len(tags))
+	}
+
+	for i, tag := range tags {
+		if tag.Name != expectedNames[i] {
+			t.Errorf("expected tag name %s, got %s", expectedNames[i], tag.Name)
+		}
+	}
+}
+
 func TestRenameOrMerge_SameName(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()

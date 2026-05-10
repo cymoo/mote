@@ -194,7 +194,7 @@ impl Tag {
         }
 
         // Check for invalid hierarchy
-        if new_name.starts_with(name) && new_name.matches('/').count() > name.matches('/').count() {
+        if new_name.starts_with(&format!("{}/", name)) {
             return Err(bad_request(&format!(
                 r#"Cannot move "{}" to a subtag of itself "{}""#,
                 name, new_name
@@ -203,8 +203,8 @@ impl Tag {
 
         let name_pattern = format!("{}/%", name);
 
-        // Get all affected tags in a single query
-        let mut affected_tags = sqlx::query_as!(
+        // Get all source-side affected tags and the direct merge target.
+        let affected_tags = sqlx::query_as!(
             Tag,
             r#"
             SELECT * FROM tags
@@ -217,18 +217,16 @@ impl Tag {
         .fetch_all(pool)
         .await?;
 
-        let mut tx = pool.begin().await?;
-
-        // Split into source tag, target tag and descendants
-        let source_tag = if let Some(tag) = affected_tags.iter().find(|t| t.name == name) {
-            tag
-        } else {
-            let new_tag = Tag::create(&mut tx, name).await?;
-            affected_tags.push(new_tag);
-            affected_tags.last().unwrap()
-        };
-
+        let source_tag = affected_tags.iter().find(|t| t.name == name);
+        let has_descendants = affected_tags
+            .iter()
+            .any(|t| t.name.starts_with(&format!("{}/", name)));
+        if source_tag.is_none() && !has_descendants {
+            return Err(bad_request("tag not found"));
+        }
         let target_tag = affected_tags.iter().find(|t| t.name == new_name);
+
+        let mut tx = pool.begin().await?;
 
         let mut descendants: Vec<_> = affected_tags
             .iter()
@@ -249,10 +247,14 @@ impl Tag {
             }
         }
 
-        if let Some(target_tag) = target_tag {
-            Tag::merge(&mut tx, source_tag, target_tag).await?;
-        } else {
-            Tag::rename(&mut tx, source_tag, new_name).await?;
+        if let Some(source_tag) = source_tag {
+            if let Some(target_tag) = target_tag {
+                Tag::merge(&mut tx, source_tag, target_tag).await?;
+            } else {
+                Tag::rename(&mut tx, source_tag, new_name).await?;
+            }
+        } else if target_tag.is_none() {
+            Tag::create(&mut tx, new_name).await?;
         }
 
         tx.commit().await?;

@@ -130,13 +130,16 @@ class Tag(db.Model):
         if name == new_name:
             return
 
-        if new_name.startswith(name) and new_name.count('/') > name.count('/'):
+        if new_name.startswith(name + '/'):
             bad_request(f'cannot move "{name}" to a subtag of itself "{new_name}"')
 
-        source_tag = Tag.find_or_create(name=name)
+        source_tag = Tag.find_by_name(name=name)
+        descendants = Tag.query.filter(Tag.name.startswith(name + '/')).all()
+        if not source_tag and not descendants:
+            bad_request('tag not found')
         target_tag = Tag.find_by_name(new_name)
 
-        for descendant in source_tag.descendants:
+        for descendant in sorted(descendants, key=lambda tag: tag.name.count('/'), reverse=True):
             new_descendant_name = replace_prefix(descendant.name, name, new_name)
             new_descendant = Tag.find_by_name(new_descendant_name)
             if new_descendant:
@@ -144,10 +147,13 @@ class Tag(db.Model):
             else:
                 descendant._rename(new_descendant_name)
 
-        if target_tag:
-            source_tag._merge(target_tag)
-        else:
-            source_tag._rename(new_name)
+        if source_tag:
+            if target_tag:
+                source_tag._merge(target_tag)
+            else:
+                source_tag._rename(new_name)
+        elif not target_tag:
+            db.session.add(Tag(name=new_name))
 
         db.session.commit()
 

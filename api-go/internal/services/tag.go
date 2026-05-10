@@ -159,7 +159,7 @@ func (s *TagService) RenameOrMerge(ctx context.Context, oldName, newName string)
 
 	namePattern := escapeLike(oldName) + "/%"
 
-	// Get all affected tags
+	// Get all source-side affected tags and the direct merge target.
 	query := `
 		SELECT * FROM tags
 		WHERE name = ? OR name = ? OR name LIKE ? ESCAPE '\'
@@ -171,15 +171,18 @@ func (s *TagService) RenameOrMerge(ctx context.Context, oldName, newName string)
 		return err
 	}
 
-	// Check if source tag exists
-	var sourceExists bool
+	// Check if there is anything to rename. Parents can be virtual in the
+	// sidebar tree when only descendants exist, so descendants are valid sources.
+	var sourceExists, hasDescendants bool
 	for i := range affectedTags {
-		if affectedTags[i].Name == oldName {
+		switch {
+		case affectedTags[i].Name == oldName:
 			sourceExists = true
-			break
+		case strings.HasPrefix(affectedTags[i].Name, oldName+"/"):
+			hasDescendants = true
 		}
 	}
-	if !sourceExists {
+	if !sourceExists && !hasDescendants {
 		return ErrTagNotFound
 	}
 
@@ -232,13 +235,19 @@ func (s *TagService) RenameOrMerge(ctx context.Context, oldName, newName string)
 		}
 	}
 
-	// Process source tag
-	if targetTag != nil {
-		if err := s.merge(ctx, tx, sourceTag, targetTag); err != nil {
-			return err
+	if sourceTag != nil {
+		// Process source tag
+		if targetTag != nil {
+			if err := s.merge(ctx, tx, sourceTag, targetTag); err != nil {
+				return err
+			}
+		} else {
+			if err := s.rename(ctx, tx, sourceTag, newName); err != nil {
+				return err
+			}
 		}
-	} else {
-		if err := s.rename(ctx, tx, sourceTag, newName); err != nil {
+	} else if targetTag == nil {
+		if _, err := s.create(ctx, tx, newName); err != nil {
 			return err
 		}
 	}
