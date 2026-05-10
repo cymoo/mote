@@ -23,6 +23,22 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
   const [params, setParams] = useSearchParams()
 
   const colors = ['red', 'blue', 'green'] as const
+  const navigateToMainFilter = (nextParams: Record<string, string>) => {
+    const options = { replace: params.get('tag')?.includes('hidden') }
+
+    if (location.pathname === '/') {
+      setParams(nextParams, options)
+    } else {
+      void navigate(
+        {
+          pathname: '/',
+          search: `?${new URLSearchParams(nextParams).toString()}`,
+        },
+        options,
+      )
+    }
+    window.toggleSidebar()
+  }
 
   return (
     <nav
@@ -52,8 +68,7 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
           )}
           variant="ghost"
           onClick={() => {
-            setParams({ shared: 'true' }, { replace: params.get('tag')?.includes('hidden') })
-            window.toggleSidebar()
+            navigateToMainFilter({ shared: 'true' })
           }}
         >
           <Share2Icon className="mr-3 size-5" aria-hidden="true" />
@@ -76,8 +91,7 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
           className={params.get('color') === color ? HIGHLIGHT_STYLE : undefined}
           variant="ghost"
           onClick={() => {
-            setParams({ color }, { replace: params.get('tag')?.includes('hidden') })
-            window.toggleSidebar()
+            navigateToMainFilter({ color })
           }}
         >
           <CircleIcon className={cx('mr-3 size-5', `fill-${color}-500`)} aria-hidden="true" />

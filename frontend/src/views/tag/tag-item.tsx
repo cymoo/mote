@@ -1,10 +1,11 @@
 import { ChevronDown as DownIcon, ChevronRight as RightIcon } from 'lucide-react'
 import { ComponentProps, memo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { useLocation, useSearchParams } from 'react-router'
 
 import { cx } from '@/utils/css.ts'
 
 import { Button } from '@/components/button.tsx'
+import { useStableNavigate } from '@/components/router.tsx'
 
 import { HIGHLIGHT_STYLE } from '@/views/sidebar/sidebar.tsx'
 
@@ -27,6 +28,28 @@ export const TagItem = memo(function TreeItem({
   const [isOpen, setOpen] = useState(false)
   const ref = useRef<HTMLLIElement>(null)
   const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useStableNavigate()
+
+  const selectTag = () => {
+    const options = {
+      state: { fromInternal: true },
+      replace: params.get('tag')?.includes('hidden'),
+    }
+
+    if (location.pathname === '/') {
+      setParams({ tag: tag.name }, options)
+    } else {
+      void navigate(
+        {
+          pathname: '/',
+          search: `?${new URLSearchParams({ tag: tag.name }).toString()}`,
+        },
+        options,
+      )
+    }
+    window.toggleSidebar()
+  }
 
   return (
     <li
@@ -45,13 +68,7 @@ export const TagItem = memo(function TreeItem({
             [HIGHLIGHT_STYLE]: params.get('tag') === tag.name,
           })}
           variant="ghost"
-          onClick={() => {
-            setParams(
-              { tag: tag.name },
-              { state: { fromInternal: true }, replace: params.get('tag')?.includes('hidden') },
-            )
-            window.toggleSidebar()
-          }}
+          onClick={selectTag}
         >
           {showPath ? tag.name : getLastSegment(tag.name)}
         </Button>
