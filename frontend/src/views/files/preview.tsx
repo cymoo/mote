@@ -12,7 +12,7 @@ import { useIsMobile } from './hooks'
 import { T, t, useLang } from '@/components/translation.tsx'
 
 import { NodeIcon } from './parts'
-import { DriveNode, previewURL } from './api'
+import { DriveNode, previewURL, thumbURL } from './api'
 
 const isImage = (n: DriveNode | undefined) =>
   !!n && (n.mime_type ?? '').startsWith('image/')
@@ -38,37 +38,59 @@ export function PreviewModal(props: PreviewModalProps) {
 
 // ---------- image gallery (PhotoSwipe) ----------
 
-function ImageGallery({ items, index, onClose }: PreviewModalProps) {
-  const galleryRef = useRef<HTMLDivElement>(null)
-  // Anchors carry data-width / data-height once preloaded; PhotoSwipe reads
-  // those attributes via the domItemData filter so it never has to guess and
-  // images never appear stretched.
-  const [dims, setDims] = useState<Map<number, { w: number; h: number }>>(new Map())
+// Virtual long-edge size passed to PhotoSwipe for zoom/layout calculations.
+// Thumbnails are only 240 px wide, so we normalise their aspect ratio to this
+// virtual resolution instead of feeding PhotoSwipe tiny pixel counts directly.
+const VIRTUAL_LONG_EDGE = 1600
 
-  // Subset of nodes that are images in the current listing.
+function toDims(tw: number, th: number): { w: number; h: number } {
+  const aspect = tw > 0 && th > 0 ? tw / th : 4 / 3
+  return aspect >= 1
+    ? { w: VIRTUAL_LONG_EDGE, h: Math.round(VIRTUAL_LONG_EDGE / aspect) }
+    : { w: Math.round(VIRTUAL_LONG_EDGE * aspect), h: VIRTUAL_LONG_EDGE }
+}
+
+function ImageGallery({ items, index, onClose }: PreviewModalProps) {
   const imageNodes = items.filter(isImage)
   const startIdx = Math.max(
     imageNodes.findIndex((n) => n.id === items[index]?.id),
     0,
   )
 
-  // Preload natural dimensions; resolve quickly so the lightbox can open.
+  // Mutable map updated as thumbnails load; read lazily by the itemData filter
+  // so we never need to re-create the lightbox as background loads complete.
+  const dimsRef = useRef<Map<number, { w: number; h: number }>>(new Map())
+  const [ready, setReady] = useState(false)
+
   useEffect(() => {
+    if (imageNodes.length === 0) return
     let cancelled = false
-    Promise.all(
-      imageNodes.map(
-        (n) =>
-          new Promise<[number, { w: number; h: number }]>((resolve) => {
-            const im = new Image()
-            const done = (w: number, h: number) => resolve([n.id, { w, h }])
-            im.onload = () => done(im.naturalWidth, im.naturalHeight)
-            im.onerror = () => done(1600, 1200)
-            im.src = previewURL(n.id)
-          }),
-      ),
-    ).then((entries) => {
-      if (!cancelled) setDims(new Map(entries))
+
+    const loadThumb = (n: DriveNode, onDone?: () => void) => {
+      const im = new Image()
+      im.onload = () => {
+        if (cancelled) return
+        dimsRef.current.set(n.id, toDims(im.naturalWidth, im.naturalHeight))
+        onDone?.()
+      }
+      im.onerror = () => {
+        if (cancelled) return
+        dimsRef.current.set(n.id, { w: VIRTUAL_LONG_EDGE, h: 1200 })
+        onDone?.()
+      }
+      im.src = thumbURL(n.id)
+    }
+
+    // Open as soon as the starting slide's thumbnail is measured.
+    // All other thumbnails load concurrently so they're ready before the user
+    // navigates to them (thumbnails are tiny — typically < 20 KB each).
+    loadThumb(imageNodes[startIdx], () => {
+      if (!cancelled) setReady(true)
     })
+    imageNodes.forEach((n, i) => {
+      if (i !== startIdx) loadThumb(n)
+    })
+
     return () => {
       cancelled = true
     }
@@ -76,57 +98,40 @@ function ImageGallery({ items, index, onClose }: PreviewModalProps) {
   }, [])
 
   useEffect(() => {
-    if (!galleryRef.current) return
-    // Don't open the lightbox until we have natural dimensions for every image —
-    // otherwise PhotoSwipe lays out with default 1600×1200 and the first frame
-    // is visibly stretched.
-    if (dims.size < imageNodes.length) return
+    if (!ready) return
 
     const lightbox = new PhotoSwipeLightbox({
-      gallery: galleryRef.current,
+      // Array data source — no hidden DOM gallery element needed.
+      dataSource: imageNodes.map((n) => ({
+        src: previewURL(n.id),
+        msrc: thumbURL(n.id), // shown as low-res placeholder while full image loads
+        alt: n.name,
+      })),
       bgOpacity: 0.92,
-      children: 'a',
       pswpModule: () => import('photoswipe'),
     })
-    lightbox.addFilter('domItemData', (data, _el, linkEl) => {
-      data.src = linkEl.href
-      const w = Number(linkEl.dataset.width)
-      const h = Number(linkEl.dataset.height)
-      // Belt-and-suspenders: fall back to the preloaded <img>'s natural size
-      // when data attributes are missing for any reason.
-      const img = linkEl.querySelector('img') as HTMLImageElement | null
-      data.w = w > 0 ? w : img?.naturalWidth || 1600
-      data.h = h > 0 ? h : img?.naturalHeight || 1200
-      return data
+
+    // itemData is called lazily per slide when PhotoSwipe needs it, so by the
+    // time the user navigates to any slide its thumbnail has almost certainly
+    // finished loading into dimsRef.
+    lightbox.addFilter('itemData', (itemData, idx) => {
+      const node = imageNodes[idx]
+      const dim = node ? dimsRef.current.get(node.id) : undefined
+      return { ...itemData, width: dim?.w ?? VIRTUAL_LONG_EDGE, height: dim?.h ?? 1200 }
     })
+
     lightbox.on('close', onClose)
     lightbox.init()
     lightbox.loadAndOpen(startIdx)
+
     return () => {
       lightbox.destroy()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dims])
+  }, [ready])
 
-  return (
-    <div ref={galleryRef} className="hidden">
-      {imageNodes.map((n) => {
-        const d = dims.get(n.id)
-        return (
-          <a
-            key={n.id}
-            href={previewURL(n.id)}
-            target="_blank"
-            rel="noreferrer"
-            data-width={d?.w}
-            data-height={d?.h}
-          >
-            <img src={previewURL(n.id)} alt={n.name} />
-          </a>
-        )
-      })}
-    </div>
-  )
+  // PhotoSwipe manages its own DOM overlay; this component needs no DOM.
+  return null
 }
 
 // ---------- non-image preview ----------
