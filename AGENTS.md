@@ -59,7 +59,7 @@ sync after a deliberate API change.
 ```bash
 cd frontend
 npm install
-npm run dev          # vite dev server on :5173, proxies /api → :8000
+npm run dev          # vite dev server on :3000, proxies /api → :8000
 npm run build        # tsc + vite build (must be clean before commits)
 npm run lint         # eslint, --max-warnings 0
 npm run test         # jest
@@ -137,7 +137,7 @@ When fanning out, add a checklist and verify each backend's tests pass.
 cd api-go && make live
 # terminal 2
 cd frontend && npm run dev
-# open http://localhost:5173
+# open http://localhost:3000
 ```
 
 The frontend proxies `/api/*` to `:8000`, so cookies and CORS work

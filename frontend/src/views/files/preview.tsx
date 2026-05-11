@@ -23,6 +23,9 @@ const isMarkdown = (n: DriveNode | undefined) =>
     (n.mime_type ?? '').startsWith('text/x-markdown') ||
     /\.(md|markdown)$/i.test(n.name ?? ''))
 
+const isHtml = (n: DriveNode | undefined) =>
+  !!n && (n.mime_type ?? '') === 'text/html'
+
 interface PreviewModalProps {
   items: DriveNode[]
   index: number
@@ -184,6 +187,8 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
         />
       )
     }
+  } else if (isHtml(node)) {
+    body = <HtmlPreview url={url} node={node} />
   } else if (mt.startsWith('text/') || mt === 'application/json' || mt === 'application/xml') {
     body = <TextPreview url={url} />
   } else {
@@ -241,6 +246,24 @@ function TextPreview({ url }: { url: string }) {
     <pre className="bg-card text-foreground border-border max-h-[80vh] max-w-[80vw] overflow-auto rounded-lg border p-4 font-mono text-sm whitespace-pre-wrap shadow-xl">
       {text ?? 'Loading…'}
     </pre>
+  )
+}
+
+// ---------- html preview ----------
+
+// Rendered in a plain iframe (no sandbox) so that scripts in the document
+// execute normally and relative sub-resources load with auth cookies.
+// CSS isolation is inherent: styles inside an iframe's browsing context
+// never cascade into the parent page regardless of sandbox settings.
+// Note: sandbox="allow-scripts allow-same-origin" is explicitly unsafe —
+// that combination lets the page remove its own sandbox via script.
+function HtmlPreview({ url, node }: { url: string; node: DriveNode }) {
+  return (
+    <iframe
+      src={url}
+      className="h-[85vh] w-[85vw] max-w-5xl rounded-lg bg-white shadow-xl"
+      title={node.name}
+    />
   )
 }
 
