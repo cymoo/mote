@@ -216,6 +216,7 @@ async fn serve_shared(
         &node.name,
         node.mime_type.as_deref(),
         force,
+        false,
         &headers,
     )
     .await

@@ -39,7 +39,7 @@ func TestServeStoredDriveBlobFallbackSupportsRange(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/drive/preview?id=1", nil)
 	req.Header.Set("Range", "bytes=2-5")
 	rec := httptest.NewRecorder()
-	serveStoredDriveBlob(rec, req, drive, testDriveNode("video.mp4", blob), false)
+	serveStoredDriveBlob(rec, req, drive, testDriveNode("video.mp4", blob), false, false)
 
 	if rec.Code != http.StatusPartialContent {
 		t.Fatalf("status = %d, want %d; body %q", rec.Code, http.StatusPartialContent, rec.Body.String())
@@ -69,7 +69,7 @@ func TestServeStoredDriveBlobAccelRedirect(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/drive/preview?id=1", nil)
 	rec := httptest.NewRecorder()
-	serveStoredDriveBlob(rec, req, drive, testDriveNode("video name.mp4", blob), false)
+	serveStoredDriveBlob(rec, req, drive, testDriveNode("video name.mp4", blob), false, false)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body %q", rec.Code, http.StatusOK, rec.Body.String())
@@ -105,7 +105,7 @@ func TestServeStoredDriveBlobAccelRejectsUnsafePath(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/drive/preview?id=1", nil)
 	rec := httptest.NewRecorder()
-	serveStoredDriveBlob(rec, req, drive, testDriveNode("video.mp4", blob), false)
+	serveStoredDriveBlob(rec, req, drive, testDriveNode("video.mp4", blob), false, false)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)

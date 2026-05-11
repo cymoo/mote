@@ -146,7 +146,8 @@ func (h *DriveShareHandler) serveShared(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	serveStoredDriveBlob(w, r, h.drive, node, forceAttachment)
+	// Shares are accessed by third parties — keep HTML as attachment to avoid XSS.
+	serveStoredDriveBlob(w, r, h.drive, node, forceAttachment, false)
 }
 
 func (h *DriveShareHandler) passwordOK(r *http.Request, share *models.DriveShare, token string) bool {

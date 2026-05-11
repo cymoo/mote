@@ -213,7 +213,9 @@ func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAt
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	serveStoredDriveBlob(w, r, h.drive, node, forceAttachment)
+	// allowInlineHTML=true only in the authenticated preview path: the user
+	// owns the file, so rendering HTML inline is intentional and safe.
+	serveStoredDriveBlob(w, r, h.drive, node, forceAttachment, !forceAttachment)
 }
 
 func (h *DriveHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +462,14 @@ func mustForceAttachment(mt, ext string) bool {
 		return true
 	}
 	return false
+}
+
+// isHTMLContent reports whether the node is an HTML document by MIME type or
+// file extension. Used to decide when to allow inline rendering in the preview.
+func isHTMLContent(mt, ext string) bool {
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	return strings.HasPrefix(strings.ToLower(mt), "text/html") ||
+		ext == "html" || ext == "htm"
 }
 
 func mapDriveErr(err error) error {

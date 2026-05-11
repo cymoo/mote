@@ -225,6 +225,7 @@ def _serve_blob(node_id: int, force_attachment: bool):
         n.name,
         n.mime_type(),
         force_attachment,
+        allow_inline_html=not force_attachment,
     )
 
 

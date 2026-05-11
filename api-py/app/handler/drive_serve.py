@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from flask import Response, abort, current_app, send_file
 
-from ..services.drive import must_force_attachment
+from ..services.drive import is_html_content, must_force_attachment
 
 
 def _accel_redirect_uri(blob_path: str) -> str | None:
@@ -31,6 +31,7 @@ def serve_drive_blob(
     name: str,
     mime_type: str | None,
     force_attachment: bool,
+    allow_inline_html: bool = False,
 ):
     mt = mime_type or 'application/octet-stream'
     ext = os.path.splitext(name)[1].lower()
@@ -39,6 +40,8 @@ def serve_drive_blob(
         if (force_attachment or must_force_attachment(mt, ext))
         else 'inline'
     )
+    if allow_inline_html and is_html_content(mt, ext):
+        disp = 'inline'
 
     try:
         accel_uri = _accel_redirect_uri(blob_path)

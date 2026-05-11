@@ -93,7 +93,7 @@ class DriveApiController(
     fun preview(
         @RequestParam id: Long,
         @RequestHeader(value = HttpHeaders.RANGE, required = false) range: String?,
-    ): ResponseEntity<StreamingResponseBody> = serveBlob(id, false, range)
+    ): ResponseEntity<StreamingResponseBody> = serveBlob(id, false, range, allowInlineHTML = true)
 
     @GetMapping("/thumb")
     fun thumb(
@@ -135,13 +135,13 @@ class DriveApiController(
             .body(body)
     }
 
-    private fun serveBlob(id: Long, forceAttachment: Boolean, range: String?): ResponseEntity<StreamingResponseBody> {
+    private fun serveBlob(id: Long, forceAttachment: Boolean, range: String?, allowInlineHTML: Boolean = false): ResponseEntity<StreamingResponseBody> {
         val node = driveService.findById(id)
         if (node.type != "file" || node.blobPath.isNullOrBlank() || node.deletedAt != null) {
             throw NotFoundException("not found")
         }
         val abs = File(driveService.blobAbsPath(node.blobPath))
-        return driveFileResponse(uploadConfig, abs, node.blobPath, node.name, node.mimeType, forceAttachment, range)
+        return driveFileResponse(uploadConfig, abs, node.blobPath, node.name, node.mimeType, forceAttachment, range, allowInlineHTML)
     }
 
     // ---------- uploads ----------
@@ -254,6 +254,11 @@ class DriveApiController(
             if (mtl.startsWith("text/html") || mtl.contains("javascript") || mtl.startsWith("image/svg")) return true
             if (mtl.isEmpty() || mtl == "application/octet-stream") return true
             return false
+        }
+
+        fun isHtmlContent(mt: String, ext: String): Boolean {
+            val e = ext.lowercase().removePrefix(".")
+            return mt.lowercase().startsWith("text/html") || e == "html" || e == "htm"
         }
 
         private val INLINE_UNSAFE_EXT = setOf("html", "htm", "svg", "xhtml", "xml", "js", "mjs")

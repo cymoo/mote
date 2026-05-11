@@ -18,10 +18,12 @@ fun driveFileResponse(
     mimeType: String?,
     forceAttachment: Boolean,
     rangeHeader: String?,
+    allowInlineHTML: Boolean = false,
 ): ResponseEntity<StreamingResponseBody> {
     val mt = mimeType ?: "application/octet-stream"
     val ext = File(name).extension
-    val disp = if (forceAttachment || DriveApiController.mustForceAttachment(mt, ext)) "attachment" else "inline"
+    var disp = if (forceAttachment || DriveApiController.mustForceAttachment(mt, ext)) "attachment" else "inline"
+    if (allowInlineHTML && DriveApiController.isHtmlContent(mt, ext)) disp = "inline"
     val accelUri = driveAccelRedirectUri(uploadConfig, blobPath)
     if (!abs.exists() || abs.isDirectory) throw NotFoundException("not found")
 

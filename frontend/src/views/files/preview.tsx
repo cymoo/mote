@@ -24,7 +24,7 @@ const isMarkdown = (n: DriveNode | undefined) =>
     /\.(md|markdown)$/i.test(n.name ?? ''))
 
 const isHtml = (n: DriveNode | undefined) =>
-  !!n && (n.mime_type ?? '') === 'text/html'
+  !!n && (n.mime_type ?? '').startsWith('text/html')
 
 interface PreviewModalProps {
   items: DriveNode[]

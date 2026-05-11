@@ -18,6 +18,7 @@ func serveStoredDriveBlob(
 	drive *services.DriveService,
 	node *models.DriveNode,
 	forceAttachment bool,
+	allowInlineHTML bool,
 ) {
 	if node.Type != "file" || !node.BlobPath.Valid || node.DeletedAt.Valid {
 		http.Error(w, "not found", http.StatusNotFound)
@@ -40,6 +41,13 @@ func serveStoredDriveBlob(
 	disp := "inline"
 	if forceAttachment || mustForceAttachment(node.MimeType(), node.Ext()) {
 		disp = "attachment"
+	}
+	// Authenticated-user preview of HTML: allow inline rendering so the iframe
+	// can display the document. mustForceAttachment blocks HTML by default to
+	// prevent XSS when files are served directly, but inside our iframe the
+	// user is intentionally viewing their own file.
+	if allowInlineHTML && isHTMLContent(node.MimeType(), node.Ext()) {
+		disp = "inline"
 	}
 	w.Header().Set("Content-Type", node.MimeType())
 	w.Header().Set("Content-Disposition",

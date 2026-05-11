@@ -148,7 +148,7 @@ async fn download(
     Query(q): Query<DriveIdQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
-    serve_blob(&state, q.id, true, &headers).await
+    serve_blob(&state, q.id, true, false, &headers).await
 }
 
 async fn preview(
@@ -156,7 +156,7 @@ async fn preview(
     Query(q): Query<DriveIdQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
-    serve_blob(&state, q.id, false, &headers).await
+    serve_blob(&state, q.id, false, true, &headers).await
 }
 
 async fn thumb(
@@ -258,6 +258,7 @@ pub(crate) async fn serve_blob(
     state: &AppState,
     id: i64,
     force_attachment: bool,
+    allow_inline_html: bool,
     _headers: &HeaderMap,
 ) -> ApiResult<Response> {
     if id <= 0 {
@@ -276,6 +277,7 @@ pub(crate) async fn serve_blob(
         &node.name,
         node.mime_type.as_deref(),
         force_attachment,
+        allow_inline_html,
         _headers,
     )
     .await
@@ -288,6 +290,7 @@ pub(crate) async fn serve_drive_file(
     name: &str,
     mime: Option<&str>,
     force_attachment: bool,
+    allow_inline_html: bool,
     headers: &HeaderMap,
 ) -> ApiResult<Response> {
     let accel_uri = drive_accel_redirect_uri(config, blob_path)?;
@@ -325,11 +328,12 @@ pub(crate) async fn serve_drive_file(
         .map(|s| s.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     let force = force_attachment || must_force_attachment(&mt, &ext);
-    let disp = format!(
-        "{}; filename*=UTF-8''{}",
-        if force { "attachment" } else { "inline" },
-        urlencoding::encode(name)
-    );
+    let disp_str = if force && !(allow_inline_html && is_html_content(&mt, &ext)) {
+        "attachment"
+    } else {
+        "inline"
+    };
+    let disp = format!("{}; filename*=UTF-8''{}", disp_str, urlencoding::encode(name));
     let h = resp.headers_mut();
     h.insert(
         CONTENT_TYPE,
@@ -383,6 +387,13 @@ pub(crate) fn must_force_attachment(mt: &str, ext: &str) -> bool {
         || mt.starts_with("image/svg")
         || mt.is_empty()
         || mt == "application/octet-stream"
+}
+
+fn is_html_content(mt: &str, ext: &str) -> bool {
+    let ext = ext.trim_start_matches('.');
+    mt.to_lowercase().starts_with("text/html")
+        || ext.eq_ignore_ascii_case("html")
+        || ext.eq_ignore_ascii_case("htm")
 }
 
 // ---------- uploads ----------

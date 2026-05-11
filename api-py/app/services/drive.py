@@ -813,6 +813,11 @@ def must_force_attachment(mime_type: str, ext: str) -> bool:
     return False
 
 
+def is_html_content(mime_type: str, ext: str) -> bool:
+    e = (ext or '').lower().lstrip('.')
+    return (mime_type or '').lower().startswith('text/html') or e in ('html', 'htm')
+
+
 def _purge_thumb(base_path: str, blob_path: str) -> None:
     """Deferred import wrapper to avoid a circular import with drive_thumb."""
     from .drive_thumb import purge_thumb
