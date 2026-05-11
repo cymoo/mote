@@ -1,33 +1,31 @@
 package middlewares
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	e "github.com/cymoo/mote/internal/errors"
-	"github.com/redis/go-redis/v9"
 )
 
-// RateLimit returns a net/http middleware that enforces rate limiting, using Redis as the backend
-// client: Redis client
+type windowEntry struct {
+	count   int64
+	resetAt time.Time
+}
+
+// RateLimit returns a net/http middleware that enforces rate limiting using an in-memory counter.
 // expires: duration for rate limit window
 // maxCount: maximum number of requests allowed within the window
-func RateLimit(client *redis.Client, expires time.Duration, maxCount int64) func(http.Handler) http.Handler {
+func RateLimit(expires time.Duration, maxCount int64) func(http.Handler) http.Handler {
+	var mu sync.Mutex
+	store := make(map[string]*windowEntry)
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := fmt.Sprintf("rate:%s", r.URL.Path)
 
-			belowLimit, err := checkRateLimit(r.Context(), client, key, expires, maxCount)
-			if err != nil {
-				log.Printf("error checking rate limit: %v", err)
-				e.SendJSONError(w, 500, "internal_error")
-				return
-			}
-
-			if !belowLimit {
+			if !checkRateLimit(&mu, store, key, expires, maxCount) {
 				e.SendJSONError(w, http.StatusTooManyRequests, "too_many_attempts")
 				return
 			}
@@ -37,27 +35,22 @@ func RateLimit(client *redis.Client, expires time.Duration, maxCount int64) func
 	}
 }
 
-// checkRateLimit checks if the rate limit for the given key has been exceeded
-func checkRateLimit(ctx context.Context, client *redis.Client, key string, expires time.Duration, maxCount int64) (bool, error) {
-	pipe := client.Pipeline()
+// checkRateLimit checks and increments the in-memory counter for the given key.
+// Returns true if the request is within the limit.
+func checkRateLimit(mu *sync.Mutex, store map[string]*windowEntry, key string, expires time.Duration, maxCount int64) bool {
+	mu.Lock()
+	defer mu.Unlock()
 
-	// SET key 0 EX expires NX (only set if not exists)
-	pipe.SetNX(ctx, key, 0, expires)
-
-	// INCR key
-	incrCmd := pipe.Incr(ctx, key)
-
-	// Execute pipeline
-	_, err := pipe.Exec(ctx)
-	if err != nil && err != redis.Nil {
-		return false, fmt.Errorf("redis pipeline error: %w", err)
+	now := time.Now()
+	entry, ok := store[key]
+	if !ok || !now.Before(entry.resetAt) {
+		store[key] = &windowEntry{count: 1, resetAt: now.Add(expires)}
+		return true
 	}
 
-	// Get the incremented value
-	count, err := incrCmd.Result()
-	if err != nil {
-		return false, fmt.Errorf("failed to get incr result: %w", err)
+	if entry.count >= maxCount {
+		return false
 	}
-
-	return count <= maxCount, nil
+	entry.count++
+	return true
 }

@@ -43,7 +43,7 @@ func NewApiRouter(app *App) *chi.Mux {
 	}
 
 	// Use rate limiting middleware for login route
-	r.With(mw.RateLimit(app.redis, 60*time.Second, 5)).Post("/login", m.H(handleLogin))
+	r.With(mw.RateLimit(60*time.Second, 5)).Post("/login", m.H(handleLogin))
 
 	// A simple endpoint to verify authentication
 	// Nginx can use this to check if the token is valid, and handle uploads accordingly

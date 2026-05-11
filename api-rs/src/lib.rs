@@ -75,7 +75,7 @@ pub async fn create_app(state: AppState) -> Result<Router> {
             // Apply the global write timeout to post/note API routes only;
             // drive_api routes own their timeouts internally (file operations
             // need different deadlines than normal JSON endpoints).
-            post_api::create_routes(state.rd.pool.clone())
+            post_api::create_routes()
                 .layer(TimeoutLayer::new(write_timeout))
                 .merge(
                     Router::new()

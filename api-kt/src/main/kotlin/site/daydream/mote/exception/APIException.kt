@@ -23,6 +23,9 @@ class ConflictException(message: String?) :
 class GoneException(message: String?) :
     APIException(410, "Gone", message)
 
+class TooManyRequestsException(message: String?) :
+    APIException(429, "Too Many Requests", message)
+
 
 data class ErrorResponse(
     val code: Int,

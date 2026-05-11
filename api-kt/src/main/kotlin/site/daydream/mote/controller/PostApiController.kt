@@ -3,6 +3,7 @@ package site.daydream.mote.controller
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.validation.Valid
 import site.daydream.mote.annotation.AuthRequired
+import site.daydream.mote.annotation.RateLimit
 import site.daydream.mote.config.AppConfig
 import site.daydream.mote.exception.AuthenticationException
 import site.daydream.mote.exception.NotFoundException
@@ -43,6 +44,7 @@ class PostApiController(
 
     @PostMapping("/login")
     @AuthRequired(false)
+    @RateLimit(max = 5, window = 60)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun login(@Validated @RequestBody payload: LoginRequest) {
         if (!authService.isValidToken(payload.password)) {

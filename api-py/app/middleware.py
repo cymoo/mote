@@ -1,5 +1,7 @@
 import inspect
 import pydantic
+import threading
+import time
 from functools import wraps
 from typing import Callable, Literal, get_type_hints, Optional
 from pydantic import BaseModel
@@ -123,6 +125,10 @@ class CORS:
         app.after_request(self.add_cors_headers)
 
 
+_rate_limit_lock = threading.Lock()
+_rate_limit_store: dict[str, tuple[int, float]] = {}
+
+
 def rate_limit(max_count: int, expires: int = 60) -> Callable:
     """Decorator to limit the number of requests to a view function.
     Args:
@@ -130,28 +136,27 @@ def rate_limit(max_count: int, expires: int = 60) -> Callable:
         expires (int): Expiration time in seconds for the rate limit window. Default is 60 seconds.
     Returns:
         Callable: A decorator that can be applied to Flask view functions.
-    Note:
-        It requires a Redis instance to store the request counts. It's not ideal to have this dependency in middleware,
-        but it's a simple and effective way to implement rate limiting in a distributed environment.
     Usage:
         @app.route("/some-endpoint")
         @rate_limit(max_count=5, expires=60)
         def some_view_function():
             ...
     """
-    from .extension import rd
 
     def wrapper(view_func):
         @wraps(view_func)
         def inner(*args, **kw):
             key = 'rate:' + view_func.__qualname__
-            pipe = rd.pipeline()
-            pipe.set(key, 0, ex=expires, nx=True).incr(key)
-            _, rv = pipe.execute()
-            if rv > max_count:
+            now = time.monotonic()
+            with _rate_limit_lock:
+                count, reset_at = _rate_limit_store.get(key, (0, now + expires))
+                if now >= reset_at:
+                    count, reset_at = 0, now + expires
+                count += 1
+                _rate_limit_store[key] = (count, reset_at)
+            if count > max_count:
                 raise APIError(429, 'Too Many Requests')
-            else:
-                return view_func(*args, **kw)
+            return view_func(*args, **kw)
 
         return inner
 

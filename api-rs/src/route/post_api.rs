@@ -1,7 +1,6 @@
-use crate::config::rd::RedisPool;
 use crate::errors::{bad_request, not_found, ApiError, ApiResult};
 use crate::middleware::check_access::check_access;
-use crate::middleware::limit_request::limit_request;
+use crate::middleware::rate_limiter::{new_state, rate_limit};
 use crate::model::post::*;
 use crate::model::tag::*;
 use crate::service::auth_service::AuthService;
@@ -20,9 +19,12 @@ use regex::Regex;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
+use std::time::Duration;
 use tracing::error;
 
-pub fn create_routes(rd_pool: RedisPool) -> Router<AppState> {
+pub fn create_routes() -> Router<AppState> {
+    let rate_limit_state = new_state();
+
     Router::new()
         .route("/get-tags", get(get_tags))
         .route("/rename-tag", post(rename_tag))
@@ -48,7 +50,7 @@ pub fn create_routes(rd_pool: RedisPool) -> Router<AppState> {
         .route(
             "/login",
             post(login).layer(middleware::from_fn(move |req, next| {
-                limit_request(rd_pool.clone(), 60, 5, req, next)
+                rate_limit(rate_limit_state.clone(), Duration::from_secs(60), 5, req, next)
             })),
         )
         .layer(middleware::from_fn(|req, next| {

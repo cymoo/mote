@@ -2,6 +2,7 @@ package site.daydream.mote.config
 
 import jakarta.annotation.PostConstruct
 import site.daydream.mote.interceptor.AuthInterceptor
+import site.daydream.mote.interceptor.RateLimitInterceptor
 import site.daydream.mote.service.AuthService
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -56,6 +57,7 @@ class WebConfig(
     @Override
     override fun addInterceptors(registry: InterceptorRegistry) {
         registry.addInterceptor(AuthInterceptor(authService))
+        registry.addInterceptor(RateLimitInterceptor())
     }
 }
 
