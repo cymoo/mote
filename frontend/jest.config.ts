@@ -4,6 +4,10 @@ const config: Config.InitialOptions = {
   transform: {
     '^.+\\.tsx?$': 'ts-jest',
   },
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^marked$': '<rootDir>/tests/mocks/marked.ts',
+  },
   testEnvironment: 'jsdom',
   roots: ['./tests'],
 }

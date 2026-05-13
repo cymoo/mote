@@ -2,7 +2,6 @@ import { Editor, Element, Node, NodeEntry, Path, Point, Range, Transforms } from
 import { RenderElementProps } from 'slate-react'
 
 import {
-  BLOCK_QUOTE,
   BulletedListElement,
   CHECK_LIST,
   CODE_BLOCK,
@@ -451,9 +450,7 @@ export function NumberedList({ attributes, children, element }: RenderElementPro
 
 // NOTE: All non-list block nodes can be wrapped
 export function wrapList(editor: Editor, type: string) {
-  const nodes = Array.from(
-    findElements(editor, [...HEADINGS, PARAGRAPH, BLOCK_QUOTE, CODE_BLOCK, CHECK_LIST]),
-  )
+  const nodes = Array.from(findElements(editor, [...HEADINGS, PARAGRAPH, CODE_BLOCK, CHECK_LIST]))
   if (nodes.length === 0) {
     return
   }

@@ -65,6 +65,16 @@ export function withMarkdownShortcuts(editor: Editor): Editor {
         if (type === LIST_ITEM) {
           const listType = beforeText === '1.' ? NUMBERED_LIST : BULLETED_LIST
           wrapList(editor, listType)
+        } else if (type === BLOCK_QUOTE) {
+          Transforms.wrapNodes(
+            editor,
+            { type: BLOCK_QUOTE, children: [] },
+            {
+              match: (node) => Element.isElement(node) && node.type === PARAGRAPH,
+              mode: 'lowest',
+              split: true,
+            },
+          )
         } else {
           Transforms.setNodes(editor, props, {
             match: (node) => Element.isElement(node) && Editor.isBlock(editor, node),

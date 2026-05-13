@@ -1,3 +1,5 @@
+import { marked } from 'marked'
+import toast from 'react-hot-toast'
 import {
   Descendant,
   Editor,
@@ -7,8 +9,6 @@ import {
   Transforms,
 } from 'slate'
 import { ReactEditor } from 'slate-react'
-import { marked } from 'marked'
-import toast from 'react-hot-toast'
 
 import { t } from '@/components/translation.tsx'
 
@@ -34,6 +34,7 @@ import {
   NUMBERED_LIST,
   NumberedListElement,
   PARAGRAPH,
+  ParagraphElement,
   TABLE,
   TABLE_CELL,
   TABLE_ROW,
@@ -82,8 +83,7 @@ export function withPasteHtml(editor: Editor): Editor {
             )
             .filter(
               (node) =>
-                SlateElement.isElement(node) ||
-                (SlateText.isText(node) && node.text.trim() !== ''),
+                SlateElement.isElement(node) || (SlateText.isText(node) && node.text.trim() !== ''),
             )
             .map((node) =>
               SlateText.isText(node) || Editor.isInline(editor, node)
@@ -198,7 +198,7 @@ export function toHtml(node: Descendant, parent?: SlateElement): string {
 
   switch (node.type) {
     case BLOCK_QUOTE:
-      return `<blockquote><p>${children}</p></blockquote>`
+      return `<blockquote>${children}</blockquote>`
     case CODE_BLOCK:
       return `<pre><code>${children}</code></pre>`
     case BULLETED_LIST:
@@ -363,7 +363,7 @@ export function fromHtml(
 
   let isValidChildBlockNode = isValidBlockNode
 
-  // All children of `p`, `heading`, `code-block`, and `block-quote` must be inlines.
+  // All children of `p`, `heading`, and `code-block` must be inlines.
   if (Object.keys(BLOCK_TAGS).includes(nodeName)) {
     isValidChildBlockNode = false
   }
@@ -418,15 +418,10 @@ export function fromHtml(
     return null
   }
 
-  // Block-quote: flatten nested block-level children with '\n' separators so that
-  // pasted HTML like <blockquote><p>Para</p><ul><li>item</li></ul></blockquote>
-  // and the save/load round-trip (<blockquote><p>text<br>text</p></blockquote>)
-  // both preserve newline boundaries.
   if (isValidBlockNode && nodeName === 'BLOCKQUOTE') {
-    const bqChildren = normalizeBlockquoteChildren(el, newMarks)
     return {
       type: BLOCK_QUOTE,
-      children: bqChildren.length > 0 ? bqChildren : [{ text: '' }],
+      children: normalizeBlockContainerChildren(children),
     }
   }
 
@@ -451,9 +446,7 @@ export function fromHtml(
         .map((n) => fromHtml(n, newMarks, false))
         .flat()
         .filter((n): n is Descendant => n !== null)
-      let filtered = ignoreConsecutiveEmptyText(
-        taskChildren.length ? taskChildren : [{ text: '' }],
-      )
+      let filtered = ignoreConsecutiveEmptyText(taskChildren.length ? taskChildren : [{ text: '' }])
       // Trim leading whitespace from the first text node (marked inserts a space after the input)
       const first = filtered[0]
       if (first && SlateText.isText(first)) {
@@ -632,71 +625,47 @@ function normalizeListItemChildren(children: Descendant[]): Descendant[] {
   return newNodes
 }
 
-// Block-level HTML element names that act as paragraph boundaries inside a <blockquote>.
-const BLOCK_NAMES_IN_QUOTE = new Set([
-  'P',
-  'H1',
-  'H2',
-  'H3',
-  'H4',
-  'H5',
-  'H6',
-  'UL',
-  'OL',
-  'PRE',
-  'BLOCKQUOTE',
-])
+function normalizeBlockContainerChildren(children: Descendant[]): Descendant[] {
+  const normalized: Descendant[] = []
+  let inlineNodes: Descendant[] = []
 
-// Flatten the children of a <blockquote> element into inline Slate nodes,
-// inserting '\n' text nodes between consecutive block-level children so that
-// paragraph / list boundaries are preserved in the flat block-quote model.
-function normalizeBlockquoteChildren(
-  el: HTMLElement,
-  marks: Record<string, boolean>,
-): Descendant[] {
-  const flat: Descendant[] = []
-  let needsSep = false
+  const flushInlineNodes = () => {
+    const nodes = ignoreConsecutiveEmptyText(inlineNodes)
+    inlineNodes = []
 
-  for (const child of el.childNodes) {
-    const isBlock = child instanceof HTMLElement && BLOCK_NAMES_IN_QUOTE.has(child.nodeName)
+    if (nodes.length === 0) {
+      return
+    }
 
-    if (isBlock) {
-      if (needsSep) flat.push({ text: '\n' })
+    if (nodes.every((node) => SlateText.isText(node) && node.text.trim() === '')) {
+      return
+    }
 
-      if (child.nodeName === 'UL' || child.nodeName === 'OL') {
-        // Flatten list items, separated by '\n'.
-        const liEls = Array.from(child.children).filter((c) => c.nodeName === 'LI')
-        for (let i = 0; i < liEls.length; i++) {
-          if (i > 0) flat.push({ text: '\n' })
-          const liNodes = Array.from(liEls[i].childNodes)
-            .map((n) => fromHtml(n, marks, false))
-            .flat()
-            .filter((n): n is Descendant => n !== null)
-          flat.push(...liNodes)
-        }
-      } else {
-        // For P, headings, PRE, nested blockquote: extract inline content.
-        const inlineNodes = Array.from(child.childNodes)
-          .map((n) => fromHtml(n, marks, false))
-          .flat()
-          .filter((n): n is Descendant => n !== null)
-        flat.push(...inlineNodes)
-      }
+    normalized.push({
+      type: PARAGRAPH,
+      children: nodes,
+    } as ParagraphElement)
+  }
 
-      needsSep = true
+  for (const child of children) {
+    if (isInlineElementOrText(child)) {
+      inlineNodes.push(child)
     } else {
-      const node = fromHtml(child, marks, false)
-      if (node !== null) {
-        const nodes = Array.isArray(node) ? node : [node]
-        flat.push(...nodes)
-        if (nodes.some((n) => !SlateText.isText(n) || n.text.trim() !== '')) {
-          needsSep = true
-        }
-      }
+      flushInlineNodes()
+      normalized.push(child)
     }
   }
 
-  return ignoreConsecutiveEmptyText(flat)
+  flushInlineNodes()
+
+  return normalized.length > 0
+    ? normalized
+    : [
+        {
+          type: PARAGRAPH,
+          children: [{ text: '' }],
+        } as ParagraphElement,
+      ]
 }
 
 // The following HTML tags can only contain inline elements
@@ -707,7 +676,6 @@ const BLOCK_TAGS = {
   H4: HEADING_FOUR,
   H5: HEADING_FIVE,
   P: PARAGRAPH,
-  BLOCKQUOTE: BLOCK_QUOTE,
   PRE: CODE_BLOCK,
 }
 

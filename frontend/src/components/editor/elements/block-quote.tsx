@@ -1,63 +1,161 @@
-import { Editor, Node, Point, Range, Transforms } from 'slate'
+import { Editor, Element, Node, Path, Range, Text as SlateText, Transforms } from 'slate'
 import { RenderElementProps } from 'slate-react'
 
-import { BLOCK_QUOTE, PARAGRAPH } from '../types'
+import {
+  BLOCK_QUOTE,
+  LIST_ITEM,
+  PARAGRAPH,
+  ParagraphElement,
+  isInlineElementOrText,
+} from '../types'
 import { findElement, isElementActive } from '../utils'
-import { insertNewParagraph } from './paragraph'
 
 export function withBlockQuote(editor: Editor) {
-  const { insertBreak, insertText } = editor
+  const { insertBreak, normalizeNode } = editor
 
-  // When pressing `enter` in a block-quote:
-  // 1. If not at the end of the line, insert `\n`
-  // 2. If at the end of the line, and the previous character is not `\n`, insert `\n`
-  // 3. If at the end of the line, and the previous character is `\n`, delete `\n` and insert a new paragraph
   editor.insertBreak = () => {
     const { selection } = editor
 
     if (selection && Range.isCollapsed(selection)) {
-      const entry = findElement(editor, BLOCK_QUOTE)
+      const quoteEntry = findElement(editor, BLOCK_QUOTE)
 
-      if (entry) {
-        const [node, path] = entry
-        const endPoint = Editor.end(editor, path)
+      if (quoteEntry) {
+        const [, quotePath] = quoteEntry
+        const blockEntry = Editor.above(editor, {
+          match: (node) =>
+            Element.isElement(node) && Editor.isBlock(editor, node) && node.type !== BLOCK_QUOTE,
+          mode: 'lowest',
+        })
 
-        // If the cursor is at the end of a block-quote
-        if (Point.equals(endPoint, selection.focus)) {
-          const content = Node.string(node)
-          // If the last character is `\n`
-          if (content.endsWith('\n')) {
-            // Then delete it
-            editor.deleteBackward('character')
-            // And insert a paragraph
-            insertNewParagraph(editor)
+        if (blockEntry) {
+          const [blockNode, blockPath] = blockEntry
+          const quoteNode = Node.get(editor, quotePath)
+          const blockIsDirectQuoteChild = Path.equals(Path.parent(blockPath), quotePath)
+          const blockIsLastQuoteChild =
+            Element.isElement(quoteNode) &&
+            blockPath[blockPath.length - 1] === quoteNode.children.length - 1
+
+          if (
+            Element.isElement(blockNode) &&
+            blockNode.type === PARAGRAPH &&
+            Node.string(blockNode) === '' &&
+            blockIsDirectQuoteChild &&
+            blockIsLastQuoteChild
+          ) {
+            exitBlockQuote(editor, quotePath, blockPath)
             return
           }
         }
-
-        insertText('\n')
-        return
       }
     }
 
     insertBreak()
   }
 
+  editor.normalizeNode = (entry) => {
+    const [node, path] = entry
+
+    if (Element.isElement(node) && node.type === BLOCK_QUOTE) {
+      if (node.children.length === 0) {
+        Transforms.insertNodes(editor, createParagraph(), { at: path.concat(0) })
+        return
+      }
+
+      for (const [child, childPath] of Node.children(editor, path)) {
+        if (!Element.isElement(child) || isInlineElementOrText(child)) {
+          wrapQuoteInlineRun(editor, path, childPath)
+          return
+        }
+      }
+    }
+
+    normalizeNode(entry)
+  }
+
   return editor
 }
 
 export function toggleBlockQuote(editor: Editor) {
-  // Block-quote can only switch between paragraphs
-  if (!isElementActive(editor, [BLOCK_QUOTE, PARAGRAPH])) {
+  if (editor.selection === null) {
     return
   }
 
   const active = isElementActive(editor, BLOCK_QUOTE)
-  const newType = active ? PARAGRAPH : BLOCK_QUOTE
 
-  Transforms.setNodes(editor, { type: newType }, { mode: 'lowest' })
+  if (active) {
+    Transforms.unwrapNodes(editor, {
+      match: (node) => Element.isElement(node) && node.type === BLOCK_QUOTE,
+      split: true,
+    })
+    return
+  }
+
+  Transforms.wrapNodes(
+    editor,
+    { type: BLOCK_QUOTE, children: [] },
+    {
+      match: (node) =>
+        Element.isElement(node) &&
+        Editor.isBlock(editor, node) &&
+        node.type !== BLOCK_QUOTE &&
+        node.type !== LIST_ITEM,
+      mode: 'highest',
+      split: true,
+    },
+  )
 }
 
 export function BlockQuote({ attributes, children }: RenderElementProps) {
   return <blockquote {...attributes}>{children}</blockquote>
+}
+
+function createParagraph(): ParagraphElement {
+  return {
+    type: PARAGRAPH,
+    children: [{ text: '' }],
+  }
+}
+
+function exitBlockQuote(editor: Editor, quotePath: Path, emptyBlockPath: Path) {
+  const quoteNode = Node.get(editor, quotePath)
+  if (!Element.isElement(quoteNode)) {
+    return
+  }
+
+  const at = quoteNode.children.length === 1 ? quotePath : Path.next(quotePath)
+
+  Editor.withoutNormalizing(editor, () => {
+    if (quoteNode.children.length === 1) {
+      Transforms.removeNodes(editor, { at: quotePath })
+    } else {
+      Transforms.removeNodes(editor, { at: emptyBlockPath })
+    }
+
+    Transforms.insertNodes(editor, createParagraph(), { at, select: true })
+  })
+}
+
+function wrapQuoteInlineRun(editor: Editor, quotePath: Path, startPath: Path) {
+  let endPath = startPath
+
+  for (const [, childPath] of Node.children(editor, quotePath)) {
+    if (childPath[childPath.length - 1] <= startPath[startPath.length - 1]) {
+      continue
+    }
+
+    const child = Node.get(editor, childPath)
+    if (Element.isElement(child) && !isInlineElementOrText(child)) {
+      break
+    }
+    endPath = childPath
+  }
+
+  Transforms.wrapNodes(editor, createParagraph(), {
+    at: Editor.range(editor, startPath, endPath),
+    match: (node, path) =>
+      path.length === quotePath.length + 1 &&
+      Path.equals(Path.parent(path), quotePath) &&
+      (SlateText.isText(node) || (Element.isElement(node) && isInlineElementOrText(node))),
+    split: true,
+  })
 }

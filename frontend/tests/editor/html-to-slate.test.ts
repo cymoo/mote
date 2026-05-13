@@ -1,4 +1,4 @@
-import { fromHtml } from '../../src/components/editor/html'
+import { fromHtml, toHtml } from '../../src/components/editor/html'
 
 test('convert html string to slate nodes', () => {
   const inputs: Array<[string, object[]]> = [
@@ -46,30 +46,43 @@ test('convert html string to slate nodes', () => {
 })
 
 test('block-quote html round-trip: <br> preserves newlines', () => {
-  // This is the format produced by toHtml() for a multi-line block-quote.
   // fromHtml() must decode <br> as '\n', not as empty string.
   const cases: Array<[string, object]> = [
     // Single-line (no <br>) — regression guard
     [
       '<blockquote><p>hello</p></blockquote>',
-      { type: 'block-quote', children: [{ text: 'hello' }] },
+      { type: 'block-quote', children: [{ type: 'paragraph', children: [{ text: 'hello' }] }] },
     ],
     // Multi-line: <br> inside <p> that also has text siblings
     [
       '<blockquote><p>line1<br>line2</p></blockquote>',
-      { type: 'block-quote', children: [{ text: 'line1' }, { text: '\n' }, { text: 'line2' }] },
+      {
+        type: 'block-quote',
+        children: [
+          { type: 'paragraph', children: [{ text: 'line1' }, { text: '\n' }, { text: 'line2' }] },
+        ],
+      },
     ],
     // Empty block-quote: <p><br></p> — <br> is the only childNode → empty text
     [
       '<blockquote><p><br></p></blockquote>',
-      { type: 'block-quote', children: [{ text: '' }] },
+      { type: 'block-quote', children: [{ type: 'paragraph', children: [{ text: '' }] }] },
     ],
     // Marks are preserved across the <br>
     [
       '<blockquote><p><strong>bold</strong><br><em>italic</em></p></blockquote>',
       {
         type: 'block-quote',
-        children: [{ text: 'bold', bold: true }, { text: '\n' }, { text: 'italic', italic: true }],
+        children: [
+          {
+            type: 'paragraph',
+            children: [
+              { text: 'bold', bold: true },
+              { text: '\n' },
+              { text: 'italic', italic: true },
+            ],
+          },
+        ],
       },
     ],
   ]
@@ -81,14 +94,17 @@ test('block-quote html round-trip: <br> preserves newlines', () => {
   }
 })
 
-test('block-quote paste: nested block-level children are separated by newlines', () => {
+test('block-quote paste: nested block-level children are preserved', () => {
   const cases: Array<[string, object]> = [
     // Multiple paragraphs
     [
       '<blockquote><p>Para 1</p><p>Para 2</p></blockquote>',
       {
         type: 'block-quote',
-        children: [{ text: 'Para 1' }, { text: '\n' }, { text: 'Para 2' }],
+        children: [
+          { type: 'paragraph', children: [{ text: 'Para 1' }] },
+          { type: 'paragraph', children: [{ text: 'Para 2' }] },
+        ],
       },
     ],
     // Paragraph followed by unordered list
@@ -97,11 +113,20 @@ test('block-quote paste: nested block-level children are separated by newlines',
       {
         type: 'block-quote',
         children: [
-          { text: 'Text' },
-          { text: '\n' },
-          { text: 'Item 1' },
-          { text: '\n' },
-          { text: 'Item 2' },
+          { type: 'paragraph', children: [{ text: 'Text' }] },
+          {
+            type: 'bulleted-list',
+            children: [
+              {
+                type: 'list-item',
+                children: [{ type: 'paragraph', children: [{ text: 'Item 1' }] }],
+              },
+              {
+                type: 'list-item',
+                children: [{ type: 'paragraph', children: [{ text: 'Item 2' }] }],
+              },
+            ],
+          },
         ],
       },
     ],
@@ -110,7 +135,15 @@ test('block-quote paste: nested block-level children are separated by newlines',
       '<blockquote><ol><li>A</li><li>B</li></ol></blockquote>',
       {
         type: 'block-quote',
-        children: [{ text: 'A' }, { text: '\n' }, { text: 'B' }],
+        children: [
+          {
+            type: 'numbered-list',
+            children: [
+              { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'A' }] }] },
+              { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'B' }] }] },
+            ],
+          },
+        ],
       },
     ],
   ]
@@ -122,3 +155,22 @@ test('block-quote paste: nested block-level children are separated by newlines',
   }
 })
 
+test('block-quote html serialization preserves nested blocks', () => {
+  const node = {
+    type: 'block-quote',
+    children: [
+      { type: 'paragraph', children: [{ text: 'Text' }] },
+      {
+        type: 'bulleted-list',
+        children: [
+          { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'Item 1' }] }] },
+          { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'Item 2' }] }] },
+        ],
+      },
+    ],
+  }
+
+  expect(toHtml(node)).toBe(
+    '<blockquote><p>Text</p><ul><li><p>Item 1</p></li><li><p>Item 2</p></li></ul></blockquote>',
+  )
+})

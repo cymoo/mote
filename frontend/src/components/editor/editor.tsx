@@ -21,18 +21,18 @@ import { withHashTag } from './elements/hash-tag'
 import { withHeading } from './elements/heading'
 import { handleMoveImage, withImage } from './elements/image'
 import { withLink } from './elements/link'
-import { withList, deIndentList, indentList } from './elements/list'
+import { deIndentList, indentList, withList } from './elements/list'
 import {
   withAvoidEmptyChildren,
   withResetToParagraphWhenDeleteAtBlockStart,
 } from './elements/plugins'
-import { withTable, moveToNextTableCell, moveToPrevTableCell } from './elements/table'
+import { moveToNextTableCell, moveToPrevTableCell, withTable } from './elements/table'
 import { HashTagSelect } from './extensions/hashtag-select'
 import { withMarkdownShortcuts } from './extensions/markdown'
 import { withMatchBrackets } from './extensions/match-brackets'
 import { withPasteHtml } from './html'
 import { Leaf } from './leaf'
-import { BLOCK_QUOTE, CHECK_LIST, CODE_BLOCK, HEADINGS, IMAGE, LIST_ITEM, TABLE_CELL } from './types'
+import { CHECK_LIST, CODE_BLOCK, HEADINGS, IMAGE, LIST_ITEM, TABLE_CELL } from './types'
 import {
   findElement,
   isEditorEmpty,
@@ -98,12 +98,7 @@ export function MbEditor({
         withAvoidEmptyChildren,
         withMarkdownShortcuts,
         withMatchBrackets,
-        withResetToParagraphWhenDeleteAtBlockStart(
-          ...HEADINGS,
-          CHECK_LIST,
-          CODE_BLOCK,
-          BLOCK_QUOTE,
-        ),
+        withResetToParagraphWhenDeleteAtBlockStart(...HEADINGS, CHECK_LIST, CODE_BLOCK),
         withBlockQuote,
         withCodeBlock,
         withCheckList,
