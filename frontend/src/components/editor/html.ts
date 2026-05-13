@@ -317,7 +317,10 @@ export function fromHtml(
   // Handle `<br />` nodes
   if (el instanceof HTMLBRElement) {
     const parent = el.parentElement
-    if (parent && parent.childElementCount === 1) {
+    // Use childNodes (not childElementCount) so text-node siblings are counted.
+    // `<p><br></p>` has childNodes.length === 1 → empty paragraph.
+    // `<p>text<br>text</p>` has childNodes.length === 3 → line break.
+    if (parent && parent.childNodes.length === 1) {
       return { text: '' }
     } else {
       return { text: '\n' }
@@ -413,6 +416,18 @@ export function fromHtml(
   // NOTE: Remove the header (language identifier, etc.) from ChatGPT-generated code blocks.
   if (nodeName === 'DIV' && el.classList.contains('bg-token-main-surface-secondary')) {
     return null
+  }
+
+  // Block-quote: flatten nested block-level children with '\n' separators so that
+  // pasted HTML like <blockquote><p>Para</p><ul><li>item</li></ul></blockquote>
+  // and the save/load round-trip (<blockquote><p>text<br>text</p></blockquote>)
+  // both preserve newline boundaries.
+  if (isValidBlockNode && nodeName === 'BLOCKQUOTE') {
+    const bqChildren = normalizeBlockquoteChildren(el, newMarks)
+    return {
+      type: BLOCK_QUOTE,
+      children: bqChildren.length > 0 ? bqChildren : [{ text: '' }],
+    }
   }
 
   if (isValidBlockNode && Object.keys(BLOCK_TAGS).includes(nodeName)) {
@@ -615,6 +630,73 @@ function normalizeListItemChildren(children: Descendant[]): Descendant[] {
   }
 
   return newNodes
+}
+
+// Block-level HTML element names that act as paragraph boundaries inside a <blockquote>.
+const BLOCK_NAMES_IN_QUOTE = new Set([
+  'P',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'UL',
+  'OL',
+  'PRE',
+  'BLOCKQUOTE',
+])
+
+// Flatten the children of a <blockquote> element into inline Slate nodes,
+// inserting '\n' text nodes between consecutive block-level children so that
+// paragraph / list boundaries are preserved in the flat block-quote model.
+function normalizeBlockquoteChildren(
+  el: HTMLElement,
+  marks: Record<string, boolean>,
+): Descendant[] {
+  const flat: Descendant[] = []
+  let needsSep = false
+
+  for (const child of el.childNodes) {
+    const isBlock = child instanceof HTMLElement && BLOCK_NAMES_IN_QUOTE.has(child.nodeName)
+
+    if (isBlock) {
+      if (needsSep) flat.push({ text: '\n' })
+
+      if (child.nodeName === 'UL' || child.nodeName === 'OL') {
+        // Flatten list items, separated by '\n'.
+        const liEls = Array.from(child.children).filter((c) => c.nodeName === 'LI')
+        for (let i = 0; i < liEls.length; i++) {
+          if (i > 0) flat.push({ text: '\n' })
+          const liNodes = Array.from(liEls[i].childNodes)
+            .map((n) => fromHtml(n, marks, false))
+            .flat()
+            .filter((n): n is Descendant => n !== null)
+          flat.push(...liNodes)
+        }
+      } else {
+        // For P, headings, PRE, nested blockquote: extract inline content.
+        const inlineNodes = Array.from(child.childNodes)
+          .map((n) => fromHtml(n, marks, false))
+          .flat()
+          .filter((n): n is Descendant => n !== null)
+        flat.push(...inlineNodes)
+      }
+
+      needsSep = true
+    } else {
+      const node = fromHtml(child, marks, false)
+      if (node !== null) {
+        const nodes = Array.isArray(node) ? node : [node]
+        flat.push(...nodes)
+        if (nodes.some((n) => !SlateText.isText(n) || n.text.trim() !== '')) {
+          needsSep = true
+        }
+      }
+    }
+  }
+
+  return ignoreConsecutiveEmptyText(flat)
 }
 
 // The following HTML tags can only contain inline elements
