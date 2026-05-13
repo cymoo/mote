@@ -46,7 +46,7 @@ export const HEADINGS = [
 export type HeadingType = (typeof HEADINGS)[number]
 
 // Non-nested blocks, which can only contain inline or text elements.
-export const FLAT_BLOCKS = [...HEADINGS, PARAGRAPH, BLOCK_QUOTE, CODE_BLOCK, CHECK_LIST] as const
+export const FLAT_BLOCKS = [...HEADINGS, PARAGRAPH, CODE_BLOCK, CHECK_LIST] as const
 export type FlatBlockType = (typeof FLAT_BLOCKS)[number]
 
 export const LISTS = [BULLETED_LIST, NUMBERED_LIST] as const

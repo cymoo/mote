@@ -1,4 +1,4 @@
-import { fromHtml } from '../../src/components/editor/html'
+import { fromHtml, toHtml } from '../../src/components/editor/html'
 
 test('convert html string to slate nodes', () => {
   const inputs: Array<[string, object[]]> = [
@@ -43,4 +43,134 @@ test('convert html string to slate nodes', () => {
     const result = fromHtml(node)
     expect(result).toEqual(output)
   }
+})
+
+test('block-quote html round-trip: <br> preserves newlines', () => {
+  // fromHtml() must decode <br> as '\n', not as empty string.
+  const cases: Array<[string, object]> = [
+    // Single-line (no <br>) — regression guard
+    [
+      '<blockquote><p>hello</p></blockquote>',
+      { type: 'block-quote', children: [{ type: 'paragraph', children: [{ text: 'hello' }] }] },
+    ],
+    // Multi-line: <br> inside <p> that also has text siblings
+    [
+      '<blockquote><p>line1<br>line2</p></blockquote>',
+      {
+        type: 'block-quote',
+        children: [
+          { type: 'paragraph', children: [{ text: 'line1' }, { text: '\n' }, { text: 'line2' }] },
+        ],
+      },
+    ],
+    // Empty block-quote: <p><br></p> — <br> is the only childNode → empty text
+    [
+      '<blockquote><p><br></p></blockquote>',
+      { type: 'block-quote', children: [{ type: 'paragraph', children: [{ text: '' }] }] },
+    ],
+    // Marks are preserved across the <br>
+    [
+      '<blockquote><p><strong>bold</strong><br><em>italic</em></p></blockquote>',
+      {
+        type: 'block-quote',
+        children: [
+          {
+            type: 'paragraph',
+            children: [
+              { text: 'bold', bold: true },
+              { text: '\n' },
+              { text: 'italic', italic: true },
+            ],
+          },
+        ],
+      },
+    ],
+  ]
+
+  for (const [input, expected] of cases) {
+    const body = new DOMParser().parseFromString(input, 'text/html').body
+    const result = fromHtml(body)
+    expect(result).toEqual([expected])
+  }
+})
+
+test('block-quote paste: nested block-level children are preserved', () => {
+  const cases: Array<[string, object]> = [
+    // Multiple paragraphs
+    [
+      '<blockquote><p>Para 1</p><p>Para 2</p></blockquote>',
+      {
+        type: 'block-quote',
+        children: [
+          { type: 'paragraph', children: [{ text: 'Para 1' }] },
+          { type: 'paragraph', children: [{ text: 'Para 2' }] },
+        ],
+      },
+    ],
+    // Paragraph followed by unordered list
+    [
+      '<blockquote><p>Text</p><ul><li>Item 1</li><li>Item 2</li></ul></blockquote>',
+      {
+        type: 'block-quote',
+        children: [
+          { type: 'paragraph', children: [{ text: 'Text' }] },
+          {
+            type: 'bulleted-list',
+            children: [
+              {
+                type: 'list-item',
+                children: [{ type: 'paragraph', children: [{ text: 'Item 1' }] }],
+              },
+              {
+                type: 'list-item',
+                children: [{ type: 'paragraph', children: [{ text: 'Item 2' }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    // Ordered list only
+    [
+      '<blockquote><ol><li>A</li><li>B</li></ol></blockquote>',
+      {
+        type: 'block-quote',
+        children: [
+          {
+            type: 'numbered-list',
+            children: [
+              { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'A' }] }] },
+              { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'B' }] }] },
+            ],
+          },
+        ],
+      },
+    ],
+  ]
+
+  for (const [input, expected] of cases) {
+    const body = new DOMParser().parseFromString(input, 'text/html').body
+    const result = fromHtml(body)
+    expect(result).toEqual([expected])
+  }
+})
+
+test('block-quote html serialization preserves nested blocks', () => {
+  const node = {
+    type: 'block-quote',
+    children: [
+      { type: 'paragraph', children: [{ text: 'Text' }] },
+      {
+        type: 'bulleted-list',
+        children: [
+          { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'Item 1' }] }] },
+          { type: 'list-item', children: [{ type: 'paragraph', children: [{ text: 'Item 2' }] }] },
+        ],
+      },
+    ],
+  }
+
+  expect(toHtml(node)).toBe(
+    '<blockquote><p>Text</p><ul><li><p>Item 1</p></li><li><p>Item 2</p></li></ul></blockquote>',
+  )
 })

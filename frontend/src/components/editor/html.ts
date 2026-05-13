@@ -1,3 +1,5 @@
+import { marked } from 'marked'
+import toast from 'react-hot-toast'
 import {
   Descendant,
   Editor,
@@ -7,8 +9,6 @@ import {
   Transforms,
 } from 'slate'
 import { ReactEditor } from 'slate-react'
-import { marked } from 'marked'
-import toast from 'react-hot-toast'
 
 import { t } from '@/components/translation.tsx'
 
@@ -34,6 +34,7 @@ import {
   NUMBERED_LIST,
   NumberedListElement,
   PARAGRAPH,
+  ParagraphElement,
   TABLE,
   TABLE_CELL,
   TABLE_ROW,
@@ -82,8 +83,7 @@ export function withPasteHtml(editor: Editor): Editor {
             )
             .filter(
               (node) =>
-                SlateElement.isElement(node) ||
-                (SlateText.isText(node) && node.text.trim() !== ''),
+                SlateElement.isElement(node) || (SlateText.isText(node) && node.text.trim() !== ''),
             )
             .map((node) =>
               SlateText.isText(node) || Editor.isInline(editor, node)
@@ -198,7 +198,7 @@ export function toHtml(node: Descendant, parent?: SlateElement): string {
 
   switch (node.type) {
     case BLOCK_QUOTE:
-      return `<blockquote><p>${children}</p></blockquote>`
+      return `<blockquote>${children}</blockquote>`
     case CODE_BLOCK:
       return `<pre><code>${children}</code></pre>`
     case BULLETED_LIST:
@@ -317,7 +317,10 @@ export function fromHtml(
   // Handle `<br />` nodes
   if (el instanceof HTMLBRElement) {
     const parent = el.parentElement
-    if (parent && parent.childElementCount === 1) {
+    // Use childNodes (not childElementCount) so text-node siblings are counted.
+    // `<p><br></p>` has childNodes.length === 1 → empty paragraph.
+    // `<p>text<br>text</p>` has childNodes.length === 3 → line break.
+    if (parent && parent.childNodes.length === 1) {
       return { text: '' }
     } else {
       return { text: '\n' }
@@ -360,7 +363,7 @@ export function fromHtml(
 
   let isValidChildBlockNode = isValidBlockNode
 
-  // All children of `p`, `heading`, `code-block`, and `block-quote` must be inlines.
+  // All children of `p`, `heading`, and `code-block` must be inlines.
   if (Object.keys(BLOCK_TAGS).includes(nodeName)) {
     isValidChildBlockNode = false
   }
@@ -415,6 +418,13 @@ export function fromHtml(
     return null
   }
 
+  if (isValidBlockNode && nodeName === 'BLOCKQUOTE') {
+    return {
+      type: BLOCK_QUOTE,
+      children: normalizeBlockContainerChildren(children),
+    }
+  }
+
   if (isValidBlockNode && Object.keys(BLOCK_TAGS).includes(nodeName)) {
     return {
       type: BLOCK_TAGS[nodeName as keyof typeof BLOCK_TAGS],
@@ -436,9 +446,7 @@ export function fromHtml(
         .map((n) => fromHtml(n, newMarks, false))
         .flat()
         .filter((n): n is Descendant => n !== null)
-      let filtered = ignoreConsecutiveEmptyText(
-        taskChildren.length ? taskChildren : [{ text: '' }],
-      )
+      let filtered = ignoreConsecutiveEmptyText(taskChildren.length ? taskChildren : [{ text: '' }])
       // Trim leading whitespace from the first text node (marked inserts a space after the input)
       const first = filtered[0]
       if (first && SlateText.isText(first)) {
@@ -617,6 +625,49 @@ function normalizeListItemChildren(children: Descendant[]): Descendant[] {
   return newNodes
 }
 
+function normalizeBlockContainerChildren(children: Descendant[]): Descendant[] {
+  const normalized: Descendant[] = []
+  let inlineNodes: Descendant[] = []
+
+  const flushInlineNodes = () => {
+    const nodes = ignoreConsecutiveEmptyText(inlineNodes)
+    inlineNodes = []
+
+    if (nodes.length === 0) {
+      return
+    }
+
+    if (nodes.every((node) => SlateText.isText(node) && node.text.trim() === '')) {
+      return
+    }
+
+    normalized.push({
+      type: PARAGRAPH,
+      children: nodes,
+    } as ParagraphElement)
+  }
+
+  for (const child of children) {
+    if (isInlineElementOrText(child)) {
+      inlineNodes.push(child)
+    } else {
+      flushInlineNodes()
+      normalized.push(child)
+    }
+  }
+
+  flushInlineNodes()
+
+  return normalized.length > 0
+    ? normalized
+    : [
+        {
+          type: PARAGRAPH,
+          children: [{ text: '' }],
+        } as ParagraphElement,
+      ]
+}
+
 // The following HTML tags can only contain inline elements
 const BLOCK_TAGS = {
   H1: HEADING_ONE,
@@ -625,7 +676,6 @@ const BLOCK_TAGS = {
   H4: HEADING_FOUR,
   H5: HEADING_FIVE,
   P: PARAGRAPH,
-  BLOCKQUOTE: BLOCK_QUOTE,
   PRE: CODE_BLOCK,
 }
 
