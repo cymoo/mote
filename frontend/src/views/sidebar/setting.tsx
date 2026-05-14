@@ -31,7 +31,7 @@ export function SettingDialog({ className, ...props }: ComponentProps<typeof But
           <T name="settings" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl!">
+      <DialogContent className="max-h-[min(90vh,760px)] max-w-2xl! overflow-y-auto">
         <DialogHeading>
           <T name="settings" />
         </DialogHeading>

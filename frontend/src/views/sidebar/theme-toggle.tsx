@@ -31,9 +31,9 @@ export const COLOR_THEMES = [
     swatches: ['82 28% 95%', '142 42% 34%', '128 20% 10%'],
   },
   {
-    id: 'dune',
-    labelKey: 'themeDune',
-    swatches: ['39 87% 96%', '28 88% 47%', '27 28% 11%'],
+    id: 'aurora',
+    labelKey: 'themeAurora',
+    swatches: ['252 100% 98%', '169 88% 42%', '263 44% 12%'],
   },
   {
     id: 'fjord',
@@ -41,14 +41,14 @@ export const COLOR_THEMES = [
     swatches: ['207 48% 97%', '199 86% 39%', '216 32% 10%'],
   },
   {
-    id: 'rouge',
-    labelKey: 'themeRouge',
-    swatches: ['355 42% 97%', '350 74% 38%', '344 32% 9%'],
+    id: 'blueprint',
+    labelKey: 'themeBlueprint',
+    swatches: ['218 72% 95%', '222 84% 45%', '45 96% 54%'],
   },
   {
-    id: 'voltage',
-    labelKey: 'themeVoltage',
-    swatches: ['74 100% 96%', '82 96% 55%', '230 38% 7%'],
+    id: 'candy',
+    labelKey: 'themeCandy',
+    swatches: ['18 100% 96%', '188 88% 42%', '315 60% 14%'],
   },
 ] as const satisfies readonly {
   id: string
@@ -57,6 +57,12 @@ export const COLOR_THEMES = [
 }[]
 
 export type ColorTheme = (typeof COLOR_THEMES)[number]['id']
+
+const LEGACY_COLOR_THEME_MAP: Record<string, ColorTheme> = {
+  dune: 'aurora',
+  rouge: 'blueprint',
+  voltage: 'candy',
+}
 
 export function ThemeToggle({ className, ...props }: ComponentProps<typeof Button>) {
   const { theme, setTheme } = useTheme()
@@ -110,6 +116,11 @@ const getInitialThemeMode = (): ThemeMode => {
 
 const getInitialColorTheme = (): ColorTheme => {
   const storedColorTheme = localStorage.getItem(COLOR_THEME_STORE_KEY)
+  const migratedColorTheme = storedColorTheme ? LEGACY_COLOR_THEME_MAP[storedColorTheme] : undefined
+  if (migratedColorTheme) {
+    localStorage.setItem(COLOR_THEME_STORE_KEY, migratedColorTheme)
+    return migratedColorTheme
+  }
   if (isColorTheme(storedColorTheme)) return storedColorTheme
   return 'classic'
 }

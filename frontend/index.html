@@ -19,17 +19,26 @@
           'ink',
           'sakura',
           'moss',
-          'dune',
+          'aurora',
           'fjord',
-          'rouge',
-          'voltage',
+          'blueprint',
+          'candy',
         ]
+        const legacyColorThemes = {
+          dune: 'aurora',
+          rouge: 'blueprint',
+          voltage: 'candy',
+        }
         let theme = localStorage.getItem('theme')
         if (theme !== 'light' && theme !== 'dark') {
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         }
 
         let colorTheme = localStorage.getItem('colorTheme')
+        if (legacyColorThemes[colorTheme]) {
+          colorTheme = legacyColorThemes[colorTheme]
+          localStorage.setItem('colorTheme', colorTheme)
+        }
         if (!colorThemes.includes(colorTheme)) {
           colorTheme = 'classic'
         }
