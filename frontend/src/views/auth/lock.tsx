@@ -48,8 +48,8 @@ export function PrivacyCoverOverlay() {
       className="fixed inset-0 z-[9999] cursor-default focus:outline-none"
       style={{
         backgroundColor: 'rgba(128, 128, 128, 0.3)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
       }}
       onKeyDown={(event) => {
         if (event.key === 'Tab') event.preventDefault()
