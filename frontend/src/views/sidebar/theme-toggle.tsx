@@ -48,7 +48,7 @@ export const COLOR_THEMES = [
   {
     id: 'candy',
     labelKey: 'themeCandy',
-    swatches: ['44 36% 98%', '34 84% 40%', '24 30% 9%'],
+    swatches: ['188 30% 98%', '182 78% 52%', '192 52% 7%'],
   },
 ] as const satisfies readonly {
   id: string
