@@ -16,6 +16,9 @@ import { T, t, useLang } from '@/components/translation.tsx'
 
 import { useIdleTimeout } from '@/views/auth/hooks.tsx'
 
+import { COLOR_THEMES, useTheme } from '@/views/sidebar/theme-toggle.tsx'
+import type { ColorTheme, ThemeMode } from '@/views/sidebar/theme-toggle.tsx'
+
 export function SettingDialog({ className, ...props }: ComponentProps<typeof Button>) {
   return (
     <Dialog>
@@ -28,7 +31,7 @@ export function SettingDialog({ className, ...props }: ComponentProps<typeof But
           <T name="settings" />
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-2xl!">
         <DialogHeading>
           <T name="settings" />
         </DialogHeading>
@@ -45,6 +48,7 @@ export function SettingDialog({ className, ...props }: ComponentProps<typeof But
 export function Setting(props: ComponentProps<'div'>) {
   const [fs, setFs] = useState(window.localStorage.getItem('baseFontSize') || '16px')
   const { timeout, setTimeout } = useIdleTimeout()
+  const { theme, colorTheme, setTheme, setColorTheme } = useTheme()
 
   const { lang, setLang } = useLang()
   const min = t('minute', lang, false)
@@ -53,6 +57,59 @@ export function Setting(props: ComponentProps<'div'>) {
   return (
     <div {...props}>
       <h3 className="text-foreground/80 mb-3">
+        <T name="theme" />
+      </h3>
+      <RadioButton<ColorTheme>
+        value={colorTheme}
+        onChange={(value) => {
+          if (!value) return
+          setColorTheme(value)
+        }}
+        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+        options={COLOR_THEMES.map(({ id, labelKey }) => ({
+          label: <T name={labelKey} />,
+          value: id,
+        }))}
+        renderLabel={(option) => {
+          const item = COLOR_THEMES.find((theme) => theme.id === option.value)
+          return (
+            <label
+              className={cx(
+                'bg-card text-card-foreground block min-h-24 rounded-xl border border-input p-3 text-left text-sm transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                option.value === colorTheme
+                  ? 'border-primary bg-primary/5 ring-1 ring-primary/60'
+                  : undefined,
+              )}
+            >
+              <span className="font-medium">{option.label}</span>
+              <span className="mt-3 flex gap-1" aria-hidden="true">
+                {item?.swatches.map((swatch) => (
+                  <span
+                    key={swatch}
+                    className="h-8 flex-1 rounded-md border border-black/10 shadow-inner dark:border-white/10"
+                    style={{ backgroundColor: `hsl(${swatch})` }}
+                  />
+                ))}
+              </span>
+            </label>
+          )
+        }}
+      />
+      <h3 className="text-foreground/80 mt-4 mb-3">
+        <T name="appearance" />
+      </h3>
+      <RadioButton<ThemeMode>
+        value={theme}
+        onChange={(value) => {
+          if (!value) return
+          setTheme(value)
+        }}
+        options={[
+          { label: <T name="lightMode" />, value: 'light' },
+          { label: <T name="darkMode" />, value: 'dark' },
+        ]}
+      />
+      <h3 className="text-foreground/80 mt-4 mb-3">
         <T name="fontSize" />
       </h3>
       <RadioButton

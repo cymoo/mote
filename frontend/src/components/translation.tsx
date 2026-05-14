@@ -43,14 +43,14 @@ export function useLang() {
   return useContext(LangContext)
 }
 
-type Keys = keyof typeof en
+export type TranslationKey = keyof typeof en
 
 export function T({
   name,
   className,
   capitalized = true,
 }: {
-  name: Keys
+  name: TranslationKey
   capitalized?: boolean
   className?: string
 }) {
@@ -69,7 +69,7 @@ export function T({
 }
 
 export function t(
-  name: Keys,
+  name: TranslationKey,
   lang: LangType = 'en',
   capitalized = true,
   ...replacements: string[]

@@ -12,6 +12,33 @@
     <link rel="apple-touch-icon" href="/logo_192.png" />
     <link rel="manifest" href="/manifest.json" />
     <title>mote</title>
+    <script>
+      ;(() => {
+        const colorThemes = [
+          'classic',
+          'ink',
+          'sakura',
+          'moss',
+          'dune',
+          'fjord',
+          'rouge',
+          'voltage',
+        ]
+        let theme = localStorage.getItem('theme')
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        }
+
+        let colorTheme = localStorage.getItem('colorTheme')
+        if (!colorThemes.includes(colorTheme)) {
+          colorTheme = 'classic'
+        }
+
+        document.documentElement.dataset.theme = theme
+        document.documentElement.dataset.colorTheme = colorTheme
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
