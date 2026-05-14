@@ -18,37 +18,37 @@ export const COLOR_THEMES = [
   {
     id: 'ink',
     labelKey: 'themeInk',
-    swatches: ['45 38% 96%', '24 78% 40%', '36 12% 9%'],
+    swatches: ['0 12% 99%', '352 82% 38%', '355 22% 8%'],
   },
   {
     id: 'sakura',
     labelKey: 'themeSakura',
-    swatches: ['330 70% 98%', '340 82% 57%', '318 24% 12%'],
+    swatches: ['220 20% 99%', '185 100% 34%', '225 30% 6%'],
   },
   {
     id: 'moss',
     labelKey: 'themeMoss',
-    swatches: ['82 28% 95%', '142 42% 34%', '128 20% 10%'],
+    swatches: ['160 50% 97%', '163 70% 28%', '165 38% 8%'],
   },
   {
     id: 'aurora',
     labelKey: 'themeAurora',
-    swatches: ['252 100% 98%', '169 88% 42%', '263 44% 12%'],
+    swatches: ['272 65% 98%', '268 72% 42%', '268 46% 8%'],
   },
   {
     id: 'fjord',
     labelKey: 'themeFjord',
-    swatches: ['207 48% 97%', '199 86% 39%', '216 32% 10%'],
+    swatches: ['22 80% 97%', '16 88% 48%', '258 40% 10%'],
   },
   {
     id: 'blueprint',
     labelKey: 'themeBlueprint',
-    swatches: ['218 72% 95%', '222 84% 45%', '45 96% 54%'],
+    swatches: ['38 12% 99%', '22 96% 52%', '0 4% 6%'],
   },
   {
     id: 'candy',
     labelKey: 'themeCandy',
-    swatches: ['18 100% 96%', '188 88% 42%', '315 60% 14%'],
+    swatches: ['42 42% 97%', '35 88% 38%', '26 28% 8%'],
   },
 ] as const satisfies readonly {
   id: string
