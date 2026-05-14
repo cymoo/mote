@@ -129,12 +129,11 @@
     --muted-foreground: 350 10% 46%;
     --popover: 0 0% 100%;
     --popover-foreground: 348 22% 9%;
-    --card: 352 55% 95%;
+    --card: 352 40% 97%;
     --card-foreground: 348 22% 9%;
     --border: 350 22% 87%;
     --input: 350 22% 87%;
     --primary: 350 80% 44%;
-    --primary-foreground: 0 0% 100%;
     --secondary: 350 15% 94%;
     --secondary-foreground: 348 22% 12%;
     --accent: 18 82% 88%;
@@ -184,7 +183,7 @@
     --muted-foreground: 220 8% 46%;
     --popover: 0 0% 100%;
     --popover-foreground: 220 12% 14%;
-    --card: 220 18% 91%;
+    --card: 220 18% 95%;
     --card-foreground: 220 12% 14%;
     --border: 220 16% 84%;
     --input: 220 16% 84%;
@@ -239,7 +238,7 @@
     --muted-foreground: 162 14% 44%;
     --popover: 155 45% 99%;
     --popover-foreground: 164 36% 9%;
-    --card: 158 48% 92%;
+    --card: 158 38% 96%;
     --card-foreground: 164 36% 9%;
     --border: 158 26% 80%;
     --input: 158 26% 80%;
@@ -294,7 +293,7 @@
     --muted-foreground: 268 16% 44%;
     --popover: 0 0% 100%;
     --popover-foreground: 268 40% 9%;
-    --card: 270 54% 93%;
+    --card: 270 44% 96%;
     --card-foreground: 268 40% 9%;
     --border: 270 28% 83%;
     --input: 270 28% 83%;
@@ -349,7 +348,7 @@
     --muted-foreground: 20 14% 44%;
     --popover: 38 70% 100%;
     --popover-foreground: 20 32% 9%;
-    --card: 22 62% 92%;
+    --card: 22 48% 96%;
     --card-foreground: 20 32% 9%;
     --border: 22 40% 82%;
     --input: 22 40% 82%;
@@ -404,7 +403,7 @@
     --muted-foreground: 0 0% 40%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 7%;
-    --card: 30 6% 93%;
+    --card: 30 5% 96%;
     --card-foreground: 0 0% 7%;
     --border: 30 5% 82%;
     --input: 30 5% 82%;
@@ -459,7 +458,7 @@
     --muted-foreground: 32 12% 42%;
     --popover: 48 42% 100%;
     --popover-foreground: 26 28% 9%;
-    --card: 38 52% 91%;
+    --card: 38 40% 96%;
     --card-foreground: 26 28% 9%;
     --border: 36 20% 80%;
     --input: 36 20% 80%;

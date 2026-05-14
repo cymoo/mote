@@ -17,7 +17,7 @@ export function Header({ className, ...props }: ComponentProps<'header'>) {
   return (
     <header className={cx('flex h-10 items-center', className)} {...props}>
       <Button
-        className="pr-2 text-xl font-medium ring-inset hover:bg-transparent"
+        className="pr-2 text-xl font-medium ring-inset hover:bg-transparent [&:hover]:text-foreground"
         variant="ghost"
         aria-label="go to homepage"
         onClick={() => {
