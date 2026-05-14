@@ -45,7 +45,7 @@ export function PrivacyCoverOverlay() {
       ref={ref}
       tabIndex={-1}
       aria-label={t('appLocked', lang)}
-      className="bg-background/40 dark:bg-background/55 fixed inset-0 z-[9999] cursor-default backdrop-blur-2xl backdrop-saturate-50 focus:outline-none"
+      className="fixed inset-0 z-[9999] cursor-default bg-white/60 backdrop-blur-2xl backdrop-saturate-150 focus:outline-none dark:bg-neutral-950/60"
       onKeyDown={(event) => {
         if (event.key === 'Tab') event.preventDefault()
       }}
