@@ -1,10 +1,8 @@
 import { useEffect, useRef } from 'react'
 
-import { LockIcon } from 'lucide-react'
-
 import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
-import { T, t, useLang } from '@/components/translation.tsx'
+import { t, useLang } from '@/components/translation.tsx'
 
 import { usePrivacyCover } from './lock-store.ts'
 
@@ -47,18 +45,15 @@ export function PrivacyCoverOverlay() {
       ref={ref}
       tabIndex={-1}
       aria-label={t('appLocked', lang)}
-      className="fixed inset-0 z-[9999] flex cursor-default items-center justify-center focus:outline-none"
+      className="fixed inset-0 z-[9999] cursor-default focus:outline-none"
       style={{
-        backgroundColor: 'var(--lock-overlay-bg)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        backgroundColor: 'rgba(128, 128, 128, 0.3)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
       }}
       onKeyDown={(event) => {
         if (event.key === 'Tab') event.preventDefault()
       }}
-    >
-      <LockIcon className="size-8 text-foreground/30" aria-hidden="true" />
-      <T name="appLocked" className="sr-only" />
-    </div>
+    />
   )
 }
