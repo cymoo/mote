@@ -97,7 +97,6 @@ function ImageGallery({ items, index, onClose }: PreviewModalProps) {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -130,7 +129,6 @@ function ImageGallery({ items, index, onClose }: PreviewModalProps) {
     return () => {
       lightbox.destroy()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready])
 
   // PhotoSwipe manages its own DOM overlay; this component needs no DOM.

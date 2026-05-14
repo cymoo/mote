@@ -180,7 +180,6 @@ class MouseSensor extends LibMouseSensor {
   static activators = [
     {
       eventName: 'onMouseDown' as const,
-      // eslint-disable-next-line @typescript-eslint/unbound-method
       handler: ({ nativeEvent: event }: MouseEvent, { onActivation }: MouseSensorOptions) => {
         // 2: right-click
         if (event.button === 2) {
@@ -209,7 +208,6 @@ class KeyboardSensor extends LibKeyboardSensor {
       eventName: 'onKeyDown' as const,
       handler: (
         event: React.KeyboardEvent,
-        // eslint-disable-next-line @typescript-eslint/unbound-method
         { keyboardCodes = defaultKeyboardCodes, onActivation },
         { active },
       ) => {
@@ -237,7 +235,6 @@ class KeyboardSensor extends LibKeyboardSensor {
 
   // Sortable in modal - keydown event propagation issue
   // https://github.com/clauderic/dnd-kit/issues/1367
-  /* eslint-disable */
   private attach() {
     this.handleStart()
 

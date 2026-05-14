@@ -6,7 +6,7 @@ import { cx } from '@/utils/css.ts'
 
 import { Button } from '@/components/button.tsx'
 import { useStableNavigate } from '@/components/router.tsx'
-import { T, t, useLang } from '@/components/translation.tsx'
+import { t, useLang } from '@/components/translation.tsx'
 
 import { useCookieAuthSync } from './hooks'
 import { UploadDock } from './upload-dock'

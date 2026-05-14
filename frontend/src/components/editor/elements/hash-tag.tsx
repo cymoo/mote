@@ -120,7 +120,6 @@ export function insertHashTag(editor: Editor, name: string) {
 // Put this at the start and end of an inline component to work around this Chromium bug:
 // https://github.com/ianstormtaylor/slate/blob/main/site/examples/inlines.tsx
 // https://bugs.chromium.org/p/chromium/issues/detail?id=1249405
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const InlineChromiumBugfix = () => (
   <span contentEditable={false} style={{ fontSize: 0 }}>
     {String.fromCodePoint(160) /* Non-breaking space */}

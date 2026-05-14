@@ -225,7 +225,6 @@ function findHash(editor: Editor): Point | null {
   const firstPoint = Editor.start(editor, [])
   let distance = 1
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition,no-constant-condition
   while (true) {
     const beforePos = Editor.before(editor, start, { distance })
     const afterPos = beforePos && Editor.after(editor, beforePos)

@@ -11,7 +11,7 @@ import { ReactNode, useMemo, useState } from 'react'
 import useSWR from 'swr'
 
 import { cx } from '@/utils/css.ts'
-import { formatDate, getTimestampOfDayEnd, getTimestampOfDayStart } from '@/utils/date.ts'
+import { getTimestampOfDayEnd, getTimestampOfDayStart } from '@/utils/date.ts'
 
 import { useStableNavigate } from '@/components/router.tsx'
 import { t, useLang } from '@/components/translation.tsx'

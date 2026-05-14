@@ -1,9 +1,9 @@
 import { UniqueIdentifier } from '@dnd-kit/core'
 import { Plus as PlusIcon, X as XIcon } from 'lucide-react'
 import PhotoSwipe from 'photoswipe'
-import toast from 'react-hot-toast'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
 import 'photoswipe/style.css'
+import toast from 'react-hot-toast'
 import {
   ComponentProps,
   Ref,
@@ -28,7 +28,6 @@ import { URLWithStore } from '@/utils/url'
 import { Button } from './button'
 import { Sortable } from './sortable.tsx'
 import { Spinner } from './spinner'
-import { to } from '@react-spring/web'
 
 export interface Image {
   url: string

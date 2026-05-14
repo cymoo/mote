@@ -6,12 +6,12 @@ import { useNavigate } from 'react-router'
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
 import { t, T, useLang } from '@/components/translation.tsx'
+import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
 import { DriveNode, purgeNodes, restoreNode, trash } from './api'
 import { useShowDotFiles } from './hooks'
 import { TopBar } from './layout'
 import { Breadcrumbs } from './parts'
-import { useShortcuts } from './use-shortcuts'
 import { EmptyState, TrashView } from './views'
 
 export function TrashPage() {

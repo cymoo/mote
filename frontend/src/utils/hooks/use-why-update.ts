@@ -13,7 +13,6 @@ export default function useWhyDidYouUpdate(componentName: string, props: IProps)
   const prevProps = useRef<IProps>({})
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (prevProps.current) {
       const allKeys = Object.keys({ ...prevProps.current, ...props })
       const changedProps: ChangedProps = {}

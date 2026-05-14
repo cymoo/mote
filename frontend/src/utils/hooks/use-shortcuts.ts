@@ -27,7 +27,7 @@ interface Binding {
 type BindingMap = Record<string, Binding>
 
 const isMac =
-  typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform)
+  typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent)
 
 interface Parsed {
   key: string
@@ -104,6 +104,8 @@ export function useShortcuts(map: BindingMap) {
       }
     }
     document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
+    return () => {
+      document.removeEventListener('keydown', handler)
+    }
   }, [])
 }

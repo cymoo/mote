@@ -10,6 +10,7 @@ import { useStableNavigate } from '@/components/router.tsx'
 import { T } from '@/components/translation'
 
 import { Login } from '@/views/auth'
+import { PrivacyCoverOverlay, PrivacyCoverShortcut } from '@/views/auth/lock.tsx'
 import { ContentContainer, PrimaryLayout } from '@/views/layout/layout.tsx'
 import { DrawerOutlet } from '@/views/main/drawer-outlet.tsx'
 import { ErrorPage } from '@/views/main/error-page.tsx'
@@ -167,5 +168,11 @@ function RequireAuth({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  return children
+  return (
+    <>
+      <PrivacyCoverShortcut />
+      {children}
+      <PrivacyCoverOverlay />
+    </>
+  )
 }

@@ -15,7 +15,6 @@ export function formatDate(
   const date = new Date(timestamp)
 
   // Get the user's default locale (e.g., zh-CN, en-US)
-  // eslint-disable-next-line
   const userLocale = navigator.languages?.[0] || navigator.language || 'en-US'
 
   // Format the date using Intl.DateTimeFormat

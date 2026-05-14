@@ -169,5 +169,6 @@
   "sharedMemos": "shared memos",
   "memosWithImages": "memos with images",
   "untaggedMemos": "untagged memos",
-  "noStatsYet": "No activity in this range yet"
+  "noStatsYet": "No activity in this range yet",
+  "appLocked": "app locked"
 }

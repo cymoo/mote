@@ -1,7 +1,8 @@
 import { KeyboardEvent } from 'react'
 
-export const IS_ZH = // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  (navigator.languages?.length ? navigator.languages[0] : navigator.language).startsWith('zh')
+export const IS_ZH = (navigator.languages?.length ? navigator.languages[0] : navigator.language).startsWith(
+  'zh',
+)
 
 export const IS_TOUCH_DEVICE =
   !!navigator.maxTouchPoints || 'ontouchstart' in document.documentElement

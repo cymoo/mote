@@ -7,12 +7,12 @@ import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
 import { useModal } from '@/components/modal.tsx'
 import { T, t, useLang } from '@/components/translation.tsx'
+import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
 import { SharedItem, listAllShares, revokeShare } from './api'
 import { useShowDotFiles } from './hooks'
 import { TopBar } from './layout'
 import { Breadcrumbs } from './parts'
-import { useShortcuts } from './use-shortcuts'
 import { EmptyState, SharedView } from './views'
 
 export function SharedPage() {

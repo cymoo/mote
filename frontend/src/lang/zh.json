@@ -169,5 +169,6 @@
   "sharedMemos": "已分享 memo",
   "memosWithImages": "带图片的 memo",
   "untaggedMemos": "无标签 memo",
-  "noStatsYet": "这个范围内还没有活动"
+  "noStatsYet": "这个范围内还没有活动",
+  "appLocked": "应用已锁定"
 }

@@ -20,7 +20,6 @@ export const useQuote = create<QuoteState>((set) => ({
       return
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     const bg = history.state?.usr?.backgroundLocation as Location | undefined
     if (bg) {
       if (bg.pathname === '/') {

@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router'
 
 import { cx } from '@/utils/css.ts'
+import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
@@ -35,7 +36,6 @@ import { TopBar } from './layout'
 import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
 import { uploadManager } from './upload-manager'
-import { useShortcuts } from './use-shortcuts'
 import { EmptyState, GridView, ListView, SearchEmptyState } from './views'
 
 type ViewMode = 'list' | 'grid'
@@ -305,7 +305,6 @@ export function MyDrivePage() {
       else if (action === 'move') handleMove([n.id])
       else if (action === 'delete') handleDelete([n.id])
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [parentID, lang],
   )
 
