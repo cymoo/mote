@@ -525,6 +525,11 @@
       radial-gradient(circle at 0% 0%, hsl(var(--theme-glow-a) / 0.18), transparent 30rem),
       radial-gradient(circle at 100% 100%, hsl(var(--theme-glow-b) / 0.14), transparent 32rem),
       hsl(var(--background));
+    /* Pin the ambient corner glows to the viewport. Without this they anchor to
+       the body's full scroll height, so on long/scrolling pages the bottom-right
+       glow sinks to the end of the content and shows up as an odd gradient band
+       instead of a stable ambient backdrop. */
+    background-attachment: fixed;
     transition:
       color 300ms ease,
       background-color 300ms ease;

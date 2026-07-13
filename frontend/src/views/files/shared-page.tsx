@@ -46,7 +46,7 @@ export function SharedPage() {
   })
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <TopBar
         lang={lang}
         middle={
@@ -59,7 +59,7 @@ export function SharedPage() {
           />
         }
       />
-      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
+      <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {visibleItems.length === 0 ? (
           <EmptyState trash={false} shared lang={lang} />
         ) : (

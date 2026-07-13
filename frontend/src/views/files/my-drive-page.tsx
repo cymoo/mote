@@ -367,7 +367,7 @@ export function MyDrivePage() {
   return (
     <div
       className={cx(
-        'flex flex-1 flex-col',
+        'flex min-h-0 flex-1 flex-col',
         dragOver
           ? 'after:ring-primary/50 after:bg-primary/5 after:pointer-events-none after:absolute after:inset-2 after:rounded-2xl after:ring-2 after:ring-inset'
           : undefined,
@@ -486,7 +486,7 @@ export function MyDrivePage() {
         )}
       </div>
 
-      <main className="flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
+      <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {visibleItems.length === 0 ? (
           query.trim() ? (
             <SearchEmptyState query={query.trim()} lang={lang} />
