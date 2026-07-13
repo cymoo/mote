@@ -45,7 +45,7 @@ Before running `make setup`, ensure:
 SSH into the server, `cd /opt/mote/deploy`, then:
 
 ```bash
-make deploy    # backup -> git pull -> rebuild -> restart
+make deploy    # git pull -> rebuild -> restart
 make backup    # manual backup
 make logs      # tail app logs
 make ps        # container status
