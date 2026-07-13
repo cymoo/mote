@@ -300,7 +300,15 @@ func (h *DriveHandler) UploadChunk(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *DriveHandler) UploadComplete(r *http.Request, body m.JSON[models.DriveUploadCompleteRequest]) (*models.DriveNode, error) {
+func (h *DriveHandler) UploadComplete(w http.ResponseWriter, r *http.Request, body m.JSON[models.DriveUploadCompleteRequest]) (*models.DriveNode, error) {
+	// Finalizing streams every chunk into the final blob and hashes it; for
+	// large videos this runs well past the global WriteTimeout. Extend the
+	// write deadline, mirroring serveBlob / DownloadZip. mint's ResponseWriter
+	// implements Unwrap, so the controller reaches the underlying connection.
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(30 * time.Minute)); err != nil {
+		log.Printf("drive: extend write deadline for upload complete: %v", err)
+	}
+
 	policy := body.Value.OnCollision
 	if policy == "" {
 		policy = "ask"

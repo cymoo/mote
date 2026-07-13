@@ -3,7 +3,7 @@ module github.com/cymoo/mote
 go 1.25.0
 
 require (
-	github.com/cymoo/mint v0.4.0
+	github.com/cymoo/mint v1.1.0
 	github.com/cymoo/mita v0.2.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/go-chi/chi/v5 v5.2.3
