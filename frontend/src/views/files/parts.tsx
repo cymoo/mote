@@ -16,11 +16,12 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { ReactNode, Ref, memo, useRef, useState } from 'react'
+import { CSSProperties, ReactNode, Ref, memo, useRef, useState } from 'react'
 
 import { cx } from '@/utils/css.ts'
 
 import { Button } from '@/components/button.tsx'
+import { MenuItem, MenuList, MenuSeparator } from '@/components/menu.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover.tsx'
 import { T, t } from '@/components/translation.tsx'
 
@@ -182,13 +183,13 @@ export const SelectionBar = memo(function SelectionBar({
   return (
     <div
       className={cx(
-        'bg-accent/70 text-accent-foreground flex animate-[fadeIn_120ms_ease-out] items-center text-sm shadow-sm ring-1 ring-black/5 dark:ring-white/5',
+        'border-border bg-popover/90 text-popover-foreground flex animate-[fadeIn_160ms_ease-out] items-center border text-sm shadow-xl backdrop-blur-md',
         floating
-          ? 'fixed inset-x-2 bottom-2 z-30 justify-end gap-1 rounded-full px-2 py-1.5 backdrop-blur'
+          ? 'fixed inset-x-0 bottom-5 z-30 mx-auto w-fit max-w-[94vw] gap-0.5 rounded-full py-1.5 pr-1.5 pl-4 max-md:bottom-24'
           : 'ml-auto gap-0.5 rounded-full px-2 py-1',
       )}
     >
-      <span className="px-2 text-xs tabular-nums">
+      <span className="pr-2 text-[13px] font-semibold tabular-nums">
         {count} <T name="selected" />
       </span>
       <Button
@@ -237,6 +238,32 @@ export const SelectionBar = memo(function SelectionBar({
 
 // ---------- node icon ----------
 
+// 类型着色的图标底块：色相跨主题固定（.fico 样式定义于 index.css），
+// 让文件类型在任何主题下都保持可辨识。
+function IconTile({
+  hue,
+  sat,
+  large,
+  children,
+}: {
+  hue: number
+  sat: number
+  large?: boolean
+  children: ReactNode
+}) {
+  return (
+    <span
+      className={cx(
+        'fico flex flex-none items-center justify-center overflow-hidden',
+        large ? 'size-11 rounded-[calc(var(--radius)+1px)]' : 'size-[34px] rounded-[calc(var(--radius)-2px)]',
+      )}
+      style={{ '--fh': hue, '--fs': `${String(sat)}%` } as CSSProperties}
+    >
+      {children}
+    </span>
+  )
+}
+
 export const NodeIcon = memo(function NodeIcon({
   node,
   large,
@@ -244,16 +271,44 @@ export const NodeIcon = memo(function NodeIcon({
   node: DriveNode
   large?: boolean
 }) {
-  const cls = large ? 'size-10' : 'size-5'
+  const cls = large ? 'size-[22px]' : 'size-[17px]'
   if (node.type === 'folder')
-    return <FolderIcon className={cx(cls, 'text-primary fill-primary/15')} />
+    return (
+      <IconTile hue={36} sat={80} large={large}>
+        <FolderIcon className={cls} />
+      </IconTile>
+    )
   const mt = node.mime_type ?? ''
   if (mt.startsWith('image/')) return <ImageThumb node={node} large={large} />
-  if (mt.startsWith('video/')) return <FilmIcon className={cx(cls, 'text-rose-500')} />
-  if (mt.startsWith('audio/')) return <MusicIcon className={cx(cls, 'text-amber-500')} />
-  if (mt.includes('pdf')) return <FileTextIcon className={cx(cls, 'text-red-500')} />
-  if (mt.startsWith('text/')) return <FileTextIcon className={cx(cls, 'text-blue-500')} />
-  return <FileIcon className={cx(cls, 'text-muted-foreground')} />
+  if (mt.startsWith('video/'))
+    return (
+      <IconTile hue={340} sat={60} large={large}>
+        <FilmIcon className={cls} />
+      </IconTile>
+    )
+  if (mt.startsWith('audio/'))
+    return (
+      <IconTile hue={190} sat={62} large={large}>
+        <MusicIcon className={cls} />
+      </IconTile>
+    )
+  if (mt.includes('pdf'))
+    return (
+      <IconTile hue={4} sat={64} large={large}>
+        <FileTextIcon className={cls} />
+      </IconTile>
+    )
+  if (mt.startsWith('text/'))
+    return (
+      <IconTile hue={210} sat={62} large={large}>
+        <FileTextIcon className={cls} />
+      </IconTile>
+    )
+  return (
+    <IconTile hue={220} sat={12} large={large}>
+      <FileIcon className={cls} />
+    </IconTile>
+  )
 })
 
 // Renders a server-generated thumbnail for image files; falls back to the
@@ -266,15 +321,20 @@ const ImageThumb = memo(function ImageThumb({
   large?: boolean
 }) {
   const [failed, setFailed] = useState(false)
-  const cls = large ? 'size-14' : 'size-6'
+  const cls = large ? 'size-11' : 'size-[34px]'
   if (failed) {
-    return <ImageIcon className={cx(large ? 'size-10' : 'size-5', 'text-emerald-500')} />
+    return (
+      <IconTile hue={262} sat={62} large={large}>
+        <ImageIcon className={large ? 'size-[22px]' : 'size-[17px]'} />
+      </IconTile>
+    )
   }
   return (
     <div
       className={cx(
         cls,
-        'bg-muted/50 ring-border/40 flex items-center justify-center overflow-hidden rounded ring-1',
+        large ? 'rounded-[calc(var(--radius)+1px)]' : 'rounded-[calc(var(--radius)-2px)]',
+        'bg-muted/50 ring-border/40 flex flex-none items-center justify-center overflow-hidden ring-1',
       )}
     >
       <img
@@ -313,7 +373,7 @@ export const Checkbox = memo(function Checkbox({
         onChange()
       }}
       className={cx(
-        'flex size-4 shrink-0 items-center justify-center rounded border transition-colors',
+        'flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors',
         checked || indeterminate
           ? 'bg-primary border-primary text-primary-foreground'
           : 'border-input hover:border-ring bg-background',
@@ -364,67 +424,35 @@ export const RowMenu = memo(function RowMenu({ node, onAction, lang }: RowMenuPr
         </Button>
       </PopoverTrigger>
       <PopoverContent>
-        <ul className="min-w-44 py-1.5 text-sm">
-          <MenuItem icon={<DownloadIcon className="size-4" />} onClick={() => fire('download')}>
+        <MenuList className="min-w-40">
+          <MenuItem icon={<DownloadIcon className="size-3.5" />} onClick={() => fire('download')}>
             {node.type === 'folder' ? <T name="downloadZip" /> : <T name="download" />}
           </MenuItem>
           {node.type === 'file' && (
-            <MenuItem icon={<Share2Icon className="size-4" />} onClick={() => fire('share')}>
+            <MenuItem icon={<Share2Icon className="size-3.5" />} onClick={() => fire('share')}>
               <T name="shareLink" />
             </MenuItem>
           )}
-          <MenuItem icon={<PencilIcon className="size-4" />} onClick={() => fire('rename')}>
+          <MenuItem icon={<PencilIcon className="size-3.5" />} onClick={() => fire('rename')}>
             <T name="rename" />
           </MenuItem>
-          <MenuItem icon={<FolderInputIcon className="size-4" />} onClick={() => fire('move')}>
+          <MenuItem icon={<FolderInputIcon className="size-3.5" />} onClick={() => fire('move')}>
             <T name="move" />
           </MenuItem>
-          <li className="border-border/60 my-1 border-t" />
+          <MenuSeparator />
           <MenuItem
             danger
-            icon={<Trash2Icon className="size-4" />}
+            icon={<Trash2Icon className="size-3.5" />}
             onClick={() => fire('delete')}
           >
             <T name="delete" />
           </MenuItem>
-        </ul>
+        </MenuList>
       </PopoverContent>
     </Popover>
   )
 })
 
-function MenuItem({
-  children,
-  icon,
-  onClick,
-  danger,
-}: {
-  children: ReactNode
-  icon: ReactNode
-  onClick: () => void
-  danger?: boolean
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        className={cx(
-          'hover:bg-accent flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors',
-          danger ? 'text-destructive hover:text-destructive' : undefined,
-        )}
-        onClick={(e) => {
-          e.stopPropagation()
-          onClick()
-        }}
-      >
-        <span className="text-muted-foreground inline-flex size-4 items-center justify-center">
-          {icon}
-        </span>
-        {children}
-      </button>
-    </li>
-  )
-}
 
 // ---------- share badge ----------
 

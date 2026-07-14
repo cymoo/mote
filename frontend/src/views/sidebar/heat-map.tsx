@@ -8,8 +8,6 @@ import { VirtualTooltip, VirtualTooltipHandle } from '@/components/tooltip.tsx'
 
 import { GET_DAILY_POST_COUNTS } from '@/api.ts'
 
-import { useTheme } from './theme-toggle.tsx'
-
 interface HeatMapProps extends ComponentProps<'div'> {
   startDate: Date
   endDate?: Date
@@ -21,8 +19,6 @@ export const HeatMap = React.memo(function HeatMap({
   className,
   ...props
 }: HeatMapProps) {
-  const { theme } = useTheme()
-
   const firstMonday = getPreviousMonday(startDate)
   const lastSunday = getNextSunday(endDate)
   const dates = getDatesBetween(firstMonday, lastSunday).map((date) => formatDate(date))
@@ -36,11 +32,12 @@ export const HeatMap = React.memo(function HeatMap({
 
   const today = formatDate()
 
-  const ring = 'ring-ring ring-offset-1 ring-1'
-
   return (
     <div
-      className={cx('grid grid-flow-col grid-rows-7 gap-1 *:aspect-square opacity-80', className)}
+      className={cx(
+        'grid auto-cols-fr grid-flow-col grid-rows-7 gap-[3px] *:aspect-square',
+        className,
+      )}
       role="grid"
       aria-label="heatmap of activities"
       {...props}
@@ -50,9 +47,11 @@ export const HeatMap = React.memo(function HeatMap({
         return (
           <a
             key={date}
-            className={cx('bg-border cursor-pointer rounded', getColor(count, theme), {
-              [ring]: date === today,
-            })}
+            className={cx(
+              'cursor-pointer rounded-[4px] transition-transform duration-100 hover:z-10 hover:scale-125',
+              getColor(count),
+              { 'ring-foreground/60 ring-1 ring-inset': date === today },
+            )}
             data-date={date}
             data-count={count}
             role="gridcell"
@@ -91,34 +90,11 @@ export function HeatMapWithTooltip({ className, ...props }: ComponentProps<typeo
   )
 }
 
-const getColor = (count: number, theme = 'light'): string => {
-  if (theme === 'dark') {
-    if (count >= 9) {
-      return 'bg-emerald-300'
-    } else if (count >= 7) {
-      return 'bg-emerald-400'
-    } else if (count >= 5) {
-      return 'bg-emerald-500'
-    } else if (count >= 3) {
-      return 'bg-emerald-600'
-    } else if (count >= 1) {
-      return 'bg-emerald-700'
-    } else {
-      return 'bg-border'
-    }
-  } else {
-    if (count >= 9) {
-      return 'bg-emerald-700'
-    } else if (count >= 7) {
-      return 'bg-emerald-600'
-    } else if (count >= 5) {
-      return 'bg-emerald-500'
-    } else if (count >= 3) {
-      return 'bg-emerald-400'
-    } else if (count >= 1) {
-      return 'bg-emerald-300'
-    } else {
-      return 'bg-border'
-    }
-  }
+// 强度色随主题主色联动（.heat-* 定义于 index.css），明暗模式通用。
+const getColor = (count: number): string => {
+  if (count >= 9) return 'heat-4'
+  if (count >= 6) return 'heat-3'
+  if (count >= 3) return 'heat-2'
+  if (count >= 1) return 'heat-1'
+  return 'heat-0'
 }

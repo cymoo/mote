@@ -10,6 +10,9 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
+  /* Serif accent for stats numerals, memo times and day labels */
+  --font-serif: Georgia, 'Times New Roman', 'Songti SC', 'Noto Serif SC', serif;
+
   /* Default background color of <body />...etc */
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -59,449 +62,236 @@
       -apple-system, BlinkMacSystemFont, Helvetica Neue, PingFang SC, Microsoft YaHei,
       Source Han Sans SC, Noto Sans CJK SC, WenQuanYi Micro Hei, sans-serif;
     --font-family-mono: Consolas, Menlo, Monaco, source-code-pro, Courier New, monospace;
-    --sidebar-width: 270px; /* 240px width +  2 * 15px padding */
-    --content-width: 610px; /* 580px width + 2 * 15px padding */
+    --font-family-serif: Georgia, 'Times New Roman', 'Songti SC', 'Noto Serif SC', serif;
+    --sidebar-width: 282px;
+    --content-width: 688px;
   }
 
-  [data-theme='light'] {
-    --neutral: 220 14% 96%;
-    --neutral-foreground: 220 13% 20%;
+  /* ------------------------------------------------------------------
+     主题：青 celadon（默认） / 曦 dawn / 墨 ink / 夜 nocturne，各配明暗。
+     命名与旧版一致；青瓷做基础块（无 data-color-theme 时生效）。
+     ------------------------------------------------------------------ */
 
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --card: 220 60% 98%;
-    --card-foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --primary: 220.47 98.26% 36.08%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 92.99% 56.11%;
-    --destructive-foreground: 210 40% 98%;
-    --ring: 220.67 97.83% 36.08%;
-    --radius: 0.5rem;
-    --theme-glow-a: 220.47 98.26% 72%;
-    --theme-glow-b: 174 42% 76%;
+  /* 青 Celadon — 青瓷苍绿 + 茶褐（默认） */
+  [data-theme='light'] {
+    --neutral: 160 22% 92%;
+    --neutral-foreground: 168 24% 20%;
+
+    --background: 158 26% 96.5%;
+    --foreground: 172 32% 10%;
+    --muted: 158 22% 92.5%;
+    --muted-foreground: 168 12% 40%;
+    --popover: 150 36% 99.5%;
+    --popover-foreground: 172 32% 10%;
+    --card: 150 36% 99%;
+    --card-foreground: 172 32% 10%;
+    --border: 158 16% 85%;
+    --input: 158 16% 82%;
+    --primary: 170 58% 30%;
+    --primary-foreground: 155 60% 97%;
+    --secondary: 158 22% 92%;
+    --secondary-foreground: 172 32% 13%;
+    --accent: 158 22% 90%;
+    --accent-foreground: 172 32% 12%;
+    --destructive: 4 70% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 170 58% 30%;
+    --radius: 0.8rem;
+    --theme-glow-a: 170 58% 58%;
+    --theme-glow-b: 22 62% 62%;
   }
 
   [data-theme='dark'] {
-    --neutral: 220 21% 14%;
-    --neutral-foreground: 197 31% 77%;
+    --neutral: 170 22% 14%;
+    --neutral-foreground: 160 16% 78%;
 
-    --background: 229 20% 20%;
-    --foreground: 232 28% 79%;
-    --muted: 229 12% 24%;
-    --muted-foreground: 229 12% 74%;
-    --popover: 229 20% 17%;
-    --popover-foreground: 232 28% 89%;
-    --card: 229 20% 18%;
-    --card-foreground: 232 28% 84%;
-    --border: 229 10% 25%;
-    --input: 229 10% 28%;
-    --primary: 174 42% 65%;
-    --primary-foreground: 174 42% 5%;
-    --secondary: 174 30% 25%;
-    --secondary-foreground: 174 30% 85%;
-    --accent: 229 20% 35%;
-    --accent-foreground: 229 20% 95%;
-    --destructive: 8 91% 59%;
+    --background: 172 26% 9%;
+    --foreground: 158 18% 84%;
+    --muted: 170 19% 16.5%;
+    --muted-foreground: 162 12% 60%;
+    --popover: 172 28% 8%;
+    --popover-foreground: 158 18% 88%;
+    --card: 171 22% 12.5%;
+    --card-foreground: 158 18% 84%;
+    --border: 170 17% 20%;
+    --input: 170 17% 24%;
+    --primary: 165 52% 56%;
+    --primary-foreground: 172 40% 7%;
+    --secondary: 170 19% 18%;
+    --secondary-foreground: 158 18% 84%;
+    --accent: 170 18% 21%;
+    --accent-foreground: 158 18% 90%;
+    --destructive: 5 74% 60%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 174 42% 65%;
-    --radius: 0.5rem;
-    --theme-glow-a: 174 42% 42%;
-    --theme-glow-b: 229 20% 40%;
+    --ring: 165 52% 56%;
+    --radius: 0.8rem;
+    --theme-glow-a: 165 52% 32%;
+    --theme-glow-b: 26 50% 34%;
   }
 
-  /* Crimson — razor-sharp editorial red */
-  [data-color-theme='ink'][data-theme='light'] {
-    --neutral: 350 12% 92%;
-    --neutral-foreground: 348 18% 18%;
-    --background: 0 0% 100%;
-    --foreground: 348 22% 9%;
-    --muted: 350 15% 95%;
-    --muted-foreground: 350 10% 46%;
+  /* 曦 Dawn — 晨光暖纸 + 蔚蓝 */
+  [data-color-theme='dawn'][data-theme='light'] {
+    --neutral: 40 16% 93%;
+    --neutral-foreground: 230 16% 22%;
+    --background: 40 26% 97%;
+    --foreground: 230 22% 13%;
+    --muted: 40 20% 94.5%;
+    --muted-foreground: 230 10% 44%;
     --popover: 0 0% 100%;
-    --popover-foreground: 348 22% 9%;
-    --card: 352 40% 97%;
-    --card-foreground: 348 22% 9%;
-    --border: 350 22% 87%;
-    --input: 350 22% 87%;
-    --primary: 350 80% 44%;
+    --popover-foreground: 230 22% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 230 22% 13%;
+    --border: 40 14% 88%;
+    --input: 40 14% 84%;
+    --primary: 216 78% 49%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 350 15% 94%;
-    --secondary-foreground: 348 22% 12%;
-    --accent: 18 82% 88%;
-    --accent-foreground: 18 70% 26%;
-    --destructive: 0 84% 52%;
+    --secondary: 40 20% 94%;
+    --secondary-foreground: 230 22% 15%;
+    --accent: 40 18% 92%;
+    --accent-foreground: 230 22% 13%;
+    --destructive: 4 72% 50%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 350 80% 44%;
-    --radius: 0.2rem;
-    --theme-glow-a: 350 80% 74%;
-    --theme-glow-b: 18 82% 72%;
+    --ring: 216 78% 49%;
+    --radius: 0.7rem;
+    --theme-glow-a: 216 80% 72%;
+    --theme-glow-b: 28 84% 70%;
+  }
+
+  [data-color-theme='dawn'][data-theme='dark'] {
+    --neutral: 226 20% 16%;
+    --neutral-foreground: 224 20% 78%;
+    --background: 226 22% 11.5%;
+    --foreground: 224 24% 87%;
+    --muted: 226 18% 19%;
+    --muted-foreground: 224 12% 63%;
+    --popover: 226 22% 10%;
+    --popover-foreground: 224 24% 90%;
+    --card: 226 20% 15%;
+    --card-foreground: 224 24% 87%;
+    --border: 226 15% 23%;
+    --input: 226 15% 27%;
+    --primary: 214 90% 68%;
+    --primary-foreground: 226 45% 9%;
+    --secondary: 226 18% 20%;
+    --secondary-foreground: 224 24% 87%;
+    --accent: 226 17% 23%;
+    --accent-foreground: 224 24% 92%;
+    --destructive: 4 78% 62%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 214 90% 68%;
+    --radius: 0.7rem;
+    --theme-glow-a: 214 90% 40%;
+    --theme-glow-b: 28 60% 40%;
+  }
+
+  /* 墨 Ink — 纸墨编辑部 + 朱砂 */
+  [data-color-theme='ink'][data-theme='light'] {
+    --neutral: 28 10% 93%;
+    --neutral-foreground: 20 10% 20%;
+    --background: 30 15% 98.5%;
+    --foreground: 20 8% 8%;
+    --muted: 28 10% 94%;
+    --muted-foreground: 20 6% 42%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 20 8% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 20 8% 8%;
+    --border: 28 9% 87%;
+    --input: 28 9% 83%;
+    --primary: 9 68% 46%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 28 10% 93%;
+    --secondary-foreground: 20 8% 12%;
+    --accent: 28 10% 92%;
+    --accent-foreground: 20 8% 10%;
+    --destructive: 0 78% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 9 68% 46%;
+    --radius: 0.375rem;
+    --theme-glow-a: 9 70% 70%;
+    --theme-glow-b: 30 30% 70%;
   }
 
   [data-color-theme='ink'][data-theme='dark'] {
-    --neutral: 352 24% 14%;
-    --neutral-foreground: 350 12% 76%;
-    --background: 352 28% 9%;
-    --foreground: 18 14% 85%;
-    --muted: 352 22% 16%;
-    --muted-foreground: 350 10% 58%;
-    --popover: 352 32% 7%;
-    --popover-foreground: 18 14% 90%;
-    --card: 352 24% 15%;
-    --card-foreground: 18 14% 85%;
-    --border: 352 18% 23%;
-    --input: 352 18% 26%;
-    --primary: 350 84% 64%;
-    --primary-foreground: 352 32% 7%;
-    --secondary: 352 22% 19%;
-    --secondary-foreground: 18 14% 84%;
-    --accent: 18 66% 28%;
-    --accent-foreground: 18 78% 86%;
-    --destructive: 0 76% 64%;
+    --neutral: 24 7% 13%;
+    --neutral-foreground: 30 10% 80%;
+    --background: 24 6% 8%;
+    --foreground: 32 10% 87%;
+    --muted: 24 6% 15.5%;
+    --muted-foreground: 28 7% 60%;
+    --popover: 24 8% 7%;
+    --popover-foreground: 32 10% 90%;
+    --card: 24 6% 11.5%;
+    --card-foreground: 32 10% 87%;
+    --border: 24 6% 19%;
+    --input: 24 6% 23%;
+    --primary: 10 78% 62%;
+    --primary-foreground: 24 20% 7%;
+    --secondary: 24 6% 16%;
+    --secondary-foreground: 32 10% 85%;
+    --accent: 24 6% 19%;
+    --accent-foreground: 32 10% 90%;
+    --destructive: 0 76% 62%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 350 84% 64%;
-    --radius: 0.2rem;
-    --theme-glow-a: 350 84% 38%;
-    --theme-glow-b: 18 66% 32%;
+    --ring: 10 78% 62%;
+    --radius: 0.375rem;
+    --theme-glow-a: 10 70% 34%;
+    --theme-glow-b: 30 20% 30%;
   }
 
-  /* One Dark — Atom One Dark inspired */
-  [data-color-theme='sakura'][data-theme='light'] {
-    --neutral: 220 14% 89%;
-    --neutral-foreground: 220 10% 18%;
-    --background: 220 14% 98%;
-    --foreground: 220 12% 14%;
-    --muted: 220 14% 93%;
-    --muted-foreground: 220 8% 46%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 12% 14%;
-    --card: 220 18% 95%;
-    --card-foreground: 220 12% 14%;
-    --border: 220 16% 84%;
-    --input: 220 16% 84%;
-    --primary: 207 74% 46%;
+  /* 夜 Nocturne — 东京夜靛蓝 + 玫瑰 */
+  [data-color-theme='nocturne'][data-theme='light'] {
+    --neutral: 228 22% 92%;
+    --neutral-foreground: 231 24% 22%;
+    --background: 228 32% 97%;
+    --foreground: 231 38% 11%;
+    --muted: 228 26% 93%;
+    --muted-foreground: 230 13% 44%;
+    --popover: 228 45% 99.5%;
+    --popover-foreground: 231 38% 11%;
+    --card: 228 45% 99.5%;
+    --card-foreground: 231 38% 11%;
+    --border: 228 18% 87%;
+    --input: 228 18% 83%;
+    --primary: 231 62% 53%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 92%;
-    --secondary-foreground: 220 12% 18%;
-    --accent: 286 52% 54%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 355 62% 50%;
+    --secondary: 228 26% 92%;
+    --secondary-foreground: 231 38% 14%;
+    --accent: 228 24% 91%;
+    --accent-foreground: 231 38% 12%;
+    --destructive: 4 72% 50%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 207 74% 46%;
-    --radius: 0.5rem;
-    --theme-glow-a: 207 74% 70%;
-    --theme-glow-b: 286 52% 70%;
+    --ring: 231 62% 53%;
+    --radius: 0.55rem;
+    --theme-glow-a: 231 62% 70%;
+    --theme-glow-b: 340 62% 70%;
   }
 
-  [data-color-theme='sakura'][data-theme='dark'] {
-    --neutral: 220 13% 16%;
-    --neutral-foreground: 220 14% 68%;
-    --background: 220 13% 18%;
-    --foreground: 220 14% 71%;
-    --muted: 220 11% 24%;
-    --muted-foreground: 220 9% 52%;
-    --popover: 220 14% 14%;
-    --popover-foreground: 220 14% 78%;
-    --card: 220 12% 24%;
-    --card-foreground: 220 14% 76%;
-    --border: 220 11% 29%;
-    --input: 220 11% 32%;
-    --primary: 207 82% 66%;
-    --primary-foreground: 220 14% 12%;
-    --secondary: 220 12% 27%;
-    --secondary-foreground: 220 14% 78%;
-    --accent: 286 60% 67%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 355 64% 64%;
+  [data-color-theme='nocturne'][data-theme='dark'] {
+    --neutral: 232 26% 15%;
+    --neutral-foreground: 226 24% 76%;
+    --background: 233 30% 10.5%;
+    --foreground: 226 30% 80%;
+    --muted: 231 23% 18%;
+    --muted-foreground: 226 16% 60%;
+    --popover: 233 32% 9%;
+    --popover-foreground: 226 30% 86%;
+    --card: 232 26% 14%;
+    --card-foreground: 226 30% 80%;
+    --border: 231 20% 21.5%;
+    --input: 231 20% 26%;
+    --primary: 219 90% 71%;
+    --primary-foreground: 233 42% 8%;
+    --secondary: 231 23% 19%;
+    --secondary-foreground: 226 30% 80%;
+    --accent: 231 22% 22%;
+    --accent-foreground: 226 30% 88%;
+    --destructive: 4 78% 64%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 207 82% 66%;
-    --radius: 0.5rem;
-    --theme-glow-a: 207 82% 36%;
-    --theme-glow-b: 286 60% 34%;
-  }
-
-  /* Jade — Chinese celadon jade with cinnabar accent */
-  [data-color-theme='moss'][data-theme='light'] {
-    --neutral: 160 26% 89%;
-    --neutral-foreground: 164 28% 16%;
-    --background: 160 40% 97%;
-    --foreground: 164 36% 9%;
-    --muted: 160 32% 93%;
-    --muted-foreground: 162 14% 44%;
-    --popover: 155 45% 99%;
-    --popover-foreground: 164 36% 9%;
-    --card: 158 38% 96%;
-    --card-foreground: 164 36% 9%;
-    --border: 158 26% 80%;
-    --input: 158 26% 80%;
-    --primary: 163 66% 28%;
-    --primary-foreground: 155 80% 97%;
-    --secondary: 160 32% 92%;
-    --secondary-foreground: 164 36% 13%;
-    --accent: 8 70% 86%;
-    --accent-foreground: 8 66% 24%;
-    --destructive: 4 70% 46%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 163 66% 28%;
-    --radius: 0.65rem;
-    --theme-glow-a: 163 66% 64%;
-    --theme-glow-b: 8 70% 70%;
-  }
-
-  [data-color-theme='moss'][data-theme='dark'] {
-    --neutral: 165 30% 13%;
-    --neutral-foreground: 160 20% 76%;
-    --background: 165 34% 9%;
-    --foreground: 158 22% 84%;
-    --muted: 165 26% 15%;
-    --muted-foreground: 160 14% 57%;
-    --popover: 165 38% 7%;
-    --popover-foreground: 158 22% 88%;
-    --card: 165 32% 15%;
-    --card-foreground: 158 22% 84%;
-    --border: 165 22% 22%;
-    --input: 165 22% 25%;
-    --primary: 162 60% 54%;
-    --primary-foreground: 165 38% 7%;
-    --secondary: 165 26% 18%;
-    --secondary-foreground: 158 22% 84%;
-    --accent: 8 60% 27%;
-    --accent-foreground: 10 72% 84%;
-    --destructive: 6 74% 61%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 162 60% 54%;
-    --radius: 0.65rem;
-    --theme-glow-a: 162 60% 30%;
-    --theme-glow-b: 8 60% 32%;
-  }
-
-  /* Amethyst — jewel purple with warm gold accent */
-  [data-color-theme='aurora'][data-theme='light'] {
-    --neutral: 270 34% 90%;
-    --neutral-foreground: 268 32% 18%;
-    --background: 270 50% 99%;
-    --foreground: 268 40% 9%;
-    --muted: 270 38% 94%;
-    --muted-foreground: 268 16% 44%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 268 40% 9%;
-    --card: 270 44% 96%;
-    --card-foreground: 268 40% 9%;
-    --border: 270 28% 83%;
-    --input: 270 28% 83%;
-    --primary: 268 68% 44%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 270 38% 93%;
-    --secondary-foreground: 268 40% 13%;
-    --accent: 44 92% 52%;
-    --accent-foreground: 268 40% 9%;
-    --destructive: 354 74% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 268 68% 44%;
-    --radius: 1rem;
-    --theme-glow-a: 268 68% 74%;
-    --theme-glow-b: 44 92% 66%;
-  }
-
-  [data-color-theme='aurora'][data-theme='dark'] {
-    --neutral: 268 38% 13%;
-    --neutral-foreground: 268 18% 76%;
-    --background: 268 44% 9%;
-    --foreground: 268 18% 86%;
-    --muted: 268 34% 15%;
-    --muted-foreground: 268 14% 58%;
-    --popover: 268 48% 7%;
-    --popover-foreground: 268 18% 90%;
-    --card: 268 40% 16%;
-    --card-foreground: 268 18% 86%;
-    --border: 268 26% 25%;
-    --input: 268 26% 28%;
-    --primary: 268 68% 72%;
-    --primary-foreground: 268 50% 6%;
-    --secondary: 268 34% 19%;
-    --secondary-foreground: 268 18% 86%;
-    --accent: 44 90% 60%;
-    --accent-foreground: 268 50% 6%;
-    --destructive: 354 78% 63%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 268 68% 72%;
-    --radius: 1rem;
-    --theme-glow-a: 268 68% 36%;
-    --theme-glow-b: 44 90% 30%;
-  }
-
-  /* Tokyo Night — deep indigo with rose-pink signature accent */
-  [data-color-theme='fjord'][data-theme='light'] {
-    --neutral: 210 22% 87%;
-    --neutral-foreground: 215 35% 16%;
-    --background: 210 30% 98%;
-    --foreground: 215 42% 8%;
-    --muted: 212 26% 93%;
-    --muted-foreground: 215 16% 42%;
-    --popover: 210 36% 99%;
-    --popover-foreground: 215 42% 8%;
-    --card: 210 35% 95%;
-    --card-foreground: 215 42% 8%;
-    --border: 210 20% 82%;
-    --input: 210 20% 82%;
-    --primary: 207 78% 42%;
-    --primary-foreground: 210 60% 97%;
-    --secondary: 212 26% 92%;
-    --secondary-foreground: 215 42% 12%;
-    --accent: 340 68% 64%;
-    --accent-foreground: 340 60% 10%;
-    --destructive: 4 70% 46%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 207 78% 42%;
-    --radius: 0.5rem;
-    --theme-glow-a: 207 78% 66%;
-    --theme-glow-b: 340 68% 68%;
-  }
-
-  [data-color-theme='fjord'][data-theme='dark'] {
-    --neutral: 230 38% 17%;
-    --neutral-foreground: 220 18% 72%;
-    --background: 230 52% 11%;
-    --foreground: 220 20% 72%;
-    --muted: 230 36% 16%;
-    --muted-foreground: 220 12% 52%;
-    --popover: 230 56% 8%;
-    --popover-foreground: 220 20% 80%;
-    --card: 230 48% 21%;
-    --card-foreground: 220 20% 72%;
-    --border: 230 30% 28%;
-    --input: 230 30% 31%;
-    --primary: 207 88% 64%;
-    --primary-foreground: 230 60% 8%;
-    --secondary: 230 36% 24%;
-    --secondary-foreground: 220 20% 72%;
-    --accent: 340 44% 30%;
-    --accent-foreground: 340 20% 88%;
-    --destructive: 6 76% 62%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 207 88% 64%;
-    --radius: 0.5rem;
-    --theme-glow-a: 207 88% 32%;
-    --theme-glow-b: 340 70% 32%;
-  }
-
-  /* Onyx — typographic editorial, achromatic + single orange accent */
-  [data-color-theme='blueprint'][data-theme='light'] {
-    --neutral: 30 5% 90%;
-    --neutral-foreground: 0 0% 14%;
-    --background: 0 0% 100%;
-    --foreground: 0 0% 7%;
-    --muted: 30 5% 94%;
-    --muted-foreground: 0 0% 40%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 7%;
-    --card: 30 5% 96%;
-    --card-foreground: 0 0% 7%;
-    --border: 30 5% 82%;
-    --input: 30 5% 82%;
-    --primary: 0 0% 8%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 30 5% 93%;
-    --secondary-foreground: 0 0% 10%;
-    --accent: 22 94% 50%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 86% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 22 94% 50%;
-    --radius: 0rem;
-    --theme-glow-a: 22 94% 60%;
-    --theme-glow-b: 30 10% 68%;
-  }
-
-  [data-color-theme='blueprint'][data-theme='dark'] {
-    --neutral: 0 3% 11%;
-    --neutral-foreground: 36 10% 76%;
-    --background: 0 3% 7%;
-    --foreground: 36 10% 85%;
-    --muted: 0 3% 13%;
-    --muted-foreground: 0 0% 56%;
-    --popover: 0 3% 5%;
-    --popover-foreground: 36 10% 90%;
-    --card: 0 3% 13%;
-    --card-foreground: 36 10% 85%;
-    --border: 0 3% 20%;
-    --input: 0 3% 23%;
-    --primary: 36 10% 86%;
-    --primary-foreground: 0 3% 6%;
-    --secondary: 0 3% 16%;
-    --secondary-foreground: 36 10% 82%;
-    --accent: 22 94% 56%;
-    --accent-foreground: 0 3% 6%;
-    --destructive: 0 78% 62%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 22 94% 56%;
-    --radius: 0rem;
-    --theme-glow-a: 22 94% 28%;
-    --theme-glow-b: 30 6% 18%;
-  }
-
-  /* Abyss — deep sea teal with bioluminescent cyan */
-  [data-color-theme='candy'][data-theme='light'] {
-    --neutral: 188 22% 90%;
-    --neutral-foreground: 190 30% 18%;
-    --background: 188 30% 98%;
-    --foreground: 190 45% 8%;
-    --muted: 188 24% 93%;
-    --muted-foreground: 188 12% 44%;
-    --popover: 188 35% 99%;
-    --popover-foreground: 190 45% 8%;
-    --card: 188 30% 96%;
-    --card-foreground: 190 45% 8%;
-    --border: 188 18% 82%;
-    --input: 188 18% 82%;
-    --primary: 188 68% 26%;
-    --primary-foreground: 188 50% 97%;
-    --secondary: 188 24% 92%;
-    --secondary-foreground: 190 45% 12%;
-    --accent: 36 84% 88%;
-    --accent-foreground: 36 72% 26%;
-    --destructive: 4 72% 46%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 188 68% 26%;
-    --radius: 0.6rem;
-    --theme-glow-a: 188 68% 60%;
-    --theme-glow-b: 36 84% 64%;
-  }
-
-  [data-color-theme='candy'][data-theme='dark'] {
-    --neutral: 192 40% 12%;
-    --neutral-foreground: 185 18% 76%;
-    --background: 192 52% 7%;
-    --foreground: 185 20% 84%;
-    --muted: 192 36% 14%;
-    --muted-foreground: 185 12% 57%;
-    --popover: 192 56% 6%;
-    --popover-foreground: 185 20% 88%;
-    --card: 192 48% 13%;
-    --card-foreground: 185 20% 84%;
-    --border: 192 28% 22%;
-    --input: 192 28% 25%;
-    --primary: 182 78% 52%;
-    --primary-foreground: 192 60% 6%;
-    --secondary: 192 36% 17%;
-    --secondary-foreground: 185 20% 84%;
-    --accent: 36 80% 56%;
-    --accent-foreground: 192 60% 6%;
-    --destructive: 6 76% 62%;
-    --destructive-foreground: 0 0% 100%;
-    --ring: 182 78% 52%;
-    --radius: 0.6rem;
-    --theme-glow-a: 182 78% 28%;
-    --theme-glow-b: 36 80% 30%;
+    --ring: 219 90% 71%;
+    --radius: 0.55rem;
+    --theme-glow-a: 219 90% 42%;
+    --theme-glow-b: 340 68% 42%;
   }
 
   * {
@@ -522,8 +312,8 @@
     line-height: 1.5;
     color: hsl(var(--foreground));
     background:
-      radial-gradient(circle at 0% 0%, hsl(var(--theme-glow-a) / 0.18), transparent 30rem),
-      radial-gradient(circle at 100% 100%, hsl(var(--theme-glow-b) / 0.14), transparent 32rem),
+      radial-gradient(circle at 0% 0%, hsl(var(--theme-glow-a) / 0.16), transparent 32rem),
+      radial-gradient(circle at 100% 100%, hsl(var(--theme-glow-b) / 0.12), transparent 34rem),
       hsl(var(--background));
     /* Pin the ambient corner glows to the viewport. Without this they anchor to
        the body's full scroll height, so on long/scrolling pages the bottom-right
@@ -539,12 +329,16 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+  }
+
   ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
   }
   ::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: hsl(var(--foreground) / 0.25);
     border-radius: 10px;
   }
   ::-webkit-scrollbar-track {
@@ -572,7 +366,7 @@
 
 /* This will always be included in the compiled CSS without using the @layer directive */
 .prose {
-  --tw-prose-body: hsl(var(--foreground) / 0.83);
+  --tw-prose-body: hsl(var(--foreground) / 0.88);
   --tw-prose-headings: hsl(var(--foreground));
   --tw-prose-lead: hsl(var(--foreground));
   --tw-prose-links: hsl(var(--foreground));
@@ -580,8 +374,8 @@
   --tw-prose-counters: hsl(var(--foreground));
   --tw-prose-bullets: hsl(var(--foreground) / 0.5);
   --tw-prose-hr: hsl(var(--foreground) / 0.2);
-  --tw-prose-quotes: hsl(var(--foreground));
-  --tw-prose-quote-borders: hsl(var(--foreground) / 0.2);
+  --tw-prose-quotes: hsl(var(--muted-foreground));
+  --tw-prose-quote-borders: hsl(var(--primary) / 0.45);
   --tw-prose-captions: hsl(var(--foreground) / 0.65);
   --tw-prose-code: hsl(var(--foreground));
   --tw-prose-pre-code: hsl(var(--neutral-foreground));
@@ -590,6 +384,8 @@
   --tw-prose-td-borders: hsl(var(--foreground) / 0.2);
 
   max-width: 100%;
+  line-height: 1.85;
+  letter-spacing: 0.012em;
 
   h1 {
     font-size: 2em;
@@ -604,6 +400,12 @@
   }
   img {
     border-radius: 0.25rem;
+  }
+
+  blockquote {
+    font-family: var(--font-family-serif);
+    font-weight: 400;
+    font-style: normal;
   }
 
   ul {
@@ -660,17 +462,50 @@
 }
 
 .hash-tag {
-  background-color: hsl(var(--accent) / 0.85);
-  color: hsl(var(--accent-foreground));
+  background-color: hsl(var(--primary) / 0.09);
+  color: hsl(var(--primary));
   margin: 0 0.25em;
-  padding: 0.25em;
+  padding: 0.1em 0.45em;
   cursor: pointer;
   font-size: 0.9em;
-  border-radius: 0.2em;
+  font-weight: 500;
+  border-radius: calc(var(--radius) - 4px);
+  transition: background-color 140ms ease;
+
+  &:hover {
+    background-color: hsl(var(--primary) / 0.16);
+  }
 
   p > &:nth-of-type(2) {
     margin-left: 0;
   }
+}
+
+/* 热力图强度等级：随主题主色变化，明暗通用 */
+.heat-0 {
+  background: hsl(var(--foreground) / 0.08);
+}
+.heat-1 {
+  background: color-mix(in srgb, hsl(var(--primary)) 26%, hsl(var(--muted)));
+}
+.heat-2 {
+  background: color-mix(in srgb, hsl(var(--primary)) 48%, hsl(var(--muted)));
+}
+.heat-3 {
+  background: color-mix(in srgb, hsl(var(--primary)) 72%, hsl(var(--muted)));
+}
+.heat-4 {
+  background: hsl(var(--primary));
+}
+
+/* 云盘文件类型图标底（--fh/--fs 由 NodeIcon 注入，类型色跨主题稳定） */
+.fico {
+  background: hsl(var(--fh) var(--fs) 50% / 0.13);
+  color: hsl(var(--fh) var(--fs) 38%);
+}
+[data-theme='dark'] .fico {
+  background: hsl(var(--fh) var(--fs) 50% / 0.16);
+  color: hsl(var(--fh) var(--fs) 66%);
 }
 
 .check-list {
@@ -738,6 +573,23 @@
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
+  }
+
+  /* 品牌点：主题色发光小球，随主题联动 */
+  .logo-dot {
+    width: 13px;
+    height: 13px;
+    border-radius: 9999px;
+    flex: none;
+    background: radial-gradient(
+      circle at 32% 30%,
+      color-mix(in srgb, hsl(var(--primary)) 45%, white),
+      hsl(var(--primary)) 72%
+    );
+    box-shadow: 0 0 12px hsl(var(--primary) / 0.55);
+    transition:
+      background 300ms ease,
+      box-shadow 300ms ease;
   }
 
   /* https://github.com/saadeghi/daisyui/blob/master/src/components/styled/button.css */

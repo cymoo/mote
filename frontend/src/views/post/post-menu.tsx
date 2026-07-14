@@ -1,4 +1,14 @@
-import { MoreHorizontal as MoreIcon } from 'lucide-react'
+import {
+  Download as DownloadIcon,
+  Eye as EyeIcon,
+  MoreHorizontal as MoreIcon,
+  Pencil as PencilIcon,
+  RotateCcw as RestoreIcon,
+  Share2 as ShareIcon,
+  TextQuote as QuoteIcon,
+  Trash2 as TrashIcon,
+  X as UnshareIcon,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Location, useLocation, useSearchParams } from 'react-router'
 
@@ -9,6 +19,7 @@ import { countWords } from '@/utils/text.ts'
 
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
+import { MenuInfo, MenuItem, MenuList, MenuSeparator } from '@/components/menu.tsx'
 import { useModal } from '@/components/modal.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover.tsx'
 import { RGBPicker } from '@/components/rgb-picker.tsx'
@@ -127,133 +138,106 @@ export function PostMenu({ post, mutator, standalone = false, className }: PostM
   let menu
   if (isRecyclerPage) {
     menu = (
-      <ul className="*:mt-2">
-        <li>
-          <Button
-            className="w-full justify-start!"
-            variant="ghost"
-            onClick={() => {
-              void handleRestorePost()
-            }}
-          >
-            <T name="restore" />
-          </Button>
-        </li>
-        <li>
-          <Button
-            className="text-destructive w-full justify-start!"
-            variant="ghost"
-            onClick={() => {
-              handleDeletePostPermanently()
-            }}
-          >
-            <T name="delete" />
-          </Button>
-        </li>
-      </ul>
+      <MenuList>
+        <MenuItem
+          icon={<RestoreIcon className="size-3.5" />}
+          onClick={() => {
+            void handleRestorePost()
+          }}
+        >
+          <T name="restore" />
+        </MenuItem>
+        <MenuItem
+          danger
+          icon={<TrashIcon className="size-3.5" />}
+          onClick={() => {
+            handleDeletePostPermanently()
+          }}
+        >
+          <T name="delete" />
+        </MenuItem>
+      </MenuList>
     )
   } else {
     menu = (
-      <ul className="*:mt-2">
-        <li>
+      <MenuList>
+        <li className="px-1 pt-0.5 pb-1">
           <RGBPicker
-            className="-mx-2 space-x-0! px-3"
             initialValue={post.color}
             onChange={(color) => {
               handleMarkPost(color)
             }}
           />
         </li>
-        <li>
-          <Button
-            className="w-full justify-start!"
-            variant="ghost"
+        <MenuItem
+          icon={<PencilIcon className="size-3.5" />}
+          onClick={() => {
+            handleEditPost()
+          }}
+        >
+          <T name="edit" />
+        </MenuItem>
+        {!standalone && (
+          <MenuItem
+            icon={<QuoteIcon className="size-3.5" />}
             onClick={() => {
-              handleEditPost()
+              void handleQuotePost()
             }}
           >
-            <T name="edit" />
-          </Button>
-        </li>
-        {!standalone && (
-          <li>
-            <Button
-              className="w-full justify-start!"
-              variant="ghost"
-              onClick={() => {
-                void handleQuotePost()
-              }}
-            >
-              <T name="quote" />
-            </Button>
-          </li>
+            <T name="quote" />
+          </MenuItem>
         )}
         {!standalone && (
-          <li>
-            <Button
-              className="w-full justify-start!"
-              variant="ghost"
-              onClick={() => {
-                goToPostPage()
-              }}
-            >
-              <T name="viewDetail" />
-            </Button>
-          </li>
-        )}
-        <li>
-          <Divider />
-        </li>
-        <li>
-          <Button
-            className="w-full justify-start!"
-            variant="ghost"
+          <MenuItem
+            icon={<EyeIcon className="size-3.5" />}
             onClick={() => {
-              handleExportMarkdown()
+              goToPostPage()
             }}
           >
-            <T name="exportMarkdown" />
-          </Button>
-        </li>
-        <li>
-          <Divider />
-        </li>
-        <li>
-          <Button
-            className="w-full justify-start!"
-            variant="ghost"
+            <T name="viewDetail" />
+          </MenuItem>
+        )}
+        <MenuSeparator />
+        <MenuItem
+          icon={<DownloadIcon className="size-3.5" />}
+          onClick={() => {
+            handleExportMarkdown()
+          }}
+        >
+          <T name="exportMarkdown" />
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem
+          icon={
+            post.shared ? <UnshareIcon className="size-3.5" /> : <ShareIcon className="size-3.5" />
+          }
+          onClick={() => {
+            handleSharePost(!post.shared)
+          }}
+        >
+          {post.shared ? <T name="unshare" /> : <T name="share" />}
+        </MenuItem>
+        {!standalone && (
+          <MenuItem
+            danger
+            icon={<TrashIcon className="size-3.5" />}
             onClick={() => {
-              handleSharePost(!post.shared)
+              void handleDeletePost()
             }}
           >
-            {post.shared ? <T name="unshare" /> : <T name="share" />}
-          </Button>
-        </li>
-        {!standalone && (
-          <li>
-            <Button
-              className="text-destructive w-full justify-start!"
-              variant="ghost"
-              onClick={() => {
-                void handleDeletePost()
-              }}
-            >
-              <T name="delete" />
-            </Button>
-          </li>
+            <T name="delete" />
+          </MenuItem>
         )}
-        <li className="text-muted-foreground/80 px-4 pt-2 pb-1 text-xs">
+        <MenuInfo>
           <T name="words" />: {countWords(post.content)}
-        </li>
-        {post.updated_at - post.created_at > 1 && (
-          <li className="text-muted-foreground/80 flex flex-col gap-0.5 px-4 pt-1 pb-2 text-xs">
-            <span>
-              <T name="updatedAt" />:
-            </span>
-            <span>{formatDate(post.updated_at, true)}</span>
-          </li>
-        )}
-      </ul>
+          {post.updated_at - post.created_at > 1 && (
+            <>
+              <br />
+              <T name="updatedAt" />: {formatDate(post.updated_at, true)}
+            </>
+          )}
+        </MenuInfo>
+      </MenuList>
     )
   }
 
@@ -276,8 +260,4 @@ export function PostMenu({ post, mutator, standalone = false, className }: PostM
       <PopoverContent>{menu}</PopoverContent>
     </Popover>
   )
-}
-
-function Divider() {
-  return <div className="border-t border-slate-700/10 dark:border-slate-200/10" />
 }

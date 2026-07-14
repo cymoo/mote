@@ -129,9 +129,9 @@ export function PostEditor({
             </Button>
           )}
           <Button
-            className="px-5! py-1!"
+            className="rounded-md px-5! py-1!"
             size="sm"
-            variant="outline"
+            variant="primary"
             type="submit"
             aria-label="submit"
             disabled={submitting || empty}

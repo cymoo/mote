@@ -208,7 +208,7 @@ export function PopoverContent({
       {...context.getFloatingProps(props)}
       data-side={context.placement}
       className={cx(
-        'bg-popover text-popover-foreground relative z-50 min-w-[145px] rounded border px-1 py-2 tracking-wider shadow-md outline-none',
+        'bg-popover text-popover-foreground border-border relative z-50 min-w-[145px] rounded-[calc(var(--radius)+2px)] border p-1.5 shadow-xl outline-none',
         className,
       )}
       // style={{ ...context.floatingStyles, ...transitionStyles }}

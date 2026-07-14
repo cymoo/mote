@@ -35,12 +35,12 @@ export function RGBPicker({ initialValue, onChange, className }: RGBPickerProps)
           tag="label"
           variant="ghost"
           size="sm"
-          className="relative"
+          className="relative size-8! p-0!"
           title={`mark as ${option.value}`}
         >
           <CircleIcon
             className={cx(
-              'pointer-events-none inline-block size-7 stroke-1',
+              'pointer-events-none inline-block size-[22px] stroke-1',
               option.label as string,
             )}
           />

@@ -14,20 +14,18 @@
     <title>mote</title>
     <script>
       ;(() => {
-        const colorThemes = [
-          'classic',
-          'ink',
-          'sakura',
-          'moss',
-          'aurora',
-          'fjord',
-          'blueprint',
-          'candy',
-        ]
+        const colorThemes = ['celadon', 'dawn', 'ink', 'nocturne']
         const legacyColorThemes = {
-          dune: 'aurora',
-          rouge: 'blueprint',
-          voltage: 'candy',
+          classic: 'celadon',
+          moss: 'celadon',
+          candy: 'celadon',
+          voltage: 'celadon',
+          sakura: 'nocturne',
+          aurora: 'nocturne',
+          fjord: 'nocturne',
+          dune: 'nocturne',
+          blueprint: 'ink',
+          rouge: 'ink',
         }
         let theme = localStorage.getItem('theme')
         if (theme !== 'light' && theme !== 'dark') {
@@ -40,7 +38,7 @@
           localStorage.setItem('colorTheme', colorTheme)
         }
         if (!colorThemes.includes(colorTheme)) {
-          colorTheme = 'classic'
+          colorTheme = 'celadon'
         }
 
         document.documentElement.dataset.theme = theme

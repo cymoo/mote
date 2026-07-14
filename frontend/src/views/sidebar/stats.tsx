@@ -12,24 +12,38 @@ export function Stats({ className, ...props }: ComponentProps<'section'>) {
 
   return (
     <section
-      className={cx('flex items-center justify-between', className)}
+      className={cx('flex items-baseline justify-between', className)}
       aria-label="statistics"
       {...props}
     >
-      <StatItem label="MEMO" count={data?.post_count || '-'} />
-      <StatItem label="TAG" count={data?.tag_count || '-'} />
-      <StatItem label="DAY" count={data?.day_count || '-'} />
+      <StatItem label="MEMO" count={data?.post_count || '-'} align="items-start" />
+      <StatItem label="TAG" count={data?.tag_count || '-'} align="items-center" />
+      <StatItem label="DAY" count={data?.day_count || '-'} align="items-end" />
     </section>
   )
 }
 
-function StatItem({ label, count }: { label: string; count: number | '-' }) {
+function StatItem({
+  label,
+  count,
+  align,
+}: {
+  label: string
+  count: number | '-'
+  align: 'items-start' | 'items-center' | 'items-end'
+}) {
   return (
-    <div className="flex flex-col items-center">
-      <span className="text-lg font-semibold" aria-label={`${label} count: ${String(count)}`}>
+    <div className={cx('flex flex-1 flex-col gap-px', align)}>
+      <span
+        className="font-serif text-[21px] font-semibold tracking-wide tabular-nums"
+        aria-label={`${label} count: ${String(count)}`}
+      >
         {count}
       </span>
-      <span className="text-muted-foreground/75 text-sm" aria-hidden="true">
+      <span
+        className="text-muted-foreground/70 text-[10.5px] tracking-[0.14em]"
+        aria-hidden="true"
+      >
         {label}
       </span>
     </div>

@@ -17,7 +17,7 @@ export function Header({ className, ...props }: ComponentProps<'header'>) {
   return (
     <header className={cx('flex h-10 items-center', className)} {...props}>
       <Button
-        className="pr-2 text-xl font-medium ring-inset hover:bg-transparent [&:hover]:text-foreground"
+        className="gap-2.5 pr-2 text-[17px] font-semibold tracking-wide ring-inset hover:bg-transparent [&:hover]:text-foreground"
         variant="ghost"
         aria-label="go to homepage"
         onClick={() => {
@@ -25,6 +25,7 @@ export function Header({ className, ...props }: ComponentProps<'header'>) {
           window.toggleSidebar()
         }}
       >
+        <i className="logo-dot" aria-hidden="true" />
         mote
       </Button>
       <Button

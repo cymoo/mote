@@ -3,10 +3,11 @@ import { Virtuoso as VirtualList, VirtuosoHandle } from 'react-virtuoso'
 
 import { toSorted } from '@/utils/array.ts'
 import { cx } from '@/utils/css.ts'
+import { formatDate, formatDayHeading } from '@/utils/date.ts'
 import { useUpdateEffect } from '@/utils/hooks/use-update-effect.ts'
 
 import { Image } from '@/components/image-grid.tsx'
-import { T } from '@/components/translation.tsx'
+import { T, t, useLang } from '@/components/translation.tsx'
 
 import { ListMutator } from '@/views/actions.ts'
 
@@ -46,6 +47,9 @@ interface PostListProps extends ComponentProps<typeof VirtualList> {
   showPlaceholder?: boolean
   orderBy?: OrderBy
   ascending?: boolean
+  // Renders a day heading above the first post of each day. Only meaningful
+  // for lists in reverse-chronological order (the main feed).
+  groupByDay?: boolean
   mutateRef?: RefObject<ListMutator>
 }
 
@@ -56,6 +60,7 @@ export const PostList = memo(function PostList({
   showPlaceholder = true,
   orderBy,
   ascending = false,
+  groupByDay = false,
   mutateRef,
   className,
   ...props
@@ -115,18 +120,34 @@ export const PostList = memo(function PostList({
         if (isLoadingMore || isReachingEnd) return
         void setSize((size) => size + 1)
       }}
-      itemContent={(index, post) => (
-        <PostCard
-          className={cx({ 'pt-4': index !== 0 })}
-          key={(post as Post).id}
-          index={index}
-          scrollIntoView={scrollItemIntoView}
-          collapsible
-          showParentLink={isMainList && !isRecyclerPage}
-          post={post as Post} // NOTE: something wrong with TS definition of Virtuoso
-          mutator={mutate}
-        />
-      )}
+      itemContent={(index, post) => {
+        // The divider renders INSIDE the virtuoso item so the item-list child
+        // count still equals the post count (e2e tests rely on it).
+        const prev = filteredAndSortedPosts[index - 1] as Post | undefined
+        const showDayHeading =
+          groupByDay &&
+          (index === 0 ||
+            (prev !== undefined &&
+              formatDate((post as Post).created_at) !== formatDate(prev.created_at)))
+        return (
+          <>
+            {showDayHeading && (
+              <DayHeading timestamp={(post as Post).created_at} first={index === 0} />
+            )}
+            <PostCard
+              className={cx({ 'pt-3': index !== 0 && !showDayHeading })}
+              key={(post as Post).id}
+              index={index}
+              scrollIntoView={scrollItemIntoView}
+              collapsible
+              showParentLink={isMainList && !isRecyclerPage}
+              timeDisplay={groupByDay ? 'time' : 'datetime'}
+              post={post as Post} // NOTE: something wrong with TS definition of Virtuoso
+              mutator={mutate}
+            />
+          </>
+        )
+      }}
       increaseViewportBy={200}
       components={{ Footer: () => footer }}
       {...props}
@@ -136,4 +157,16 @@ export const PostList = memo(function PostList({
 
 function Footer({ children }: ComponentProps<'div'>) {
   return <div className="text-muted-foreground/80 mt-2 mb-1 text-center text-sm">{children}</div>
+}
+
+function DayHeading({ timestamp, first }: { timestamp: number; first: boolean }) {
+  const { lang } = useLang()
+  return (
+    <div className={cx('flex items-center gap-3 px-0.5 pb-3', first ? 'pt-1' : 'pt-7')}>
+      <span className="font-serif text-[13px] tracking-wide whitespace-nowrap tabular-nums text-muted-foreground">
+        {formatDayHeading(timestamp, lang, t('today', lang), t('yesterday', lang))}
+      </span>
+      <span className="h-px flex-1 bg-border" aria-hidden="true" />
+    </div>
+  )
 }

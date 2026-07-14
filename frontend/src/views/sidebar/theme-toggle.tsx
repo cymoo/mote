@@ -11,44 +11,24 @@ export type ThemeMode = 'light' | 'dark'
 
 export const COLOR_THEMES = [
   {
-    id: 'classic',
-    labelKey: 'themeClassic',
-    swatches: ['220 98% 36%', '174 42% 65%', '229 20% 20%'],
+    id: 'celadon',
+    labelKey: 'themeCeladon',
+    swatches: ['158 26% 88%', '170 58% 30%', '172 26% 9%'],
+  },
+  {
+    id: 'dawn',
+    labelKey: 'themeDawn',
+    swatches: ['40 26% 90%', '216 78% 49%', '226 22% 11.5%'],
   },
   {
     id: 'ink',
     labelKey: 'themeInk',
-    swatches: ['352 60% 87%', '350 80% 44%', '352 28% 9%'],
+    swatches: ['28 10% 90%', '9 68% 46%', '24 6% 8%'],
   },
   {
-    id: 'sakura',
-    labelKey: 'themeSakura',
-    swatches: ['220 25% 87%', '207 82% 66%', '220 13% 18%'],
-  },
-  {
-    id: 'moss',
-    labelKey: 'themeMoss',
-    swatches: ['158 50% 86%', '163 66% 28%', '165 34% 9%'],
-  },
-  {
-    id: 'aurora',
-    labelKey: 'themeAurora',
-    swatches: ['270 60% 86%', '268 68% 44%', '268 44% 9%'],
-  },
-  {
-    id: 'fjord',
-    labelKey: 'themeFjord',
-    swatches: ['210 40% 86%', '340 68% 64%', '230 52% 11%'],
-  },
-  {
-    id: 'blueprint',
-    labelKey: 'themeBlueprint',
-    swatches: ['32 20% 84%', '22 94% 50%', '0 3% 7%'],
-  },
-  {
-    id: 'candy',
-    labelKey: 'themeCandy',
-    swatches: ['188 45% 84%', '182 78% 52%', '192 52% 7%'],
+    id: 'nocturne',
+    labelKey: 'themeNocturne',
+    swatches: ['228 26% 90%', '219 90% 71%', '233 30% 10.5%'],
   },
 ] as const satisfies readonly {
   id: string
@@ -59,9 +39,16 @@ export const COLOR_THEMES = [
 export type ColorTheme = (typeof COLOR_THEMES)[number]['id']
 
 const LEGACY_COLOR_THEME_MAP: Record<string, ColorTheme> = {
-  dune: 'aurora',
-  rouge: 'blueprint',
-  voltage: 'candy',
+  classic: 'celadon',
+  moss: 'celadon',
+  candy: 'celadon',
+  voltage: 'celadon',
+  sakura: 'nocturne',
+  aurora: 'nocturne',
+  fjord: 'nocturne',
+  dune: 'nocturne',
+  blueprint: 'ink',
+  rouge: 'ink',
 }
 
 export function ThemeToggle({ className, ...props }: ComponentProps<typeof Button>) {
@@ -122,7 +109,7 @@ const getInitialColorTheme = (): ColorTheme => {
     return migratedColorTheme
   }
   if (isColorTheme(storedColorTheme)) return storedColorTheme
-  return 'classic'
+  return 'celadon'
 }
 
 const applyTheme = (theme: ThemeMode, colorTheme: ColorTheme) => {
