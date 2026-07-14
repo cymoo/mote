@@ -45,6 +45,7 @@ export const PostCard = memo(function PostItem({
   const confirm = useConfirm()
   const { lang } = useLang()
 
+  const createdAtText = formatDate(post.created_at, true)
   const baseShareUrl = window.location.origin + import.meta.env.VITE_BLOG_URL
   const shareUrl = baseShareUrl.endsWith('/')
     ? baseShareUrl + post.id
@@ -56,11 +57,10 @@ export const PostCard = memo(function PostItem({
         <header className="mb-2 flex items-center gap-3">
           <time
             className="text-muted-foreground/90 font-serif text-[13px] tracking-wider tabular-nums"
-            title={formatDate(post.created_at, true)}
+            title={createdAtText}
           >
-            {timeDisplay === 'time'
-              ? formatDate(post.created_at, true).slice(11, 16)
-              : formatDate(post.created_at, true)}
+            {/* createdAtText is 'YYYY-MM-DD HH:mm:ss'; the feed keeps HH:mm only */}
+            {timeDisplay === 'time' ? createdAtText.slice(11, 16) : createdAtText}
           </time>
           {post.color && <StatusLight color={post.color} size="sm" />}
           {!standalone && post.children_count > 0 && (

@@ -30,7 +30,7 @@ function StatItem({
 }: {
   label: string
   count: number | '-'
-  align: string
+  align: 'items-start' | 'items-center' | 'items-end'
 }) {
   return (
     <div className={cx('flex flex-1 flex-col gap-px', align)}>

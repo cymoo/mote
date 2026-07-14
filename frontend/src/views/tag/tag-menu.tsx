@@ -1,4 +1,10 @@
-import { MoreHorizontal as MoreIcon } from 'lucide-react'
+import {
+  MoreHorizontal as MoreIcon,
+  Pencil as PencilIcon,
+  Pin as PinIcon,
+  PinOff as PinOffIcon,
+  Trash2 as TrashIcon,
+} from 'lucide-react'
 import { ComponentRef, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router'
@@ -9,6 +15,7 @@ import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
 import { specialChars } from '@/components/editor/extensions/hashtag-select.tsx'
 import { Input } from '@/components/input.tsx'
+import { MenuInfo, MenuItem, MenuList } from '@/components/menu.tsx'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover.tsx'
 import { T, t, useLang } from '@/components/translation.tsx'
 
@@ -44,24 +51,21 @@ export function TagMenu({ tag, className }: TagMenuProps) {
         </Button>
       </PopoverTrigger>
       <PopoverContent>
-        <ul className="*:mt-2">
-          <li>
-            <Button
-              className="w-full justify-start!"
-              variant="ghost"
-              onClick={() => {
-                closeMenu()
-                void actions.stickTag(tag.name, !tag.sticky)
-              }}
-            >
-              <T name={tag.sticky ? 'unpin' : 'pin'} />
-            </Button>
-          </li>
-          <li>
-            <Button
-              className="w-full justify-start!"
-              variant="ghost"
-              onClick={() => {
+        <MenuList>
+          <MenuItem
+            icon={
+              tag.sticky ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />
+            }
+            onClick={() => {
+              closeMenu()
+              void actions.stickTag(tag.name, !tag.sticky)
+            }}
+          >
+            <T name={tag.sticky ? 'unpin' : 'pin'} />
+          </MenuItem>
+          <MenuItem
+            icon={<PencilIcon className="size-3.5" />}
+            onClick={() => {
                 closeMenu()
                 confirm.open({
                   heading: t('rename', lang),
@@ -114,36 +118,33 @@ export function TagMenu({ tag, className }: TagMenuProps) {
                     }
                   },
                 })
-              }}
-            >
-              <T name="rename" />
-            </Button>
-          </li>
-          <li>
-            <Button
-              className="text-destructive w-full justify-start!"
-              variant="ghost"
-              onClick={() => {
-                closeMenu()
-                confirm.open({
-                  heading: <T name="deleteTag" />,
-                  description: t('deleteTagDescription', lang, true, tag.name),
-                  okText: t('delete', lang),
-                  cancelText: t('cancel', lang),
-                  cancelButtonClassName: 'w-1/4',
-                  onOk: async () => {
-                    await actions.deleteTag(tag.name)
-                  },
-                })
-              }}
-            >
-              <T name="delete" />
-            </Button>
-          </li>
-          <li className="text-muted-foreground/80 px-4 pt-2 pb-1 text-xs">
+            }}
+          >
+            <T name="rename" />
+          </MenuItem>
+          <MenuItem
+            danger
+            icon={<TrashIcon className="size-3.5" />}
+            onClick={() => {
+              closeMenu()
+              confirm.open({
+                heading: <T name="deleteTag" />,
+                description: t('deleteTagDescription', lang, true, tag.name),
+                okText: t('delete', lang),
+                cancelText: t('cancel', lang),
+                cancelButtonClassName: 'w-1/4',
+                onOk: async () => {
+                  await actions.deleteTag(tag.name)
+                },
+              })
+            }}
+          >
+            <T name="delete" />
+          </MenuItem>
+          <MenuInfo>
             <T name="totalMemos" />: {tag.post_count}
-          </li>
-        </ul>
+          </MenuInfo>
+        </MenuList>
       </PopoverContent>
     </Popover>
   )

@@ -74,7 +74,10 @@ export const TagItem = memo(function TreeItem({
             #
           </span>
           <span className="truncate">{showPath ? tag.name : getLastSegment(tag.name)}</span>
-          <span className="text-muted-foreground/60 ml-auto flex-none pl-2 text-[11px] tabular-nums">
+          <span
+            className="text-muted-foreground/60 ml-auto flex-none pl-2 text-[11px] tabular-nums"
+            aria-hidden="true"
+          >
             {tag.post_count}
           </span>
         </Button>
