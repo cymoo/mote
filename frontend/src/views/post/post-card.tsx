@@ -24,6 +24,9 @@ interface PostItemProps extends ComponentProps<'article'> {
   collapsible?: boolean
   showParentLink?: boolean
   standalone?: boolean
+  // 'time' renders HH:mm only — used by the day-grouped feed where the day
+  // heading already carries the date; the full datetime stays in the tooltip.
+  timeDisplay?: 'datetime' | 'time'
   index?: number
   scrollIntoView?: (index: number) => void
 }
@@ -34,6 +37,7 @@ export const PostCard = memo(function PostItem({
   collapsible = false,
   showParentLink = true,
   standalone = false,
+  timeDisplay = 'datetime',
   index,
   scrollIntoView,
   ...props
@@ -48,9 +52,16 @@ export const PostCard = memo(function PostItem({
 
   return (
     <article {...props}>
-      <div className="border-border/50 bg-card text-card-foreground relative rounded-lg border p-4 shadow-xs">
+      <div className="group/memo border-border bg-card text-card-foreground relative rounded-[calc(var(--radius)+4px)] border p-4 px-5 shadow-xs transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md">
         <header className="mb-2 flex items-center gap-3">
-          <time className="text-foreground/80 text-sm">{formatDate(post.created_at, true)}</time>
+          <time
+            className="text-muted-foreground/90 font-serif text-[13px] tracking-wider tabular-nums"
+            title={formatDate(post.created_at, true)}
+          >
+            {timeDisplay === 'time'
+              ? formatDate(post.created_at, true).slice(11, 16)
+              : formatDate(post.created_at, true)}
+          </time>
           {post.color && <StatusLight color={post.color} size="sm" />}
           {!standalone && post.children_count > 0 && (
             <span className="inline-flex items-center">
@@ -67,7 +78,7 @@ export const PostCard = memo(function PostItem({
             </a>
           )}
           <PostMenu
-            className="-mr-4 ml-auto h-8!"
+            className="-mr-4 ml-auto h-8! opacity-100 transition-opacity duration-150 group-focus-within/memo:opacity-100 md:opacity-0 md:group-hover/memo:opacity-100"
             post={post}
             mutator={mutator}
             standalone={standalone}

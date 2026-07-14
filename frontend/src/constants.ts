@@ -1,4 +1,4 @@
-export const SIDEBAR_WIDTH = 270
-export const CONTENT_WIDTH = 650
+export const SIDEBAR_WIDTH = 282
+export const CONTENT_WIDTH = 688
 
 export const MAX_POST_HEIGHT = 210

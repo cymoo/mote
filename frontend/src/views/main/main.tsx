@@ -47,7 +47,7 @@ export function Main() {
       className={
         sm
           ? 'min-h-[150px]'
-          : 'relative mt-3 mb-5 max-h-[93vh]! flex-none rounded-xl border border-gray-300 p-4 dark:border-gray-700'
+          : 'relative mt-3 mb-5 max-h-[93vh]! flex-none rounded-[calc(var(--radius)+6px)] border border-border bg-card/80 p-4 shadow-xs transition-[border-color,box-shadow] duration-200 focus-within:border-primary/45 focus-within:bg-card focus-within:shadow-[0_0_0_3.5px_hsl(var(--primary)/0.10),0_10px_24px_-8px_hsl(var(--foreground)/0.10)]'
       }
       post={{ shared, color }}
       tag={tag}
@@ -67,7 +67,7 @@ export function Main() {
       ) : untagged ? null : sm ? (
         <Button
           id="main-editor-trigger"
-          className="border-primary fixed left-0 right-0 mx-auto bottom-6 z-50 size-10 rounded-full! p-3! opacity-95"
+          className="fixed left-0 right-0 mx-auto bottom-6 z-50 size-13 rounded-full! p-0! shadow-[0_6px_20px_-4px_hsl(var(--primary)/0.55),0_2px_8px_hsl(var(--foreground)/0.15)]"
           variant="primary"
           aria-label="open editor"
           onClick={() => {
@@ -85,6 +85,7 @@ export function Main() {
         className={cx('relative flex-auto pt-4', { '[overflow-y:initial]': sm })}
         queryString={params.toString()}
         useWindowScroll={sm}
+        groupByDay={!deleted}
         mutateRef={mutateRef}
       />
     </>
@@ -96,7 +97,12 @@ function RecycleAlert({ className }: ComponentProps<'div'>) {
   const { lang } = useLang()
 
   return (
-    <div className={cx('flex items-center rounded border px-4 py-2 text-sm', className)}>
+    <div
+      className={cx(
+        'flex items-center rounded-[var(--radius)] border border-border bg-card px-4 py-2 text-sm shadow-xs',
+        className,
+      )}
+    >
       <CircleAlertIcon
         className="size-5 text-yellow-600/80 dark:text-yellow-300/80"
         aria-hidden="true"

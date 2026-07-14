@@ -16,7 +16,7 @@ import { NavLinks } from './nav-links.tsx'
 import { SettingDialog } from './setting.tsx'
 import { Stats } from './stats.tsx'
 
-export const HIGHLIGHT_STYLE = 'text-primary/80 hover:text-primary'
+export const HIGHLIGHT_STYLE = 'bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary'
 
 export const Sidebar = memo(function SideBar() {
   const [params, setParams] = useSearchParams()
@@ -28,7 +28,7 @@ export const Sidebar = memo(function SideBar() {
       <Stats className="mt-3" />
       <HeatMap
         className="mt-4"
-        startDate={new Date(Date.now() - 11 * 7 * 24 * 60 * 60 * 1000)} // 11 weeks ago
+        startDate={new Date(Date.now() - 16 * 7 * 24 * 60 * 60 * 1000)} // 16 weeks ago
         onClick={(event) => {
           if (event.target instanceof HTMLElement && event.target.tagName === 'A') {
             const { date, count } = event.target.dataset

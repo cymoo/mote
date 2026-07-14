@@ -64,13 +64,19 @@ export const TagItem = memo(function TreeItem({
     >
       <div className="flex items-center justify-between min-w-0">
         <Button
-          className={cx('justify-start flex-1 truncate w-full ring-inset', {
+          className={cx('w-full flex-1 justify-start gap-0 rounded-lg font-normal ring-inset', {
             [HIGHLIGHT_STYLE]: params.get('tag') === tag.name,
           })}
           variant="ghost"
           onClick={selectTag}
         >
-          {showPath ? tag.name : getLastSegment(tag.name)}
+          <span className="text-muted-foreground/60 mr-1.5 flex-none font-serif" aria-hidden="true">
+            #
+          </span>
+          <span className="truncate">{showPath ? tag.name : getLastSegment(tag.name)}</span>
+          <span className="text-muted-foreground/60 ml-auto flex-none pl-2 text-[11px] tabular-nums">
+            {tag.post_count}
+          </span>
         </Button>
         {tag.children.length > 0 && (
           <Button

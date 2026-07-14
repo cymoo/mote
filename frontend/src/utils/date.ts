@@ -118,3 +118,41 @@ export function getTimestampOfDayEnd(localDateString: string) {
   }
   return new Date(`${localDateString}T23:59:59.999`).getTime()
 }
+
+/**
+ * Formats a timestamp as a feed day heading, e.g. `7月15日 周三` / `Wed, Jul 15`.
+ * Prepends today/yesterday (caller passes the translated words) and appends the
+ * year when the date falls outside the current year.
+ */
+export function formatDayHeading(
+  timestamp: number,
+  lang: 'zh' | 'en',
+  todayText: string,
+  yesterdayText: string,
+) {
+  const date = new Date(timestamp)
+  const now = new Date()
+
+  let base: string
+  if (lang === 'zh') {
+    const weekday = '日一二三四五六'[date.getDay()]
+    base = `${String(date.getMonth() + 1)}月${String(date.getDate())}日 周${weekday}`
+    if (date.getFullYear() !== now.getFullYear()) {
+      base = `${String(date.getFullYear())}年${base}`
+    }
+  } else {
+    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    base = `${weekdays[date.getDay()]}, ${months[date.getMonth()]} ${String(date.getDate())}`
+    if (date.getFullYear() !== now.getFullYear()) {
+      base = `${base}, ${String(date.getFullYear())}`
+    }
+  }
+
+  const dayString = formatDate(date)
+  if (dayString === formatDate(now)) return `${todayText} · ${base}`
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (dayString === formatDate(yesterday)) return `${yesterdayText} · ${base}`
+  return base
+}

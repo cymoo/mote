@@ -1,4 +1,12 @@
-import { FolderIcon, HomeIcon, Share2Icon, Trash2Icon } from 'lucide-react'
+import {
+  ChevronLeftIcon,
+  CloudUploadIcon,
+  FolderIcon,
+  HomeIcon,
+  LinkIcon,
+  Share2Icon,
+  Trash2Icon,
+} from 'lucide-react'
 import { ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router'
 
@@ -6,7 +14,7 @@ import { cx } from '@/utils/css.ts'
 
 import { Button } from '@/components/button.tsx'
 import { useStableNavigate } from '@/components/router.tsx'
-import { t, useLang } from '@/components/translation.tsx'
+import { T, t, useLang } from '@/components/translation.tsx'
 
 import { useCookieAuthSync } from './hooks'
 import { UploadDock } from './upload-dock'
@@ -17,21 +25,95 @@ export function FilesLayout() {
   useCookieAuthSync()
   const { lang } = useLang()
   return (
-    <div className="bg-background text-foreground vh-full flex flex-col">
-      <Outlet />
+    <div className="text-foreground vh-full flex flex-col md:flex-row md:gap-3 md:p-3">
+      <FilesRail lang={lang} />
+      {/* 桌面端的「画布」：内容区抬升为带描边圆角的卡片，导航轨留在底色上 */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:overflow-hidden md:rounded-[calc(var(--radius)+7px)] md:border md:border-border md:bg-card md:shadow-xs">
+        <Outlet />
+      </div>
       <UploadDock lang={lang} />
     </div>
   )
 }
 
+// 桌面左侧导航轨：返回、品牌、三个入口。动作按钮集中在顶栏，轨道只做导航，
+// 为将来的新入口留出位置。
+function FilesRail({ lang }: { lang: Lang }) {
+  const navigate = useStableNavigate()
+  return (
+    <aside className="hidden w-[210px] flex-none flex-col px-1 py-1 md:flex">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="text-muted-foreground hover:text-foreground mb-4 w-fit justify-start gap-1 rounded-lg px-2!"
+        onClick={() => navigate('/')}
+      >
+        <ChevronLeftIcon className="size-4" />
+        <T name="backToNotes" />
+      </Button>
+      <div className="mb-5 flex items-center gap-2.5 px-2.5">
+        <i className="logo-dot" aria-hidden="true" />
+        <span className="text-[17px] font-semibold tracking-wide">mote</span>
+      </div>
+      <nav className="flex flex-col gap-0.5" aria-label="drive navigation">
+        <RailLink
+          to="/files"
+          end
+          icon={<CloudUploadIcon className="size-4" />}
+          label={t('myDrive', lang)}
+        />
+        <RailLink
+          to="/files/shared"
+          icon={<LinkIcon className="size-4" />}
+          label={t('sharedFiles', lang)}
+        />
+        <RailLink
+          to="/files/trash"
+          icon={<Trash2Icon className="size-4" />}
+          label={t('trash', lang)}
+        />
+      </nav>
+      <p className="text-muted-foreground/60 mt-auto px-2.5 pb-2 text-[11.5px] leading-relaxed">
+        <T name="uploadHint" />
+      </p>
+    </aside>
+  )
+}
+
+function RailLink({
+  to,
+  end,
+  icon,
+  label,
+}: {
+  to: string
+  end?: boolean
+  icon: ReactNode
+  label: string
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cx(
+          'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+          isActive
+            ? 'bg-primary/10 text-primary'
+            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+        )
+      }
+    >
+      {icon}
+      {label}
+    </NavLink>
+  )
+}
+
 // Sticky top header used by all three /files pages. Pages compose their own
-// middle content (breadcrumbs, search, view toggle…) and the nav pills are
-// rendered consistently on the right.
-//
-// On <md the header is split into two rows: row 1 keeps the back/title/nav
-// pills; row 2 holds the page-supplied middle/extra slots. On ≥md `md:contents`
-// dissolves the row-2 wrapper so children flow back into row 1, preserving
-// the original PC layout exactly.
+// middle content (breadcrumbs, search, view toggle…). On desktop the rail
+// handles section navigation, so the home button and nav pills only render
+// on mobile; on <md the header keeps its two-row layout.
 export function TopBar({
   middle,
   extra,
@@ -44,8 +126,8 @@ export function TopBar({
   const navigate = useStableNavigate()
   const hasSecondRow = middle != null || extra != null
   return (
-    <header className="border-border bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-20 flex flex-col gap-2 border-b px-4 py-3 backdrop-blur md:flex-row md:flex-wrap md:items-center md:gap-3">
-      <div className="flex items-center gap-3 md:contents">
+    <header className="border-border bg-card/95 supports-[backdrop-filter]:bg-card/80 sticky top-0 z-20 flex flex-col gap-2 border-b px-3 py-2.5 backdrop-blur md:flex-row md:flex-wrap md:items-center md:gap-2 md:px-4">
+      <div className="flex items-center gap-3 md:hidden">
         <Button
           variant="ghost"
           size="icon"
@@ -56,24 +138,14 @@ export function TopBar({
         >
           <HomeIcon className="size-4" />
         </Button>
-        <div className="ml-auto flex items-center gap-1.5 md:hidden">
+        <div className="ml-auto flex items-center gap-1.5">
           <FilesNavPills lang={lang} />
         </div>
       </div>
       {hasSecondRow && (
         <div className="flex min-w-0 items-center gap-2 md:contents">
           {middle}
-          <div className="ml-auto flex items-center gap-1.5">
-            {extra}
-            <span className="hidden md:contents">
-              <FilesNavPills lang={lang} />
-            </span>
-          </div>
-        </div>
-      )}
-      {!hasSecondRow && (
-        <div className="ml-auto hidden items-center gap-1.5 md:flex">
-          <FilesNavPills lang={lang} />
+          <div className="ml-auto flex items-center gap-1.5">{extra}</div>
         </div>
       )}
     </header>

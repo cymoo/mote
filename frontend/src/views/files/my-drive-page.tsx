@@ -31,7 +31,7 @@ import {
   search,
 } from './api'
 import { MoveDialog, NameDialog, ShareDialog } from './dialogs'
-import { useIsMobile, useRefreshOnUploadComplete, useSelection, useShowDotFiles, useSort } from './hooks'
+import { useRefreshOnUploadComplete, useSelection, useShowDotFiles, useSort } from './hooks'
 import { TopBar } from './layout'
 import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
@@ -61,7 +61,6 @@ export function MyDrivePage() {
 
   const { sortKey, sortDir, onSort } = useSort()
   const { showDotFiles, toggleShowDotFiles } = useShowDotFiles()
-  const isMobile = useIsMobile()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -438,53 +437,73 @@ export function MyDrivePage() {
                 <ListIcon className="size-4" />
               )}
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 md:hidden"
+              onClick={handleNewFolder}
+              aria-label={t('newFolder', lang)}
+              title={t('newFolder', lang)}
+            >
+              <FolderPlusIcon className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNewFolder}
+              title={t('newFolder', lang)}
+              className="gap-1.5 rounded-lg max-md:hidden"
+            >
+              <FolderPlusIcon className="size-4" />
+              <T name="newFolder" />
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              title={t('upload', lang)}
+              className="gap-1.5 rounded-lg max-md:hidden"
+            >
+              <UploadIcon className="size-4" />
+              <T name="upload" />
+            </Button>
           </>
         }
       />
 
-      <div className="border-border/60 flex items-center gap-2 border-b px-4 py-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-          title={t('upload', lang)}
-          className="gap-1.5"
-        >
-          <UploadIcon className="size-4" />
-          <T name="upload" />
-        </Button>
-        <input
-          type="file"
-          multiple
-          hidden
-          ref={fileInputRef}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => {
-            void onUploadFiles(e.target.files)
-            e.target.value = ''
-          }}
+      <input
+        type="file"
+        multiple
+        hidden
+        ref={fileInputRef}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+          void onUploadFiles(e.target.files)
+          e.target.value = ''
+        }}
+      />
+
+      {/* 上传是移动端的高频入口：右下角 FAB（桌面在顶栏） */}
+      <Button
+        variant="primary"
+        className="fixed right-5 bottom-6 z-30 size-13 rounded-full! p-0! shadow-[0_6px_20px_-4px_hsl(var(--primary)/0.55),0_2px_8px_hsl(var(--foreground)/0.15)] md:hidden"
+        aria-label={t('upload', lang)}
+        title={t('upload', lang)}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <UploadIcon className="size-5" />
+      </Button>
+
+      {selected.size > 0 && (
+        <SelectionBar
+          count={selected.size}
+          onClear={clear}
+          onDownload={downloadSelected}
+          onMove={() => handleMove([...selected])}
+          onDelete={() => handleDelete([...selected])}
+          lang={lang}
+          floating
         />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleNewFolder}
-          title={t('newFolder', lang)}
-          className="gap-1.5"
-        >
-          <FolderPlusIcon className="size-4" />
-          <T name="newFolder" />
-        </Button>
-        {selected.size > 0 && (
-          <SelectionBar
-            count={selected.size}
-            onClear={clear}
-            onDownload={downloadSelected}
-            onMove={() => handleMove([...selected])}
-            onDelete={() => handleDelete([...selected])}
-            lang={lang}
-            floating={isMobile}
-          />
-        )}
-      </div>
+      )}
 
       <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
         {visibleItems.length === 0 ? (
@@ -506,7 +525,6 @@ export function MyDrivePage() {
             sortDir={sortDir}
             onSort={onSort}
             lang={lang}
-            isMobile={isMobile}
             showDotFiles={showDotFiles}
           />
         ) : (

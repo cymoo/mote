@@ -43,7 +43,7 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
   return (
     <nav
       className={cx(
-        'flex flex-col gap-1 *:w-full *:justify-start! *:font-semibold *:ring-inset',
+        'flex flex-col gap-0.5 *:w-full *:justify-start! *:rounded-lg *:font-medium *:ring-inset',
         className,
       )}
       aria-label="main navigation"
@@ -94,7 +94,10 @@ export function NavLinks({ className, ...props }: ComponentProps<'nav'>) {
             navigateToMainFilter({ color })
           }}
         >
-          <CircleIcon className={cx('mr-3 size-5', `fill-${color}-500`)} aria-hidden="true" />
+          <CircleIcon
+            className={cx('mx-[3px] mr-[15px] size-3.5 stroke-none', `fill-${color}-500`)}
+            aria-hidden="true"
+          />
           <T name={color} />
         </Button>
       ))}

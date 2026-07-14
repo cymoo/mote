@@ -62,12 +62,12 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       port: 3000,
       open: true,
-      proxy: {
-        '/api': 'http://localhost:8000',
-        '/shared': 'http://localhost:8000',
-        '/static': 'http://localhost:8000',
-        '/uploads': 'http://localhost:8000',
-      },
+      proxy: Object.fromEntries(
+        ['/api', '/shared', '/static', '/uploads'].map((path) => [
+          path,
+          env.VITE_API_PROXY || 'http://localhost:8000',
+        ]),
+      ),
     },
   }
 })

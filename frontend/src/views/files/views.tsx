@@ -28,7 +28,6 @@ interface ListViewProps {
   sortDir: SortDir
   onSort: (k: SortKey) => void
   lang: Lang
-  isMobile?: boolean
   showDotFiles?: boolean
 }
 
@@ -44,14 +43,13 @@ export const ListView = memo(function ListView({
   sortDir,
   onSort,
   lang,
-  isMobile,
   showDotFiles,
 }: ListViewProps) {
   const allSelected = items.length > 0 && selected.size === items.length
   const someSelected = selected.size > 0 && !allSelected
   return (
     <table className="w-full table-fixed text-sm">
-      <thead className="text-muted-foreground bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-10 text-left text-xs backdrop-blur">
+      <thead className="text-muted-foreground bg-card/95 supports-[backdrop-filter]:bg-card/80 sticky top-0 z-10 text-left text-[11.5px] tracking-wide backdrop-blur">
         <tr className="border-border/60 border-b">
           <th className="w-10 px-3 py-2">
             <Checkbox
@@ -61,7 +59,7 @@ export const ListView = memo(function ListView({
               title={t('selectAll', lang)}
             />
           </th>
-          <th className="w-9"></th>
+          <th className="w-11"></th>
           <th className="px-2 py-2 font-medium">
             <SortHeader k="name" sortKey={sortKey} sortDir={sortDir} onSort={onSort}>
               <T name="name" />
@@ -92,7 +90,6 @@ export const ListView = memo(function ListView({
             onAction={onAction}
             onNavigateToParent={onNavigateToParent}
             lang={lang}
-            isMobile={isMobile}
             dimmed={showDotFiles && n.name.startsWith('.')}
           />
         ))}
@@ -110,7 +107,6 @@ interface ListRowProps {
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
   lang: Lang
-  isMobile?: boolean
   dimmed?: boolean
 }
 
@@ -123,44 +119,45 @@ const ListRow = memo(function ListRow({
   onAction,
   onNavigateToParent,
   lang,
-  isMobile,
   dimmed,
 }: ListRowProps) {
   return (
     <tr
       className={cx(
-        'group hover:bg-accent/50 cursor-default border-b transition-colors',
+        'group hover:bg-accent/60 cursor-pointer border-b transition-colors',
         'border-border/40',
-        selected ? 'bg-accent' : undefined,
+        selected ? 'bg-primary/10 hover:bg-primary/15' : undefined,
         dimmed ? 'opacity-50' : undefined,
       )}
       onClick={(e) => {
-        if (isMobile) {
-          // On mobile, plain row click opens. Modifier-click still toggles
-          // selection (covers BT keyboards), and the checkbox handles the
-          // common "select" gesture. No double-click on touch.
-          if (e.shiftKey || e.metaKey || e.ctrlKey) {
-            onToggle(node.id, true)
-          } else {
-            onOpen(node, index)
-          }
+        // 打开是高频操作：单击即打开；⌘/Ctrl/Shift+单击、或点复选框才是多选。
+        if (e.shiftKey || e.metaKey || e.ctrlKey) {
+          onToggle(node.id, true)
         } else {
-          onToggle(node.id, e.shiftKey || e.metaKey || e.ctrlKey)
+          onOpen(node, index)
         }
       }}
-      onDoubleClick={() => onOpen(node, index)}
     >
       <td className="px-3" onClick={(e) => e.stopPropagation()}>
-        <Checkbox
-          checked={selected}
-          onChange={() => onToggle(node.id, true)}
-          title={node.name}
-        />
+        <span
+          className={cx(
+            'inline-flex transition-opacity',
+            selected
+              ? 'opacity-100'
+              : 'opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100',
+          )}
+        >
+          <Checkbox
+            checked={selected}
+            onChange={() => onToggle(node.id, true)}
+            title={node.name}
+          />
+        </span>
       </td>
-      <td className="px-1">
+      <td className="px-1 py-1.5">
         <NodeIcon node={node} />
       </td>
-      <td className="min-w-0 py-3 pr-2 pl-1 md:py-2.5">
+      <td className="min-w-0 py-2 pr-2 pl-1 md:py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <button
             className="hover:text-primary min-w-0 truncate text-left font-medium transition-colors"
@@ -185,6 +182,11 @@ const ListRow = memo(function ListRow({
             />
           )}
         </div>
+        {/* 小屏隐藏了大小/时间列，改在名称下方以副行呈现 */}
+        <span className="text-muted-foreground/80 mt-0.5 block text-[11px] tabular-nums md:hidden">
+          {node.type !== 'folder' && humanSize(node.size) ? `${humanSize(node.size)} · ` : ''}
+          {new Date(node.updated_at).toLocaleDateString()}
+        </span>
       </td>
       <td className="text-muted-foreground hidden px-2 text-xs md:table-cell">
         {humanSize(node.size)}
@@ -198,7 +200,9 @@ const ListRow = memo(function ListRow({
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <RowMenu node={node} onAction={onAction} lang={lang} />
+        <span className="inline-flex opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
+          <RowMenu node={node} onAction={onAction} lang={lang} />
+        </span>
       </td>
     </tr>
   )
@@ -270,9 +274,9 @@ const GridCard = memo(function GridCard({
       role="button"
       tabIndex={0}
       className={cx(
-        'group relative flex h-32 flex-col items-center justify-start gap-1.5 rounded-xl border p-3 text-center transition-all md:h-36',
-        'hover:bg-accent/60 border-transparent hover:-translate-y-0.5 hover:shadow-sm',
-        selected ? 'border-primary/40 bg-accent ring-primary/20 ring-2' : undefined,
+        'group relative flex h-32 flex-col items-center justify-start gap-1.5 rounded-[calc(var(--radius)+4px)] border p-3 text-center transition-all md:h-36',
+        'hover:bg-accent/60 border-transparent hover:-translate-y-0.5 hover:shadow-md',
+        selected ? 'border-primary/40 bg-primary/10 ring-primary/20 ring-2' : undefined,
         dimmed ? 'opacity-50' : undefined,
       )}
       onClick={(e) => {
