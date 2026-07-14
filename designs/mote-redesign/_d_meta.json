@@ -1,0 +1,18 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "Mote Redesign": {
+      "versions": [
+        {
+          "path": "Mote Redesign.html",
+          "createdAt": "2026-07-14T18:04:44.049Z",
+          "status": "needs-review"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-07-14T18:04:44.049Z",
+  "updatedAt": "2026-07-14T18:38:38.683Z"
+}
