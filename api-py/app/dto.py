@@ -179,6 +179,21 @@ class DriveMoveRequest(BaseModel):
     new_parent_id: Optional[int] = None
 
 
+class DriveCopyRequest(BaseModel):
+    ids: list[int]
+    new_parent_id: Optional[int] = None
+
+
+class DriveStarRequest(BaseModel):
+    ids: list[int]
+    starred: bool
+
+
+class DriveEnsurePathRequest(BaseModel):
+    parent_id: Optional[int] = None
+    path: str  # slash-separated, relative, e.g. "a/b/c"
+
+
 class DriveDeleteRequest(BaseModel):
     ids: list[int]
 

@@ -64,3 +64,73 @@ def test_trash_route(client):
 def test_share_unknown_token_landing(client):
     rv = client.get('/shared-files/nonexistent')
     assert rv.status_code == 404
+
+
+def test_star_starred_roundtrip(client):
+    rv = client.post('/api/drive/folder', json={'name': 'fav'})
+    nid = rv.get_json()['id']
+    assert rv.get_json()['starred_at'] is None
+
+    rv = client.post('/api/drive/star', json={'ids': [nid], 'starred': True})
+    assert rv.status_code == 204
+
+    rv = client.get('/api/drive/starred')
+    assert rv.status_code == 200
+    items = rv.get_json()
+    assert [x['id'] for x in items] == [nid]
+    assert items[0]['starred_at'] is not None
+
+    rv = client.post('/api/drive/star', json={'ids': [nid], 'starred': False})
+    assert rv.status_code == 204
+    assert client.get('/api/drive/starred').get_json() == []
+
+
+def test_copy_route(client):
+    rv = client.post('/api/drive/folder', json={'name': 'orig'})
+    nid = rv.get_json()['id']
+
+    rv = client.post('/api/drive/copy', json={'ids': [nid], 'new_parent_id': None})
+    assert rv.status_code == 200
+    out = rv.get_json()
+    assert len(out) == 1
+    assert out[0]['name'] == 'orig (1)'
+
+    # Copying a folder into itself is a 400 (cycle).
+    rv = client.post('/api/drive/copy', json={'ids': [nid], 'new_parent_id': nid})
+    assert rv.status_code == 400
+
+    # Unknown source id is a 404.
+    rv = client.post('/api/drive/copy', json={'ids': [999999]})
+    assert rv.status_code == 404
+
+
+def test_usage_route(client):
+    rv = client.get('/api/drive/usage')
+    assert rv.status_code == 200
+    body = rv.get_json()
+    assert body.keys() >= {
+        'active_bytes', 'trash_bytes', 'physical_bytes',
+        'active_count', 'trash_count',
+    }
+    assert body['active_count'] == 0
+
+
+def test_ensure_path_route(client):
+    rv = client.post(
+        '/api/drive/folders/ensure-path', json={'parent_id': None, 'path': 'a/b/c'}
+    )
+    assert rv.status_code == 200
+    leaf = rv.get_json()
+    assert leaf['name'] == 'c'
+    assert leaf['type'] == 'folder'
+
+    # Idempotent.
+    rv = client.post(
+        '/api/drive/folders/ensure-path', json={'parent_id': None, 'path': 'a/b/c'}
+    )
+    assert rv.get_json()['id'] == leaf['id']
+
+    rv = client.post(
+        '/api/drive/folders/ensure-path', json={'parent_id': None, 'path': '../up'}
+    )
+    assert rv.status_code == 400

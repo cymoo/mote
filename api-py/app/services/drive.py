@@ -111,6 +111,7 @@ class DriveNodeRow:
     blob_path: Optional[str]
     size: Optional[int]
     hash: Optional[str]
+    starred_at: Optional[int]
     deleted_at: Optional[int]
     delete_batch_id: Optional[str]
     created_at: int
@@ -128,6 +129,7 @@ class DriveNodeRow:
             blob_path=r.blob_path,
             size=r.size,
             hash=r.hash,
+            starred_at=r.starred_at,
             deleted_at=r.deleted_at,
             delete_batch_id=r.delete_batch_id,
             created_at=r.created_at,
@@ -168,6 +170,7 @@ class DriveNodeRow:
             'type': self.type,
             'name': self.name,
             'size': self.size,
+            'starred_at': self.starred_at,  # epoch-ms or null
             'created_at': self.created_at,
             'updated_at': self.updated_at,
         }
@@ -288,7 +291,8 @@ class DriveService:
             n.path = p
 
     def _populate_share_counts(self, nodes: List[DriveNodeRow]) -> None:
-        ids = [n.id for n in nodes if n.type == 'file']
+        # Files and folders alike — folders are shareable too.
+        ids = [n.id for n in nodes]
         if not ids:
             return
         placeholders = ','.join(f':id{i}' for i in range(len(ids)))
@@ -789,6 +793,234 @@ class DriveService:
         if n.type != 'folder':
             raise DriveNotFolder('parent must be a folder')
         return n
+
+    # -- copy / star / usage / ensure-path -------------------------------------
+
+    def copy(
+        self, ids: List[int], new_parent_id: Optional[int]
+    ) -> List[DriveNodeRow]:
+        """Deep-copy nodes into ``new_parent_id`` (None = root), one id at a
+        time. File copies reference the SAME blob_path — zero disk cost;
+        refcounted blob removal keeps shared blobs alive. Copies get fresh
+        timestamps and never carry stars or shares. Copying a folder into its
+        own subtree is rejected (DriveCycle), matching move. Destination name
+        conflicts resolve via auto_rename ("name (1)"), so duplicate-in-place
+        works naturally.
+        """
+        if new_parent_id is not None:
+            self._require_active_folder(new_parent_id)
+        return [self._copy_one(nid, new_parent_id) for nid in ids]
+
+    def _copy_one(
+        self, node_id: int, new_parent_id: Optional[int]
+    ) -> DriveNodeRow:
+        src = self.find_by_id(node_id)
+        if src.deleted_at is not None:
+            raise DriveNotFound('drive node not found')
+        # Cycle check: copying a folder into itself or its own descendant
+        # would mean copying the destination into itself; reject like move.
+        if new_parent_id is not None and src.type == 'folder':
+            if new_parent_id == node_id:
+                raise DriveCycle('cannot copy folder into its own descendant')
+            hit = db.session.execute(
+                text(
+                    'WITH RECURSIVE descendants(id) AS ('
+                    '  SELECT id FROM drive_nodes WHERE id = :nid '
+                    '  UNION ALL '
+                    '  SELECT n.id FROM drive_nodes n JOIN descendants d ON n.parent_id = d.id'
+                    ') SELECT EXISTS(SELECT 1 FROM descendants WHERE id = :np)'
+                ),
+                {'nid': node_id, 'np': new_parent_id},
+            ).scalar()
+            if hit:
+                raise DriveCycle('cannot copy folder into its own descendant')
+
+        # Pre-insert, read-only; the unique index backstops races (→ conflict).
+        root_name = self.auto_rename(new_parent_id, src.name)
+
+        try:
+            # Snapshot the whole source subtree up-front (depth-ordered so
+            # parents are copied before children); inserting from the snapshot
+            # means freshly created copies can never be re-visited.
+            snap = db.session.execute(
+                text(
+                    'WITH RECURSIVE subtree(id, parent_id, type, name, blob_path, size, hash, depth) AS ('
+                    '  SELECT id, parent_id, type, name, blob_path, size, hash, 0 '
+                    '  FROM drive_nodes WHERE id = :id AND deleted_at IS NULL '
+                    '  UNION ALL '
+                    '  SELECT n.id, n.parent_id, n.type, n.name, n.blob_path, n.size, n.hash, s.depth + 1 '
+                    '  FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id '
+                    '  WHERE n.deleted_at IS NULL'
+                    ') SELECT id, parent_id, type, name, blob_path, size, hash, depth '
+                    'FROM subtree ORDER BY depth, id'
+                ),
+                {'id': node_id},
+            ).all()
+            if not snap:
+                raise DriveNotFound('drive node not found')
+
+            now = utc_now_ms()
+            id_map: dict[int, int] = {}
+            new_root_id = None
+            for r in snap:
+                if r.id == node_id:
+                    parent = new_parent_id
+                    name = root_name
+                else:
+                    parent = id_map[r.parent_id]
+                    name = r.name
+                new_id = db.session.execute(
+                    text(
+                        'INSERT INTO drive_nodes '
+                        '(parent_id, type, name, blob_path, size, hash, created_at, updated_at) '
+                        'VALUES (:pid, :type, :name, :bp, :size, :hash, :now, :now) '
+                        'RETURNING id'
+                    ),
+                    {
+                        'pid': parent,
+                        'type': r.type,
+                        'name': name,
+                        'bp': r.blob_path,
+                        'size': r.size,
+                        'hash': r.hash,
+                        'now': now,
+                    },
+                ).scalar_one()
+                id_map[r.id] = new_id
+                if r.id == node_id:
+                    new_root_id = new_id
+            db.session.commit()
+        except IntegrityError as err:
+            db.session.rollback()
+            if _is_unique_err(err):
+                raise DriveNameConflict('name already exists in this folder')
+            raise
+        except Exception:
+            db.session.rollback()
+            raise
+        return self.find_by_id(new_root_id)
+
+    def ensure_folder_path(
+        self, parent_id: Optional[int], rel_path: str
+    ) -> DriveNodeRow:
+        """Walk/create the folder chain ``rel_path`` ("a/b/c") under
+        ``parent_id`` and return the final folder. Get-or-create is
+        idempotent: on a unique-constraint race the winner's row is
+        re-selected. A path segment that exists as a FILE is a conflict
+        (DriveNameConflict) — auto-renaming would scatter one client
+        directory across "dir"/"dir (1)" between calls.
+        """
+        max_depth = 32
+        segs: list[str] = []
+        for seg in (rel_path or '').split('/'):
+            seg = seg.strip()
+            if not seg:
+                continue
+            valid_name(seg)
+            segs.append(seg)
+        if not segs or len(segs) > max_depth:
+            raise DriveInvalidName('invalid name')
+        if parent_id is not None:
+            self._require_active_folder(parent_id)
+
+        cur = parent_id
+        node = None
+        for seg in segs:
+            node = self._get_or_create_folder(cur, seg)
+            cur = node.id
+        return node
+
+    def _get_or_create_folder(
+        self, parent_id: Optional[int], name: str
+    ) -> DriveNodeRow:
+        existing = self.find_active_sibling(parent_id, name)
+        if existing is not None:
+            if existing.type != 'folder':
+                raise DriveNameConflict('name already exists in this folder')
+            return existing
+        try:
+            return self.create_folder(parent_id, name)
+        except DriveNameConflict:
+            # A concurrent creator won the race — reuse their row.
+            again = self.find_active_sibling(parent_id, name)
+            if again is not None and again.type == 'folder':
+                return again
+            raise
+
+    def set_starred(self, ids: List[int], starred: bool) -> None:
+        """Star (starred=True) or unstar the given active nodes. Starring is
+        a metadata toggle — it deliberately does not bump updated_at so the
+        "modified" sort stays stable.
+        """
+        if not ids:
+            return
+        val = utc_now_ms() if starred else None
+        placeholders = ','.join(f':id{i}' for i in range(len(ids)))
+        params: dict = {f'id{i}': v for i, v in enumerate(ids)}
+        params['val'] = val
+        try:
+            db.session.execute(
+                text(
+                    f'UPDATE drive_nodes SET starred_at = :val '
+                    f'WHERE id IN ({placeholders}) AND deleted_at IS NULL'
+                ),
+                params,
+            )
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+
+    def list_starred(self) -> List[DriveNodeRow]:
+        """Starred, non-deleted nodes (most recently starred first), with
+        ancestor paths and share counts populated like search results.
+        """
+        rows = db.session.execute(
+            text(
+                'SELECT * FROM drive_nodes '
+                'WHERE starred_at IS NOT NULL AND deleted_at IS NULL '
+                'ORDER BY starred_at DESC, id DESC'
+            )
+        ).all()
+        out = [DriveNodeRow.from_row(r) for r in rows]
+        if out:
+            self._populate_paths(out)
+            self._populate_share_counts(out)
+        return out
+
+    def usage(self) -> dict:
+        """Drive storage consumption. Logical bytes count every file row;
+        physical bytes count each distinct blob once (copies and deduplicated
+        uploads share blobs, so physical ≤ logical).
+        """
+        active = db.session.execute(
+            text(
+                'SELECT COALESCE(SUM(size), 0) AS b, COUNT(*) AS c FROM drive_nodes '
+                "WHERE type = 'file' AND deleted_at IS NULL"
+            )
+        ).first()
+        trash = db.session.execute(
+            text(
+                'SELECT COALESCE(SUM(size), 0) AS b, COUNT(*) AS c FROM drive_nodes '
+                "WHERE type = 'file' AND deleted_at IS NOT NULL"
+            )
+        ).first()
+        # Each distinct blob counted once — copies/deduplicated rows share blobs.
+        physical = db.session.execute(
+            text(
+                'SELECT COALESCE(SUM(sz), 0) FROM ('
+                '  SELECT MAX(size) AS sz FROM drive_nodes '
+                '  WHERE blob_path IS NOT NULL GROUP BY blob_path'
+                ')'
+            )
+        ).scalar()
+        return {
+            'active_bytes': active.b,
+            'trash_bytes': trash.b,
+            'physical_bytes': physical,
+            'active_count': active.c,
+            'trash_count': trash.c,
+        }
 
     # -- descendants / zip ----------------------------------------------------
 

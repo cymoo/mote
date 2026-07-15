@@ -18,8 +18,10 @@ from flask import (
 )
 
 from ..dto import (
+    DriveCopyRequest,
     DriveCreateFolderRequest,
     DriveDeleteRequest,
+    DriveEnsurePathRequest,
     DriveIdQuery,
     DriveListQuery,
     DriveMoveRequest,
@@ -29,6 +31,7 @@ from ..dto import (
     DriveShareCreateRequest,
     DriveShareRevokeRequest,
     DriveSharesAllQuery,
+    DriveStarRequest,
     DriveUploadCompleteRequest,
     DriveUploadInitRequest,
 )
@@ -139,6 +142,16 @@ def trash():
     return [r.to_dict() for r in _drive().list_trash()]
 
 
+@drive_bp.get('/starred')
+def starred():
+    return [r.to_dict() for r in _drive().list_starred()]
+
+
+@drive_bp.get('/usage')
+def usage():
+    return _drive().usage()
+
+
 # ---------------------------------------------------------------------------
 # Tree mutations
 # ---------------------------------------------------------------------------
@@ -149,6 +162,19 @@ def trash():
 def create_folder(payload: DriveCreateFolderRequest):
     try:
         n = _drive().create_folder(payload.parent_id, payload.name)
+    except DriveError as e:
+        _map_drive_err(e)
+    return n.to_dict()
+
+
+@drive_bp.post('/folders/ensure-path')
+@validate
+def ensure_path(payload: DriveEnsurePathRequest):
+    """Get-or-create a nested folder chain (folder uploads use this to mirror
+    client directory structure) and return the final folder.
+    """
+    try:
+        n = _drive().ensure_folder_path(payload.parent_id, payload.path)
     except DriveError as e:
         _map_drive_err(e)
     return n.to_dict()
@@ -169,6 +195,26 @@ def rename(payload: DriveRenameRequest):
 def move(payload: DriveMoveRequest):
     try:
         _drive().move(payload.ids, payload.new_parent_id)
+    except DriveError as e:
+        _map_drive_err(e)
+    return '', 204
+
+
+@drive_bp.post('/copy')
+@validate
+def copy_nodes(payload: DriveCopyRequest):
+    try:
+        rows = _drive().copy(payload.ids, payload.new_parent_id)
+    except DriveError as e:
+        _map_drive_err(e)
+    return [r.to_dict() for r in rows]
+
+
+@drive_bp.post('/star')
+@validate
+def star_nodes(payload: DriveStarRequest):
+    try:
+        _drive().set_starred(payload.ids, payload.starred)
     except DriveError as e:
         _map_drive_err(e)
     return '', 204

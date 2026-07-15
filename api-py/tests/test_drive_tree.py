@@ -230,3 +230,190 @@ def test_purge_old_trash_keeps_shared_blob(svc):
     purged = svc.purge_old_trash(utc_now_ms() + 1000)
     assert purged == 1
     assert os.path.exists(svc.blob_abs_path(blob))
+
+
+def _insert_share(node_id):
+    """Helper: insert a bare drive_shares row (mirrors Go's raw INSERT)."""
+    from sqlalchemy import text
+
+    from app.extension import db
+
+    db.session.execute(
+        text(
+            'INSERT INTO drive_shares '
+            '(node_id, token_hash, token_prefix, expires_at, created_at) '
+            "VALUES (:nid, :h, :p, NULL, 1)"
+        ),
+        {'nid': node_id, 'h': f'tk{node_id}', 'p': f'tk{node_id}'},
+    )
+    db.session.commit()
+
+
+def test_copy_file_shares_blob_and_strips_meta(svc):
+    """A file copy shares the source's blob and never carries stars or shares."""
+    from sqlalchemy import text
+
+    from app.extension import db
+
+    dest = svc.create_folder(None, 'dest')
+    blob = _shared_blob(svc, 'src.txt', b'x')
+    src = svc.create_file_node(None, 'src.txt', blob, 'h', 1)
+    svc.set_starred([src.id], True)
+    _insert_share(src.id)
+
+    out = svc.copy([src.id], dest.id)
+    assert len(out) == 1
+    cp = out[0]
+    assert cp.id != src.id, 'copy must be a fresh row'
+    assert cp.blob_path == blob, 'copy should share blob'
+    assert cp.starred_at is None, 'copy must not inherit the star'
+    shares = db.session.execute(
+        text('SELECT COUNT(*) FROM drive_shares WHERE node_id = :id'),
+        {'id': cp.id},
+    ).scalar()
+    assert shares == 0, 'copy must not inherit shares'
+
+
+def test_copy_folder_recursive(svc):
+    """Copying a folder replicates the whole subtree; the root gets renamed on
+    destination conflicts while children keep their names.
+    """
+    a = svc.create_folder(None, 'a')
+    b = svc.create_folder(a.id, 'b')
+    blob = _shared_blob(svc, 'c.txt', b'c')
+    svc.create_file_node(b.id, 'c.txt', blob, 'h', 1)
+    svc.create_file_node(a.id, 'd.txt', blob, 'h', 1)
+
+    # Copy a → root: name "a" is taken by the source itself → "a (1)".
+    out = svc.copy([a.id], None)
+    root = out[0]
+    assert root.name == 'a (1)'
+
+    l1 = svc.list(root.id, None, 'name', 'asc')
+    assert [n.name for n in l1] == ['b', 'd.txt']
+    l2 = svc.list(l1[0].id, None, 'name', 'asc')
+    assert len(l2) == 1
+    assert l2[0].name == 'c.txt'
+    assert l2[0].blob_path == blob
+
+
+def test_copy_into_own_subtree_rejected(svc):
+    """Copying a folder into itself or its own descendant is rejected."""
+    a = svc.create_folder(None, 'a')
+    b = svc.create_folder(a.id, 'b')
+
+    with pytest.raises(DriveCycle):
+        svc.copy([a.id], b.id)
+    with pytest.raises(DriveCycle):
+        svc.copy([a.id], a.id)
+
+
+def test_duplicate_in_place_twice(svc):
+    """Duplicate-in-place twice yields "x (1)" then "x (2)"."""
+    parent = svc.create_folder(None, 'p')
+    blob = _shared_blob(svc, 'x.txt', b'x')
+    src = svc.create_file_node(parent.id, 'x.txt', blob, 'h', 1)
+
+    c1 = svc.copy([src.id], parent.id)
+    c2 = svc.copy([src.id], parent.id)
+    assert c1[0].name == 'x (1).txt'
+    assert c2[0].name == 'x (2).txt'
+
+
+def test_star_unstar_and_list(svc):
+    """Star/unstar toggling, trash filtering, and the starred listing."""
+    folder = svc.create_folder(None, 'f')
+    blob = _shared_blob(svc, 's.txt', b's')
+    file = svc.create_file_node(folder.id, 's.txt', blob, 'h', 1)
+
+    svc.set_starred([folder.id, file.id], True)
+    out = svc.list_starred()
+    assert len(out) == 2
+    for n in out:
+        if n.id == file.id:
+            assert n.path == 'f'
+
+    # Trashed items disappear from the listing but keep their star.
+    svc.soft_delete([file.id])
+    out = svc.list_starred()
+    assert len(out) == 1
+    assert out[0].id == folder.id
+    svc.restore(file.id)
+    out = svc.list_starred()
+    assert len(out) == 2
+
+    # Unstar both.
+    svc.set_starred([folder.id, file.id], False)
+    assert svc.list_starred() == []
+
+
+def test_star_does_not_bump_updated_at(svc):
+    """Starring is a metadata toggle: updated_at must stay put so the
+    "modified" sort remains stable.
+    """
+    folder = svc.create_folder(None, 'stable')
+    before = svc.find_by_id(folder.id).updated_at
+    svc.set_starred([folder.id], True)
+    after = svc.find_by_id(folder.id)
+    assert after.starred_at is not None
+    assert after.updated_at == before
+
+
+def test_ensure_folder_path(svc):
+    """ensure_folder_path creates missing segments, reuses existing ones
+    (case-insensitively), and refuses paths blocked by files or containing
+    invalid segments.
+    """
+    leaf = svc.ensure_folder_path(None, 'a/b/c')
+    assert leaf.type == 'folder'
+    assert leaf.name == 'c'
+    bc = svc.breadcrumbs(leaf.id)
+    assert [x['name'] for x in bc] == ['a', 'b', 'c']
+
+    # Idempotent: the second call returns the same folder.
+    again = svc.ensure_folder_path(None, 'a/b/c')
+    assert again.id == leaf.id
+
+    # Case-insensitive reuse of existing segments.
+    b = svc.ensure_folder_path(None, 'A/B')
+    assert b.id == bc[1]['id']
+
+    # A file blocking the path → conflict, not auto-rename.
+    blob = _shared_blob(svc, 'block.txt', b'x')
+    svc.create_file_node(None, 'block.txt', blob, '', 1)
+    with pytest.raises(DriveNameConflict):
+        svc.ensure_folder_path(None, 'block.txt/sub')
+
+    # Invalid segments rejected.
+    with pytest.raises(DriveInvalidName):
+        svc.ensure_folder_path(None, '../evil')
+    with pytest.raises(DriveInvalidName):
+        svc.ensure_folder_path(None, '///')
+
+
+def test_share_counts_include_folders(svc):
+    """Folder nodes now surface share counts too (folder shares)."""
+    folder = svc.create_folder(None, 'shared-folder')
+    _insert_share(folder.id)
+
+    out = svc.list(None, None)
+    assert len(out) == 1
+    assert out[0].share_count == 1
+
+
+def test_usage(svc):
+    """Usage counts logical bytes per row but each distinct blob only once."""
+    blob_x = _shared_blob(svc, 'x.bin', b'xxxxx')
+    blob_y = _shared_blob(svc, 'y.bin', b'yyyyyyy')
+
+    f1 = svc.create_file_node(None, 'one.bin', blob_x, 'hx', 5)
+    svc.copy([f1.id], None)  # shares blob_x
+    f3 = svc.create_file_node(None, 'three.bin', blob_y, 'hy', 7)
+    svc.soft_delete([f3.id])
+
+    u = svc.usage()
+    assert u['active_bytes'] == 10
+    assert u['active_count'] == 2
+    assert u['trash_bytes'] == 7
+    assert u['trash_count'] == 1
+    assert u['physical_bytes'] == 12
