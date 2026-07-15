@@ -797,6 +797,63 @@ func TestDrive_StarUnstarAndList(t *testing.T) {
 	}
 }
 
+// EnsureFolderPath creates missing segments, reuses existing ones
+// (case-insensitively), and refuses paths blocked by files or containing
+// invalid segments.
+func TestDrive_EnsureFolderPath(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	leaf, err := svc.EnsureFolderPath(ctx, nil, "a/b/c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leaf.Type != "folder" || leaf.Name != "c" {
+		t.Fatalf("leaf: %+v", leaf)
+	}
+	bc, _ := svc.Breadcrumbs(ctx, leaf.ID)
+	if len(bc) != 3 || bc[0].Name != "a" || bc[1].Name != "b" {
+		t.Fatalf("chain: %+v", bc)
+	}
+
+	// Idempotent: the second call returns the same folder.
+	again, err := svc.EnsureFolderPath(ctx, nil, "a/b/c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ID != leaf.ID {
+		t.Fatalf("expected same id, got %d vs %d", again.ID, leaf.ID)
+	}
+
+	// Case-insensitive reuse of existing segments.
+	b, err := svc.EnsureFolderPath(ctx, nil, "A/B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.ID != bc[1].ID {
+		t.Fatalf("case-insensitive reuse failed: %d vs %d", b.ID, bc[1].ID)
+	}
+
+	// A file blocking the path → conflict, not auto-rename.
+	blob := filepath.Join("drive", "block.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+	if _, err := svc.CreateFileNode(ctx, nil, "block.txt", blob, "", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.EnsureFolderPath(ctx, nil, "block.txt/sub"); !errors.Is(err, ErrDriveNameConflict) {
+		t.Fatalf("expected conflict for file-in-path, got %v", err)
+	}
+
+	// Invalid segments rejected.
+	if _, err := svc.EnsureFolderPath(ctx, nil, "../evil"); !errors.Is(err, ErrDriveInvalidName) {
+		t.Fatalf("expected invalid name for '..', got %v", err)
+	}
+	if _, err := svc.EnsureFolderPath(ctx, nil, "///"); !errors.Is(err, ErrDriveInvalidName) {
+		t.Fatalf("expected invalid name for empty path, got %v", err)
+	}
+}
+
 // Folder nodes now surface share counts too (folder shares).
 func TestDrive_ShareCountsIncludeFolders(t *testing.T) {
 	db, svc := setupDriveDB(t)

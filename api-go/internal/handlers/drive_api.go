@@ -42,6 +42,7 @@ func (h *DriveHandler) Routes(r chi.Router) {
 	r.Get("/starred", m.H(h.Starred))
 	r.Get("/usage", m.H(h.Usage))
 	r.Post("/folder", m.H(h.CreateFolder))
+	r.Post("/folders/ensure-path", m.H(h.EnsurePath))
 	r.Post("/rename", m.H(h.Rename))
 	r.Post("/move", m.H(h.Move))
 	r.Post("/copy", m.H(h.Copy))
@@ -129,6 +130,16 @@ func (h *DriveHandler) Usage(r *http.Request) (*models.DriveUsage, error) {
 
 func (h *DriveHandler) CreateFolder(r *http.Request, body m.JSON[models.DriveCreateFolderRequest]) (*models.DriveNode, error) {
 	n, err := h.drive.CreateFolder(r.Context(), body.Value.ParentID, body.Value.Name)
+	if err != nil {
+		return nil, mapDriveErr(err)
+	}
+	return n, nil
+}
+
+// EnsurePath get-or-creates a nested folder chain (folder uploads use this to
+// mirror client directory structure) and returns the final folder.
+func (h *DriveHandler) EnsurePath(r *http.Request, body m.JSON[models.DriveEnsurePathRequest]) (*models.DriveNode, error) {
+	n, err := h.drive.EnsureFolderPath(r.Context(), body.Value.ParentID, body.Value.Path)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}

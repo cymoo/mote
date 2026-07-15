@@ -1037,6 +1037,71 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
 	return s.FindByID(ctx, newRootID)
 }
 
+// EnsureFolderPath walks/creates the folder chain relPath ("a/b/c") under
+// parentID and returns the final folder. Get-or-create is idempotent: on a
+// unique-constraint race the winner's row is re-selected. A path segment that
+// exists as a FILE is a conflict (ErrDriveNameConflict) — auto-renaming would
+// scatter one client directory across "dir"/"dir (1)" between calls.
+func (s *DriveService) EnsureFolderPath(ctx context.Context, parentID *int64, relPath string) (*models.DriveNode, error) {
+	const maxDepth = 32
+	segs := make([]string, 0, 8)
+	for _, seg := range strings.Split(filepath.ToSlash(relPath), "/") {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		if err := validName(seg); err != nil {
+			return nil, err
+		}
+		segs = append(segs, seg)
+	}
+	if len(segs) == 0 || len(segs) > maxDepth {
+		return nil, ErrDriveInvalidName
+	}
+	if parentID != nil {
+		if _, err := s.requireActiveFolder(ctx, *parentID); err != nil {
+			return nil, err
+		}
+	}
+
+	cur := parentID
+	var node *models.DriveNode
+	for _, seg := range segs {
+		n, err := s.getOrCreateFolder(ctx, cur, seg)
+		if err != nil {
+			return nil, err
+		}
+		node = n
+		id := n.ID
+		cur = &id
+	}
+	return node, nil
+}
+
+func (s *DriveService) getOrCreateFolder(ctx context.Context, parentID *int64, name string) (*models.DriveNode, error) {
+	existing, err := s.FindActiveSibling(ctx, parentID, name)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		if existing.Type != "folder" {
+			return nil, ErrDriveNameConflict
+		}
+		return existing, nil
+	}
+	n, err := s.CreateFolder(ctx, parentID, name)
+	if err != nil {
+		if errors.Is(err, ErrDriveNameConflict) {
+			// A concurrent creator won the race — reuse their row.
+			if again, err2 := s.FindActiveSibling(ctx, parentID, name); err2 == nil && again != nil && again.Type == "folder" {
+				return again, nil
+			}
+		}
+		return nil, err
+	}
+	return n, nil
+}
+
 // SetStarred stars (starred=true) or unstars the given active nodes. Starring
 // is a metadata toggle — it deliberately does not bump updated_at so the
 // "modified" sort stays stable.

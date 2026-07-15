@@ -5,6 +5,7 @@ import {
   FolderInputIcon,
   FolderOpenIcon,
   FolderPlusIcon,
+  FolderUpIcon,
   LayoutGridIcon,
   ListIcon,
   SearchIcon,
@@ -33,6 +34,7 @@ import {
   copyNodes,
   createFolder,
   deleteNodes,
+  ensureFolderPath,
   downloadURL,
   downloadZipNodesURL,
   downloadZipURL,
@@ -61,6 +63,70 @@ import { EmptyState, GridView, ListView, SearchEmptyState } from './views'
 // multi-selection, or the empty canvas.
 type CtxPayload = { kind: 'node'; node: DriveNode } | { kind: 'selection' } | { kind: 'empty' }
 
+// ---- folder upload helpers --------------------------------------------------
+
+interface UploadEntry {
+  file: File
+  relDir?: string
+}
+
+// Guard against accidental drops of giant trees.
+const MAX_UPLOAD_ENTRIES = 2000
+
+// "/photos/2024/img.jpg" → "photos/2024"
+function parentDirOf(fullPath: string): string {
+  const p = fullPath.replace(/^\//, '')
+  const i = p.lastIndexOf('/')
+  return i < 0 ? '' : p.slice(0, i)
+}
+
+// Recursively walk dropped FileSystemEntry trees. Chrome's readEntries
+// returns at most ~100 entries per call — loop until an empty batch. Empty
+// directories are reported separately so the tree structure is preserved.
+async function traverseEntries(
+  entries: FileSystemEntry[],
+): Promise<{ files: UploadEntry[]; emptyDirs: string[] }> {
+  const files: UploadEntry[] = []
+  const emptyDirs: string[] = []
+
+  const walk = async (entry: FileSystemEntry): Promise<void> => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) => {
+        ;(entry as FileSystemFileEntry).file(resolve, reject)
+      })
+      const relDir = parentDirOf(entry.fullPath)
+      files.push({ file, relDir: relDir || undefined })
+      return
+    }
+    if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader()
+      let any = false
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+          reader.readEntries(resolve, reject)
+        })
+        if (batch.length === 0) break
+        any = true
+        for (const child of batch) await walk(child)
+      }
+      if (!any) emptyDirs.push(entry.fullPath.replace(/^\//, ''))
+    }
+  }
+
+  for (const e of entries) await walk(e)
+  return { files, emptyDirs }
+}
+
+// Folder-picker files carry webkitRelativePath ("root/sub/file.txt").
+function entriesFromFileList(files: FileList | null): UploadEntry[] {
+  if (!files) return []
+  return Array.from(files).map((file) => {
+    const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? ''
+    const relDir = parentDirOf(rel)
+    return { file, relDir: relDir || undefined }
+  })
+}
+
 type ViewMode = 'list' | 'grid'
 
 export function MyDrivePage() {
@@ -86,6 +152,7 @@ export function MyDrivePage() {
   const { showDotFiles, toggleShowDotFiles } = useShowDotFiles()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const confirm = useConfirm()
   const modal = useModal()
@@ -138,24 +205,59 @@ export function MyDrivePage() {
 
   // ---- uploads ------------------------------------------------------------
 
-  const onUploadFiles = useCallback(
-    async (files: FileList | File[] | null) => {
-      if (!files || files.length === 0) return
-      // Fire uploads concurrently so the dock reflects all queued files at
-      // once (the upload manager itself caps per-file chunk concurrency).
-      // Otherwise users see a permanent "uploading 1…" because await-in-loop
-      // serializes everything.
+  const onUploadEntries = useCallback(
+    async (entries: UploadEntry[]) => {
+      if (entries.length === 0) return
+      if (entries.length > MAX_UPLOAD_ENTRIES) {
+        toast.error(t('tooManyFiles', lang, true, String(MAX_UPLOAD_ENTRIES)))
+        return
+      }
+      // Fire uploads concurrently so the dock reflects the whole queue at
+      // once; the manager itself caps how many files upload simultaneously
+      // (and chunk concurrency per file).
       await Promise.all(
-        Array.from(files).map((f) => uploadManager.add(f, parentID, 'ask')),
+        entries.map(({ file, relDir }) => uploadManager.add(file, parentID, 'ask', relDir)),
       )
       // The upload-completion hook handles refresh; nothing else to do here.
     },
-    [parentID],
+    [parentID, lang],
+  )
+
+  const onUploadFiles = useCallback(
+    (files: FileList | File[] | null) => {
+      if (!files || files.length === 0) return Promise.resolve()
+      return onUploadEntries(Array.from(files).map((file) => ({ file })))
+    },
+    [onUploadEntries],
   )
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
     setDragOver(false)
+    // Prefer the entries API (directory support); fall back to plain files.
+    const items = e.dataTransfer.items
+    const entries: FileSystemEntry[] = []
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry?.()
+        if (entry) entries.push(entry)
+      }
+    }
+    if (entries.length > 0) {
+      void (async () => {
+        try {
+          const { files, emptyDirs } = await traverseEntries(entries)
+          if (emptyDirs.length > 0) {
+            await Promise.all(emptyDirs.map((d) => ensureFolderPath(parentID, d)))
+            if (files.length === 0) await refresh()
+          }
+          await onUploadEntries(files)
+        } catch (err) {
+          toast.error((err as Error).message)
+        }
+      })()
+      return
+    }
     void onUploadFiles(e.dataTransfer.files)
   }
 
@@ -553,6 +655,17 @@ export function MyDrivePage() {
               <FolderPlusIcon className="size-4" />
               <T name="newFolder" />
             </Button>
+            {/* Folder upload is desktop-only (mobile browsers lack directory pickers). */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => folderInputRef.current?.click()}
+              title={t('uploadFolder', lang)}
+              aria-label={t('uploadFolder', lang)}
+              className="rounded-lg px-2.5 max-md:hidden"
+            >
+              <FolderUpIcon className="size-4" />
+            </Button>
             <Button
               variant="primary"
               size="sm"
@@ -574,6 +687,19 @@ export function MyDrivePage() {
         ref={fileInputRef}
         onChange={(e: ChangeEvent<HTMLInputElement>) => {
           void onUploadFiles(e.target.files)
+          e.target.value = ''
+        }}
+      />
+      {/* Folder picker (Chromium/WebKit): files arrive flat but each carries
+          webkitRelativePath, which the upload manager maps back to folders. */}
+      <input
+        type="file"
+        multiple
+        hidden
+        ref={folderInputRef}
+        {...({ webkitdirectory: '' } as object)}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+          void onUploadEntries(entriesFromFileList(e.target.files))
           e.target.value = ''
         }}
       />
@@ -772,6 +898,15 @@ export function MyDrivePage() {
               }}
             >
               <T name="upload" />
+            </MenuItem>
+            <MenuItem
+              icon={<FolderUpIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                folderInputRef.current?.click()
+              }}
+            >
+              <T name="uploadFolder" />
             </MenuItem>
           </MenuList>
         )}

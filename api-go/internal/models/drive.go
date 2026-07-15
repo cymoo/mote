@@ -180,6 +180,11 @@ type DriveStarRequest struct {
 	Starred bool    `json:"starred"`
 }
 
+type DriveEnsurePathRequest struct {
+	ParentID *int64 `json:"parent_id"`
+	Path     string `json:"path"` // slash-separated, relative, e.g. "a/b/c"
+}
+
 type DriveDeleteRequest struct {
 	IDs []int64 `json:"ids"`
 }
