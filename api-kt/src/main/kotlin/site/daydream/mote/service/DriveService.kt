@@ -17,6 +17,7 @@ import site.daydream.mote.generated.Tables.DRIVE_NODES
 import site.daydream.mote.generated.Tables.DRIVE_SHARES
 import site.daydream.mote.model.DriveBreadcrumb
 import site.daydream.mote.model.DriveNode
+import site.daydream.mote.model.DriveUsage
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -113,19 +114,20 @@ class DriveService(
         }
     }
 
-    // Keep as raw SQL: dynamic IN clause over fileIds.
+    // Keep as raw SQL: dynamic IN clause over node ids.
+    // Files and folders alike — folders can be shared too.
     private fun populateShareCounts(nodes: List<DriveNode>): List<DriveNode> {
-        val fileIds = nodes.filter { it.type == "file" }.map { it.id }
-        if (fileIds.isEmpty()) return nodes
+        val ids = nodes.map { it.id }
+        if (ids.isEmpty()) return nodes
         val now = System.currentTimeMillis()
-        val placeholders = fileIds.joinToString(",") { "?" }
+        val placeholders = ids.joinToString(",") { "?" }
         val rows = dsl.resultQuery(
             """
             SELECT node_id AS nid, COUNT(*) AS c FROM drive_shares
             WHERE node_id IN ($placeholders) AND (expires_at IS NULL OR expires_at > ?)
             GROUP BY node_id
             """.trimIndent(),
-            *fileIds.map { it as Any? }.toTypedArray(), now,
+            *ids.map { it as Any? }.toTypedArray(), now,
         ).fetch { rec -> rec.get("nid", Long::class.java) to rec.get("c", Int::class.java) }
         if (rows.isEmpty()) return nodes
         val map = rows.toMap()
@@ -564,6 +566,217 @@ class DriveService(
         return "$stem (${maxN + 1})$ext"
     }
 
+    // ---------- copy / star / usage / ensure-path ----------
+
+    /**
+     * Deep-copies nodes into [newParentId] (null = root), one id at a time.
+     * File copies reference the SAME blob_path — zero disk cost; refcounted
+     * blob removal keeps shared blobs alive. Copies get fresh timestamps and
+     * never carry stars or shares. Copying a folder into its own subtree is
+     * rejected, matching move. Destination name conflicts resolve via
+     * autoRename ("name (1)"), so duplicate-in-place works naturally.
+     */
+    fun copy(ids: List<Long>, newParentId: Long?): List<DriveNode> {
+        if (newParentId != null) requireActiveFolder(newParentId)
+        return ids.map { copyOne(it, newParentId) }
+    }
+
+    private fun copyOne(id: Long, newParentId: Long?): DriveNode {
+        val src = findById(id)
+        if (src.deletedAt != null) throw NotFoundException("drive node not found")
+        // Cycle check: copying a folder into itself or its own descendant would
+        // mean copying the destination into itself; reject like move does.
+        if (newParentId != null && src.type == "folder") {
+            if (newParentId == id) throw BadRequestException("cannot copy folder into its own descendant")
+            val hit = dsl.fetchOne(
+                """
+                WITH RECURSIVE descendants(id) AS (
+                  SELECT id FROM drive_nodes WHERE id = ?
+                  UNION ALL
+                  SELECT n.id FROM drive_nodes n JOIN descendants d ON n.parent_id = d.id
+                )
+                SELECT EXISTS(SELECT 1 FROM descendants WHERE id = ?)
+                """.trimIndent(),
+                id, newParentId,
+            )?.get(0, Int::class.java) ?: 0
+            if (hit == 1) throw BadRequestException("cannot copy folder into its own descendant")
+        }
+
+        // Pre-tx, read-only; the unique index backstops races (→ conflict error).
+        val rootName = autoRename(newParentId, src.name)
+
+        data class SnapRow(
+            val id: Long,
+            val parentId: Long?,
+            val type: String,
+            val name: String,
+            val blobPath: String?,
+            val size: Long?,
+            val hash: String?,
+        )
+
+        val newRootId = tx.execute {
+            // Snapshot the whole source subtree up-front (depth-ordered so
+            // parents are copied before children); inserting from the snapshot
+            // means freshly created copies can never be re-visited.
+            val snap = dsl.resultQuery(
+                """
+                WITH RECURSIVE subtree(id, parent_id, type, name, blob_path, size, hash, depth) AS (
+                  SELECT id, parent_id, type, name, blob_path, size, hash, 0
+                  FROM drive_nodes WHERE id = ? AND deleted_at IS NULL
+                  UNION ALL
+                  SELECT n.id, n.parent_id, n.type, n.name, n.blob_path, n.size, n.hash, s.depth + 1
+                  FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+                  WHERE n.deleted_at IS NULL
+                )
+                SELECT id, parent_id, type, name, blob_path, size, hash
+                FROM subtree ORDER BY depth, id
+                """.trimIndent(),
+                id,
+            ).fetch { rec ->
+                SnapRow(
+                    rec.get("id", Long::class.java),
+                    rec.get("parent_id", Long::class.javaObjectType),
+                    rec.get("type", String::class.java),
+                    rec.get("name", String::class.java),
+                    rec.get("blob_path", String::class.java),
+                    rec.get("size", Long::class.javaObjectType),
+                    rec.get("hash", String::class.java),
+                )
+            }
+            if (snap.isEmpty()) throw NotFoundException("drive node not found")
+
+            val now = System.currentTimeMillis()
+            val idMap = HashMap<Long, Long>(snap.size)
+            var rootId = 0L
+            for (r in snap) {
+                val parentId: Long?
+                val name: String
+                if (r.id == id) {
+                    parentId = newParentId
+                    name = rootName
+                } else {
+                    parentId = idMap[r.parentId]
+                    name = r.name
+                }
+                val newId = try {
+                    dsl.insertInto(DRIVE_NODES)
+                        .set(DRIVE_NODES.PARENT_ID, parentId)
+                        .set(DRIVE_NODES.TYPE, r.type)
+                        .set(DRIVE_NODES.NAME, name)
+                        .set(DRIVE_NODES.BLOB_PATH, r.blobPath)
+                        .set(DRIVE_NODES.SIZE, r.size)
+                        .set(DRIVE_NODES.HASH, r.hash)
+                        .set(DRIVE_NODES.CREATED_AT, now)
+                        .set(DRIVE_NODES.UPDATED_AT, now)
+                        .returningResult(DRIVE_NODES.ID)
+                        .fetchOne()!!.value1()
+                } catch (e: Exception) {
+                    throw mapUniqueOrRethrow(e)
+                }
+                idMap[r.id] = newId
+                if (r.id == id) rootId = newId
+            }
+            rootId
+        }!!
+        return findById(newRootId)
+    }
+
+    /**
+     * Stars (starred=true) or unstars the given active nodes. Starring is a
+     * metadata toggle — it deliberately does not bump updated_at so the
+     * "modified" sort stays stable.
+     */
+    fun setStarred(ids: List<Long>, starred: Boolean) {
+        if (ids.isEmpty()) return
+        val value: Long? = if (starred) System.currentTimeMillis() else null
+        dsl.update(DRIVE_NODES)
+            .set(DRIVE_NODES.STARRED_AT, value)
+            .where(DRIVE_NODES.ID.`in`(ids))
+            .and(DRIVE_NODES.DELETED_AT.isNull)
+            .execute()
+    }
+
+    /**
+     * Returns starred, non-deleted nodes (most recently starred first), with
+     * ancestor paths and share counts populated like search results.
+     */
+    fun listStarred(): List<DriveNode> {
+        val nodes = dsl.selectFrom(DRIVE_NODES)
+            .where(DRIVE_NODES.STARRED_AT.isNotNull)
+            .and(DRIVE_NODES.DELETED_AT.isNull)
+            .orderBy(DRIVE_NODES.STARRED_AT.desc(), DRIVE_NODES.ID.desc())
+            .fetch { mapNodeRecord(it) }
+        if (nodes.isEmpty()) return nodes
+        return populateShareCounts(populatePaths(nodes))
+    }
+
+    /** Reports drive storage consumption; see [DriveUsage]. */
+    fun usage(): DriveUsage {
+        val active = dsl.resultQuery(
+            "SELECT COALESCE(SUM(size), 0) AS b, COUNT(*) AS c FROM drive_nodes WHERE type = 'file' AND deleted_at IS NULL",
+        ).fetchOne()!!
+        val trash = dsl.resultQuery(
+            "SELECT COALESCE(SUM(size), 0) AS b, COUNT(*) AS c FROM drive_nodes WHERE type = 'file' AND deleted_at IS NOT NULL",
+        ).fetchOne()!!
+        // Each distinct blob counted once — copies/deduplicated rows share blobs.
+        val physical = dsl.resultQuery(
+            """
+            SELECT COALESCE(SUM(sz), 0) FROM (
+              SELECT MAX(size) AS sz FROM drive_nodes
+              WHERE blob_path IS NOT NULL GROUP BY blob_path
+            )
+            """.trimIndent(),
+        ).fetchOne()!!.get(0, Long::class.java)
+        return DriveUsage(
+            activeBytes = active.get("b", Long::class.java),
+            trashBytes = trash.get("b", Long::class.java),
+            physicalBytes = physical,
+            activeCount = active.get("c", Long::class.java),
+            trashCount = trash.get("c", Long::class.java),
+        )
+    }
+
+    /**
+     * Walks/creates the folder chain [relPath] ("a/b/c") under [parentId] and
+     * returns the final folder. Get-or-create is idempotent: on a
+     * unique-constraint race the winner's row is re-selected. A path segment
+     * that exists as a FILE is a conflict — auto-renaming would scatter one
+     * client directory across "dir"/"dir (1)" between calls.
+     */
+    fun ensureFolderPath(parentId: Long?, relPath: String): DriveNode {
+        val segs = relPath.replace('\\', '/').split('/')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .onEach { validateName(it) }
+        if (segs.isEmpty() || segs.size > MAX_PATH_DEPTH) throw BadRequestException("invalid name")
+        if (parentId != null) requireActiveFolder(parentId)
+
+        var cur = parentId
+        var node: DriveNode? = null
+        for (seg in segs) {
+            val n = getOrCreateFolder(cur, seg)
+            node = n
+            cur = n.id
+        }
+        return node!!
+    }
+
+    private fun getOrCreateFolder(parentId: Long?, name: String): DriveNode {
+        val existing = findActiveSibling(parentId, name)
+        if (existing != null) {
+            if (existing.type != "folder") throw ConflictException("name already exists in this folder")
+            return existing
+        }
+        return try {
+            createFolder(parentId, name)
+        } catch (e: ConflictException) {
+            // A concurrent creator won the race — reuse their row.
+            val again = findActiveSibling(parentId, name)
+            if (again != null && again.type == "folder") again else throw e
+        }
+    }
+
     // ---------- helpers ----------
 
     private fun mapNodeRecord(rec: Record): DriveNode = DriveNode(
@@ -574,6 +787,7 @@ class DriveService(
         blobPath = rec.get(DRIVE_NODES.BLOB_PATH),
         size = rec.get(DRIVE_NODES.SIZE),
         hash = rec.get(DRIVE_NODES.HASH),
+        starredAt = rec.get(DRIVE_NODES.STARRED_AT),
         deletedAt = rec.get(DRIVE_NODES.DELETED_AT),
         deleteBatchId = rec.get(DRIVE_NODES.DELETE_BATCH_ID),
         createdAt = rec.get(DRIVE_NODES.CREATED_AT)!!,
@@ -589,6 +803,7 @@ class DriveService(
         blobPath = rec.get("blob_path", String::class.java),
         size = rec.get("size", Long::class.javaObjectType),
         hash = rec.get("hash", String::class.java),
+        starredAt = rec.get("starred_at", Long::class.javaObjectType),
         deletedAt = rec.get("deleted_at", Long::class.javaObjectType),
         deleteBatchId = rec.get("delete_batch_id", String::class.java),
         createdAt = rec.get("created_at", Long::class.java),
@@ -613,6 +828,9 @@ class DriveService(
     }
 
     companion object {
+        /** Maximum folder depth ensureFolderPath will create in one call. */
+        const val MAX_PATH_DEPTH = 32
+
         fun likeEscape(s: String): String =
             s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 

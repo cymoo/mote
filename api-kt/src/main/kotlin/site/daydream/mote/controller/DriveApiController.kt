@@ -49,9 +49,23 @@ class DriveApiController(
     @GetMapping("/trash")
     fun trash(): List<DriveNode> = driveService.listTrash()
 
+    @GetMapping("/starred")
+    fun starred(): List<DriveNode> = driveService.listStarred()
+
+    @GetMapping("/usage")
+    fun usage(): DriveUsage = driveService.usage()
+
     @PostMapping("/folder")
     fun createFolder(@RequestBody @Valid req: DriveCreateFolderRequest): DriveNode =
         driveService.createFolder(req.parentId, req.name)
+
+    /**
+     * Get-or-creates a nested folder chain (folder uploads use this to mirror
+     * client directory structure) and returns the final folder.
+     */
+    @PostMapping("/folders/ensure-path")
+    fun ensurePath(@RequestBody @Valid req: DriveEnsurePathRequest): DriveNode =
+        driveService.ensureFolderPath(req.parentId, req.path)
 
     @PostMapping("/rename")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -63,6 +77,16 @@ class DriveApiController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun move(@RequestBody @Valid req: DriveMoveRequest) {
         driveService.move(req.ids, req.newParentId)
+    }
+
+    @PostMapping("/copy")
+    fun copy(@RequestBody @Valid req: DriveCopyRequest): List<DriveNode> =
+        driveService.copy(req.ids, req.newParentId)
+
+    @PostMapping("/star")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun star(@RequestBody @Valid req: DriveStarRequest) {
+        driveService.setStarred(req.ids, req.starred)
     }
 
     @PostMapping("/delete")

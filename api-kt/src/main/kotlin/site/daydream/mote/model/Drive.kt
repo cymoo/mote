@@ -21,6 +21,10 @@ data class DriveNode(
     val size: Long? = null,
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val hash: String? = null,
+    /** epoch-ms when starred (doubles as the starred-sort key); null = not starred */
+    @JsonProperty("starred_at")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val starredAt: Long? = null,
     @JsonProperty("deleted_at")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val deletedAt: Long? = null,
@@ -35,7 +39,7 @@ data class DriveNode(
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val path: String = "",
 
-    /** active share count for this file node; emitted only when > 0 */
+    /** active share count for this node; emitted only when > 0 */
     @JsonProperty("share_count")
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     val shareCount: Int = 0,
@@ -150,6 +154,27 @@ data class DriveMoveRequest(
     val newParentId: Long? = null,
 )
 
+data class DriveCopyRequest(
+    @field:NotEmpty
+    val ids: List<Long>,
+    @JsonProperty("new_parent_id")
+    val newParentId: Long? = null,
+)
+
+data class DriveStarRequest(
+    @field:NotEmpty
+    val ids: List<Long>,
+    val starred: Boolean = false,
+)
+
+data class DriveEnsurePathRequest(
+    @JsonProperty("parent_id")
+    val parentId: Long? = null,
+    /** slash-separated, relative, e.g. "a/b/c" */
+    @field:NotBlank
+    val path: String,
+)
+
 data class DriveDeleteRequest(
     @field:NotEmpty
     val ids: List<Long>,
@@ -215,6 +240,19 @@ data class DriveUploadStatusResponse(
     val size: Long,
     @JsonProperty("received_chunks") val receivedChunks: List<Int>,
     val status: String,
+)
+
+/**
+ * Drive storage consumption. Logical bytes count every file row; physical
+ * bytes count each distinct blob once (copies and deduplicated uploads share
+ * blobs, so physical <= logical).
+ */
+data class DriveUsage(
+    @JsonProperty("active_bytes") val activeBytes: Long,
+    @JsonProperty("trash_bytes") val trashBytes: Long,
+    @JsonProperty("physical_bytes") val physicalBytes: Long,
+    @JsonProperty("active_count") val activeCount: Long,
+    @JsonProperty("trash_count") val trashCount: Long,
 )
 
 data class DriveShareDto(
