@@ -249,7 +249,7 @@
                 <forcedType>
                   <name>BIGINT</name>
                   <!-- A Java regex matching fully-qualified columns, attributes, parameters. Use the pipe to separate several expressions. -->
-                  <includeExpression>.*(created_at|updated_at|deleted_at|expires_at)</includeExpression>
+                  <includeExpression>.*(created_at|updated_at|deleted_at|expires_at|starred_at)</includeExpression>
                 </forcedType>
                 <forcedType>
                   <name>BIGINT</name>
