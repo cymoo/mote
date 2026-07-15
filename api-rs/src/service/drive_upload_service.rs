@@ -1,7 +1,5 @@
 use crate::config::UploadConfig;
-use crate::model::drive::{
-    DriveNode, DriveUpload, DriveUploadInitRequest,
-};
+use crate::model::drive::{DriveNode, DriveUpload, DriveUploadInitRequest};
 use crate::service::drive_service::{
     new_blob_name, new_token, valid_name, DriveError, DriveResult, DriveService,
 };
@@ -24,7 +22,11 @@ pub struct DriveUploadService {
 
 impl DriveUploadService {
     pub fn new(pool: SqlitePool, drive: Arc<DriveService>, config: UploadConfig) -> Arc<Self> {
-        Arc::new(Self { pool, drive, config })
+        Arc::new(Self {
+            pool,
+            drive,
+            config,
+        })
     }
 
     fn chunks_dir(&self, upload_id: &str) -> PathBuf {
@@ -82,11 +84,10 @@ impl DriveUploadService {
     }
 
     pub async fn find(&self, id: &str) -> DriveResult<DriveUpload> {
-        let u: Option<DriveUpload> =
-            sqlx::query_as("SELECT * FROM drive_uploads WHERE id = ?")
-                .bind(id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let u: Option<DriveUpload> = sqlx::query_as("SELECT * FROM drive_uploads WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?;
         let u = u.ok_or(DriveError::UploadNotFound)?;
         if u.expires_at < Utc::now().timestamp_millis() {
             return Err(DriveError::UploadNotFound);
@@ -185,11 +186,7 @@ impl DriveUploadService {
         Ok(())
     }
 
-    pub async fn complete(
-        &self,
-        id: &str,
-        on_collision: &str,
-    ) -> DriveResult<DriveNode> {
+    pub async fn complete(&self, id: &str, on_collision: &str) -> DriveResult<DriveNode> {
         let u = self.find(id).await?;
         let now = Utc::now().timestamp_millis();
         let res = sqlx::query(
@@ -251,7 +248,7 @@ impl DriveUploadService {
         }
 
         let blob_name = new_blob_name(&final_name);
-        let rel_path = format!("drive/{}", blob_name);
+        let mut rel_path = format!("drive/{}", blob_name);
         let abs_path = self.drive.blob_abs_path(&rel_path);
         let tmp_abs = abs_path.with_extension(format!(
             "{}.part",
@@ -275,7 +272,17 @@ impl DriveUploadService {
             self.mark_uploading(id).await;
             return Err(DriveError::UploadFinalSize);
         }
-        if let Err(e) = tokio::fs::rename(&tmp_abs, &abs_path).await {
+
+        // Dedup: identical content already stored → reference the existing blob
+        // and discard the freshly assembled bytes. Blob removal is refcounted
+        // (remove_blob_if_orphan), so shared blobs stay alive. Best-effort: any
+        // lookup error just falls back to storing a new blob.
+        let mut created_new_blob = true;
+        if let Ok(Some(reuse)) = self.drive.find_reusable_blob(&hash, u.size).await {
+            rel_path = reuse;
+            created_new_blob = false;
+            let _ = tokio::fs::remove_file(&tmp_abs).await;
+        } else if let Err(e) = tokio::fs::rename(&tmp_abs, &abs_path).await {
             let _ = tokio::fs::remove_file(&tmp_abs).await;
             self.mark_uploading(id).await;
             return Err(DriveError::Io(e));
@@ -296,7 +303,11 @@ impl DriveUploadService {
                 Ok(node)
             }
             Err(e) => {
-                let _ = tokio::fs::remove_file(&abs_path).await;
+                // Only remove a blob we just created — a reused blob belongs to
+                // other node rows.
+                if created_new_blob {
+                    let _ = tokio::fs::remove_file(&abs_path).await;
+                }
                 self.mark_uploading(id).await;
                 Err(e)
             }

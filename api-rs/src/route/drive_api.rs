@@ -44,9 +44,14 @@ pub fn create_routes(write_timeout: Duration) -> Router<AppState> {
         .route("/list", get(list))
         .route("/breadcrumbs", get(breadcrumbs))
         .route("/trash", get(trash))
+        .route("/starred", get(starred))
+        .route("/usage", get(usage))
         .route("/folder", post(create_folder))
+        .route("/folders/ensure-path", post(ensure_path))
         .route("/rename", post(rename))
         .route("/move", post(move_nodes))
+        .route("/copy", post(copy_nodes))
+        .route("/star", post(star))
         .route("/delete", post(soft_delete))
         .route("/restore", post(restore))
         .route("/purge", post(purge))
@@ -91,6 +96,14 @@ async fn trash(State(state): State<AppState>) -> ApiResult<Json<Vec<DriveNode>>>
     Ok(Json(state.drive.list_trash().await?))
 }
 
+async fn starred(State(state): State<AppState>) -> ApiResult<Json<Vec<DriveNode>>> {
+    Ok(Json(state.drive.list_starred().await?))
+}
+
+async fn usage(State(state): State<AppState>) -> ApiResult<Json<DriveUsage>> {
+    Ok(Json(state.drive.usage().await?))
+}
+
 // ---------- mutations ----------
 
 async fn create_folder(
@@ -115,6 +128,35 @@ async fn move_nodes(
 ) -> ApiResult<StatusCode> {
     state.drive.move_nodes(&req.ids, req.new_parent_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn copy_nodes(
+    State(state): State<AppState>,
+    Json(req): Json<DriveMoveRequest>,
+) -> ApiResult<Json<Vec<DriveNode>>> {
+    let out = state.drive.copy(&req.ids, req.new_parent_id).await?;
+    Ok(Json(out))
+}
+
+async fn star(
+    State(state): State<AppState>,
+    Json(req): Json<DriveStarRequest>,
+) -> ApiResult<StatusCode> {
+    state.drive.set_starred(&req.ids, req.starred).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Get-or-creates a nested folder chain (folder uploads use this to mirror
+/// client directory structure) and returns the final folder.
+async fn ensure_path(
+    State(state): State<AppState>,
+    Json(req): Json<DriveEnsurePathRequest>,
+) -> ApiResult<Json<DriveNode>> {
+    let n = state
+        .drive
+        .ensure_folder_path(req.parent_id, &req.path)
+        .await?;
+    Ok(Json(n))
 }
 
 async fn soft_delete(
@@ -333,7 +375,11 @@ pub(crate) async fn serve_drive_file(
     } else {
         "inline"
     };
-    let disp = format!("{}; filename*=UTF-8''{}", disp_str, urlencoding::encode(name));
+    let disp = format!(
+        "{}; filename*=UTF-8''{}",
+        disp_str,
+        urlencoding::encode(name)
+    );
     let h = resp.headers_mut();
     h.insert(
         CONTENT_TYPE,

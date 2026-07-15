@@ -14,6 +14,7 @@ pub struct DriveNodeRow {
     pub blob_path: Option<String>,
     pub size: Option<i64>,
     pub hash: Option<String>,
+    pub starred_at: Option<i64>,
     pub deleted_at: Option<i64>,
     pub delete_batch_id: Option<String>,
     pub created_at: i64,
@@ -29,6 +30,8 @@ pub struct DriveNode {
     pub size: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub starred_at: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<i64>,
     pub created_at: i64,
@@ -65,6 +68,7 @@ impl DriveNode {
             name: row.name,
             size: row.size,
             hash: row.hash,
+            starred_at: row.starred_at,
             deleted_at: row.deleted_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -223,6 +227,31 @@ pub struct DriveMoveRequest {
 #[derive(Debug, Deserialize)]
 pub struct DriveIdsRequest {
     pub ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DriveStarRequest {
+    pub ids: Vec<i64>,
+    pub starred: bool,
+}
+
+/// Slash-separated relative folder path to get-or-create, e.g. "a/b/c".
+#[derive(Debug, Deserialize)]
+pub struct DriveEnsurePathRequest {
+    pub parent_id: Option<i64>,
+    pub path: String,
+}
+
+/// Drive storage consumption. Logical bytes count every file row; physical
+/// bytes count each distinct blob once (copies and deduplicated uploads share
+/// blobs, so physical <= logical).
+#[derive(Debug, Serialize)]
+pub struct DriveUsage {
+    pub active_bytes: i64,
+    pub trash_bytes: i64,
+    pub physical_bytes: i64,
+    pub active_count: i64,
+    pub trash_count: i64,
 }
 
 #[derive(Debug, Deserialize)]

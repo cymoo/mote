@@ -149,12 +149,10 @@ impl DriveService {
         Ok(nodes)
     }
 
+    /// Fills `share_count` with the number of currently active (non-expired)
+    /// shares per node — files and folders alike.
     pub async fn populate_share_counts(&self, nodes: &mut [DriveNode]) -> DriveResult<()> {
-        let ids: Vec<i64> = nodes
-            .iter()
-            .filter(|n| n.r#type == "file")
-            .map(|n| n.id)
-            .collect();
+        let ids: Vec<i64> = nodes.iter().map(|n| n.id).collect();
         if ids.is_empty() {
             return Ok(());
         }
@@ -498,6 +496,7 @@ WHERE id IN (SELECT id FROM subtree)"#,
     }
 
     async fn purge_one(&self, id: i64) -> DriveResult<()> {
+        let mut tx = self.pool.begin().await?;
         let rows: Vec<(i64, Option<String>)> = sqlx::query_as(
             r#"
 WITH RECURSIVE subtree(id) AS (
@@ -508,22 +507,88 @@ WITH RECURSIVE subtree(id) AS (
 SELECT n.id, n.blob_path FROM drive_nodes n WHERE n.id IN (SELECT id FROM subtree)"#,
         )
         .bind(id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await?;
         if rows.is_empty() {
             return Err(DriveError::NotFound);
         }
+        // Foreign keys cascade: deleting the root row removes descendants.
         sqlx::query("DELETE FROM drive_nodes WHERE id = ?")
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
-        for (_id, blob) in rows {
-            if let Some(b) = blob {
-                let _ = std::fs::remove_file(self.blob_abs_path(&b));
-                self.purge_thumb(&b);
+
+        // Blobs can be shared by rows outside this subtree (copies, deduplicated
+        // uploads). Decide which blobs became orphans INSIDE the tx — SQLite's
+        // single writer serializes this against a concurrent copy — but remove
+        // files only after commit so a rollback can't have deleted live data.
+        let blobs: std::collections::HashSet<String> = rows
+            .into_iter()
+            .filter_map(|(_, b)| b.filter(|b| !b.is_empty()))
+            .collect();
+        let mut orphans = Vec::with_capacity(blobs.len());
+        for blob in blobs {
+            let refs: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM drive_nodes WHERE blob_path = ?")
+                    .bind(&blob)
+                    .fetch_one(&mut *tx)
+                    .await?;
+            if refs == 0 {
+                orphans.push(blob);
             }
         }
+        tx.commit().await?;
+
+        for blob in orphans {
+            let _ = std::fs::remove_file(self.blob_abs_path(&blob));
+            self.purge_thumb(&blob);
+        }
         Ok(())
+    }
+
+    /// Removes the blob file and its cached thumbnail when no drive_nodes row
+    /// (active or trashed) references `blob_path` anymore. Blobs can be shared
+    /// by several rows (copies, deduplicated uploads), so removal must always
+    /// be gated on this check. Call it AFTER the rows that dropped the
+    /// reference have been committed.
+    pub async fn remove_blob_if_orphan(&self, blob_path: &str) {
+        if blob_path.is_empty() {
+            return;
+        }
+        let refs: Result<i64, _> =
+            sqlx::query_scalar("SELECT COUNT(*) FROM drive_nodes WHERE blob_path = ?")
+                .bind(blob_path)
+                .fetch_one(&self.pool)
+                .await;
+        if !matches!(refs, Ok(0)) {
+            return;
+        }
+        let _ = std::fs::remove_file(self.blob_abs_path(blob_path));
+        self.purge_thumb(blob_path);
+    }
+
+    /// Returns the blob_path of an existing node (active or trashed) with the
+    /// same content hash and size whose file is still present on disk, or None
+    /// when there is none. Used to deduplicate uploads.
+    pub async fn find_reusable_blob(&self, hash: &str, size: i64) -> DriveResult<Option<String>> {
+        if hash.is_empty() {
+            return Ok(None);
+        }
+        let candidates: Vec<String> = sqlx::query_scalar(
+            "SELECT DISTINCT blob_path FROM drive_nodes
+             WHERE hash = ? AND size = ? AND blob_path IS NOT NULL
+             LIMIT 8",
+        )
+        .bind(hash)
+        .bind(size)
+        .fetch_all(&self.pool)
+        .await?;
+        for blob in candidates {
+            if std::fs::metadata(self.blob_abs_path(&blob)).is_ok() {
+                return Ok(Some(blob));
+            }
+        }
+        Ok(None)
     }
 
     pub async fn collect_descendants(&self, root_id: i64) -> DriveResult<Vec<DescendantRow>> {
@@ -663,10 +728,11 @@ SELECT id, type, name, blob_path, rel_path FROM subtree"#,
                 .execute(&mut *tx)
                 .await?;
                 tx.commit().await?;
+                // The old blob may still be referenced by other rows (copies,
+                // deduplicated uploads) — only remove it once orphaned.
                 if let Some(ob) = old_blob {
                     if !ob.is_empty() && ob != blob_path {
-                        let _ = std::fs::remove_file(self.blob_abs_path(&ob));
-                        self.purge_thumb(&ob);
+                        self.remove_blob_if_orphan(&ob).await;
                     }
                 }
                 self.find_by_id(ex.id).await
@@ -732,6 +798,255 @@ SELECT id, type, name, blob_path, rel_path FROM subtree"#,
         Ok(format!("{} ({}){}", stem, max_n + 1, ext))
     }
 
+    // ---- copy / star / usage ----
+
+    /// Deep-copies nodes into `new_parent_id` (None = root), one id at a time.
+    /// File copies reference the SAME blob_path — zero disk cost; refcounted
+    /// blob removal keeps shared blobs alive. Copies get fresh timestamps and
+    /// never carry stars or shares. Copying a folder into its own subtree is
+    /// rejected (Cycle), matching move. Destination name conflicts resolve via
+    /// auto_rename ("name (1)"), so duplicate-in-place works naturally.
+    pub async fn copy(
+        &self,
+        ids: &[i64],
+        new_parent_id: Option<i64>,
+    ) -> DriveResult<Vec<DriveNode>> {
+        if let Some(pid) = new_parent_id {
+            self.require_active_folder(pid).await?;
+        }
+        let mut out = Vec::with_capacity(ids.len());
+        for &id in ids {
+            out.push(self.copy_one(id, new_parent_id).await?);
+        }
+        Ok(out)
+    }
+
+    async fn copy_one(&self, id: i64, new_parent_id: Option<i64>) -> DriveResult<DriveNode> {
+        let src = self.find_by_id(id).await?;
+        if src.deleted_at.is_some() {
+            return Err(DriveError::NotFound);
+        }
+        // Cycle check: copying a folder into itself or its own descendant would
+        // mean copying the destination into itself; reject like move does.
+        if let Some(pid) = new_parent_id {
+            if src.r#type == "folder" {
+                if pid == id {
+                    return Err(DriveError::Cycle);
+                }
+                let hit: i64 = sqlx::query_scalar(
+                    r#"
+WITH RECURSIVE descendants(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ?
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN descendants d ON n.parent_id = d.id
+)
+SELECT EXISTS(SELECT 1 FROM descendants WHERE id = ?)"#,
+                )
+                .bind(id)
+                .bind(pid)
+                .fetch_one(&self.pool)
+                .await?;
+                if hit == 1 {
+                    return Err(DriveError::Cycle);
+                }
+            }
+        }
+
+        // Pre-tx, read-only; the unique index backstops races (→ conflict error).
+        let root_name = self.auto_rename(new_parent_id, &src.name).await?;
+
+        let mut tx = self.pool.begin().await?;
+
+        // Snapshot the whole source subtree up-front (depth-ordered so parents
+        // are copied before children); inserting from the snapshot means freshly
+        // created copies can never be re-visited.
+        let snap: Vec<CopySnapRow> = sqlx::query_as(
+            r#"
+WITH RECURSIVE subtree(id, parent_id, type, name, blob_path, size, hash, depth) AS (
+  SELECT id, parent_id, type, name, blob_path, size, hash, 0
+  FROM drive_nodes WHERE id = ? AND deleted_at IS NULL
+  UNION ALL
+  SELECT n.id, n.parent_id, n.type, n.name, n.blob_path, n.size, n.hash, s.depth + 1
+  FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NULL
+)
+SELECT id, parent_id, type, name, blob_path, size, hash, depth
+FROM subtree ORDER BY depth, id"#,
+        )
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
+        if snap.is_empty() {
+            return Err(DriveError::NotFound);
+        }
+
+        let now = Utc::now().timestamp_millis();
+        let mut id_map = std::collections::HashMap::with_capacity(snap.len());
+        let mut new_root_id = 0i64;
+        for r in &snap {
+            let (parent_id, name) = if r.id == id {
+                (new_parent_id, root_name.as_str())
+            } else {
+                let np = id_map.get(&r.parent_id.unwrap_or(0)).copied();
+                (np, r.name.as_str())
+            };
+            let new_id: i64 = sqlx::query_scalar(
+                "INSERT INTO drive_nodes (parent_id, type, name, blob_path, size, hash, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            )
+            .bind(parent_id)
+            .bind(&r.r#type)
+            .bind(name)
+            .bind(&r.blob_path)
+            .bind(r.size)
+            .bind(&r.hash)
+            .bind(now)
+            .bind(now)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(map_unique)?;
+            id_map.insert(r.id, new_id);
+            if r.id == id {
+                new_root_id = new_id;
+            }
+        }
+        tx.commit().await?;
+        self.find_by_id(new_root_id).await
+    }
+
+    /// Walks/creates the folder chain `rel_path` ("a/b/c") under `parent_id`
+    /// and returns the final folder. Get-or-create is idempotent: on a
+    /// unique-constraint race the winner's row is re-selected. A path segment
+    /// that exists as a FILE is a conflict (NameConflict) — auto-renaming would
+    /// scatter one client directory across "dir"/"dir (1)" between calls.
+    pub async fn ensure_folder_path(
+        &self,
+        parent_id: Option<i64>,
+        rel_path: &str,
+    ) -> DriveResult<DriveNode> {
+        const MAX_DEPTH: usize = 32;
+        let mut segs: Vec<&str> = Vec::with_capacity(8);
+        for seg in rel_path.split('/') {
+            let seg = seg.trim();
+            if seg.is_empty() {
+                continue;
+            }
+            valid_name(seg)?;
+            segs.push(seg);
+        }
+        if segs.is_empty() || segs.len() > MAX_DEPTH {
+            return Err(DriveError::InvalidName);
+        }
+        if let Some(pid) = parent_id {
+            self.require_active_folder(pid).await?;
+        }
+
+        let mut cur = parent_id;
+        let mut node = None;
+        for seg in segs {
+            let n = self.get_or_create_folder(cur, seg).await?;
+            cur = Some(n.id);
+            node = Some(n);
+        }
+        Ok(node.expect("segs is non-empty"))
+    }
+
+    async fn get_or_create_folder(
+        &self,
+        parent_id: Option<i64>,
+        name: &str,
+    ) -> DriveResult<DriveNode> {
+        if let Some(existing) = self.find_active_sibling(parent_id, name).await? {
+            if existing.r#type != "folder" {
+                return Err(DriveError::NameConflict);
+            }
+            return Ok(existing);
+        }
+        match self.create_folder(parent_id, name).await {
+            Err(DriveError::NameConflict) => {
+                // A concurrent creator won the race — reuse their row.
+                if let Ok(Some(again)) = self.find_active_sibling(parent_id, name).await {
+                    if again.r#type == "folder" {
+                        return Ok(again);
+                    }
+                }
+                Err(DriveError::NameConflict)
+            }
+            res => res,
+        }
+    }
+
+    /// Stars (starred=true) or unstars the given active nodes. Starring is a
+    /// metadata toggle — it deliberately does not bump updated_at so the
+    /// "modified" sort stays stable.
+    pub async fn set_starred(&self, ids: &[i64], starred: bool) -> DriveResult<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let val: Option<i64> = starred.then(|| Utc::now().timestamp_millis());
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "UPDATE drive_nodes SET starred_at = ? WHERE id IN ({}) AND deleted_at IS NULL",
+            placeholders
+        );
+        let mut q = sqlx::query(&sql).bind(val);
+        for id in ids {
+            q = q.bind(id);
+        }
+        q.execute(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Returns starred, non-deleted nodes (most recently starred first), with
+    /// ancestor paths and share counts populated like search results.
+    pub async fn list_starred(&self) -> DriveResult<Vec<DriveNode>> {
+        let rows = sqlx::query_as::<_, DriveNodeRow>(
+            "SELECT * FROM drive_nodes
+             WHERE starred_at IS NOT NULL AND deleted_at IS NULL
+             ORDER BY starred_at DESC, id DESC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let mut nodes: Vec<DriveNode> = rows.into_iter().map(DriveNode::from_row).collect();
+        if !nodes.is_empty() {
+            self.populate_paths(&mut nodes).await?;
+            self.populate_share_counts(&mut nodes).await?;
+        }
+        Ok(nodes)
+    }
+
+    /// Reports drive storage consumption; see [`DriveUsage`].
+    pub async fn usage(&self) -> DriveResult<DriveUsage> {
+        let (active_bytes, active_count): (i64, i64) = sqlx::query_as(
+            "SELECT COALESCE(SUM(size), 0), COUNT(*) FROM drive_nodes
+             WHERE type = 'file' AND deleted_at IS NULL",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let (trash_bytes, trash_count): (i64, i64) = sqlx::query_as(
+            "SELECT COALESCE(SUM(size), 0), COUNT(*) FROM drive_nodes
+             WHERE type = 'file' AND deleted_at IS NOT NULL",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        // Each distinct blob counted once — copies/deduplicated rows share blobs.
+        let physical_bytes: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(sz), 0) FROM (
+               SELECT MAX(size) AS sz FROM drive_nodes
+               WHERE blob_path IS NOT NULL GROUP BY blob_path
+             )",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(DriveUsage {
+            active_bytes,
+            trash_bytes,
+            physical_bytes,
+            active_count,
+            trash_count,
+        })
+    }
+
     // ---- Thumbnails ----
 
     pub fn purge_thumb(&self, blob_path: &str) {
@@ -757,6 +1072,20 @@ pub struct DescendantRow {
     pub name: String,
     pub blob_path: Option<String>,
     pub rel_path: String,
+}
+
+/// One row of the depth-ordered subtree snapshot taken by `copy_one`.
+#[derive(Debug, sqlx::FromRow)]
+struct CopySnapRow {
+    id: i64,
+    parent_id: Option<i64>,
+    r#type: String,
+    name: String,
+    blob_path: Option<String>,
+    size: Option<i64>,
+    hash: Option<String>,
+    #[allow(dead_code)]
+    depth: i64,
 }
 
 // ----- helpers -----
