@@ -315,15 +315,64 @@ func TestShare_BadToken(t *testing.T) {
 	}
 }
 
-func TestShare_FolderRejected(t *testing.T) {
+func TestShare_FolderCreateAndResolve(t *testing.T) {
 	_, drive, _, share := setupDriveFullDB(t)
 	ctx := context.Background()
 	folder, err := drive.CreateFolder(ctx, nil, "Pics")
 	if err != nil {
 		t.Fatalf("folder: %v", err)
 	}
-	if _, err := share.Create(ctx, folder.ID, nil, nil); !errors.Is(err, ErrShareInvalidNode) {
-		t.Fatalf("expected ErrShareInvalidNode, got %v", err)
+	sh, err := share.Create(ctx, folder.ID, nil, nil)
+	if err != nil {
+		t.Fatalf("folder share create: %v", err)
+	}
+	_, node, err := share.Resolve(ctx, sh.Token)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if node.ID != folder.ID || node.Type != "folder" {
+		t.Fatalf("resolved node: %+v", node)
+	}
+}
+
+// ResolveChild gates every ?id=/?dir= on the public folder-share surface:
+// only the share root itself and its ACTIVE descendants may resolve.
+func TestShare_ResolveChildScope(t *testing.T) {
+	_, drive, upload, share := setupDriveFullDB(t)
+	ctx := context.Background()
+
+	root, _ := drive.CreateFolder(ctx, nil, "root")
+	sub, _ := drive.CreateFolder(ctx, &root.ID, "sub")
+	inner := performUpload(t, upload, &sub.ID, "in.txt", []byte("in"), 1<<20, "ask")
+	outside := performUpload(t, upload, nil, "out.txt", []byte("out"), 1<<20, "ask")
+
+	// The root itself resolves.
+	if n, err := share.ResolveChild(ctx, root.ID, root.ID); err != nil || n.ID != root.ID {
+		t.Fatalf("root self: %v", err)
+	}
+	// An active descendant resolves.
+	if n, err := share.ResolveChild(ctx, root.ID, inner.ID); err != nil || n.ID != inner.ID {
+		t.Fatalf("descendant: %v", err)
+	}
+	// A node outside the share subtree → not found.
+	if _, err := share.ResolveChild(ctx, root.ID, outside.ID); !errors.Is(err, ErrShareNotFound) {
+		t.Fatalf("outside: %v", err)
+	}
+	// A trashed descendant → not found.
+	if err := drive.SoftDelete(ctx, []int64{inner.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := share.ResolveChild(ctx, root.ID, inner.ID); !errors.Is(err, ErrShareNotFound) {
+		t.Fatalf("trashed child: %v", err)
+	}
+	// A child inside a trashed folder → not found (the deleted hop breaks the chain).
+	f2, _ := drive.CreateFolder(ctx, &root.ID, "f2")
+	leaf := performUpload(t, upload, &f2.ID, "leaf.txt", []byte("leaf"), 1<<20, "ask")
+	if err := drive.SoftDelete(ctx, []int64{f2.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := share.ResolveChild(ctx, root.ID, leaf.ID); !errors.Is(err, ErrShareNotFound) {
+		t.Fatalf("child of trashed folder: %v", err)
 	}
 }
 

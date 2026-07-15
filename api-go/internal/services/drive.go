@@ -177,14 +177,11 @@ func (s *DriveService) List(ctx context.Context, parentID *int64, query *string,
 }
 
 // populateShareCounts fills DriveNode.ShareCount with the number of currently
-// active (non-expired) shares per file node. Folders always remain 0.
+// active (non-expired) shares per node — files and folders alike.
 func (s *DriveService) populateShareCounts(ctx context.Context, nodes []models.DriveNode) error {
 	ids := make([]int64, 0, len(nodes))
 	idx := make(map[int64]int, len(nodes))
 	for i, n := range nodes {
-		if n.Type != "file" {
-			continue
-		}
 		ids = append(ids, n.ID)
 		idx[n.ID] = i
 	}

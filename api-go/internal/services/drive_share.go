@@ -44,9 +44,6 @@ func (s *DriveShareService) Create(
 	if err != nil {
 		return nil, err
 	}
-	if n.Type != "file" {
-		return nil, ErrShareInvalidNode
-	}
 	if n.DeletedAt.Valid {
 		return nil, ErrDriveNotFound
 	}
@@ -164,10 +161,42 @@ func (s *DriveShareService) Resolve(ctx context.Context, token string) (*models.
 	if err != nil {
 		return nil, nil, err
 	}
-	if node.DeletedAt.Valid || node.Type != "file" {
+	if node.DeletedAt.Valid {
 		return nil, nil, ErrShareNotFound
 	}
 	return match, node, nil
+}
+
+// ResolveChild returns childID's node iff it is rootID itself or an ACTIVE
+// descendant of rootID (every hop non-deleted). All ?id=/?dir= lookups on the
+// public share surface MUST go through this — it is what scopes a folder
+// share to its own subtree and keeps trashed content unreachable.
+func (s *DriveShareService) ResolveChild(ctx context.Context, rootID, childID int64) (*models.DriveNode, error) {
+	if childID == rootID {
+		n, err := s.drive.FindByID(ctx, rootID)
+		if err != nil {
+			return nil, err
+		}
+		if n.DeletedAt.Valid {
+			return nil, ErrShareNotFound
+		}
+		return n, nil
+	}
+	var hit int
+	if err := s.db.QueryRowxContext(ctx, `
+WITH RECURSIVE subtree(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NULL
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NULL
+)
+SELECT EXISTS(SELECT 1 FROM subtree WHERE id = ?)`, rootID, childID).Scan(&hit); err != nil {
+		return nil, err
+	}
+	if hit == 0 {
+		return nil, ErrShareNotFound
+	}
+	return s.drive.FindByID(ctx, childID)
 }
 
 // VerifyPassword returns nil on success, or an error.

@@ -797,6 +797,25 @@ func TestDrive_StarUnstarAndList(t *testing.T) {
 	}
 }
 
+// Folder nodes now surface share counts too (folder shares).
+func TestDrive_ShareCountsIncludeFolders(t *testing.T) {
+	db, svc := setupDriveDB(t)
+	ctx := context.Background()
+	folder, _ := svc.CreateFolder(ctx, nil, "shared-folder")
+	if _, err := db.Exec(`INSERT INTO drive_shares
+(node_id, token_hash, token_prefix, expires_at, created_at) VALUES (?, 'fh', 'fh', NULL, 1)`, folder.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := svc.List(ctx, nil, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].ShareCount != 1 {
+		t.Fatalf("folder share count: %+v", out)
+	}
+}
+
 // Usage counts logical bytes per row but each distinct blob only once.
 func TestDrive_Usage(t *testing.T) {
 	_, svc := setupDriveDB(t)
