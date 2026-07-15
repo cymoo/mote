@@ -166,7 +166,7 @@ class DriveUploadService(
             }
 
             val blobName = DriveService.newBlobName(finalName)
-            val relPath = "drive/$blobName"
+            var relPath = "drive/$blobName"
             val absPath = Paths.get(uploadConfig.uploadDir, relPath).toFile()
             val tmpAbs = File(absPath.absolutePath + ".part")
 
@@ -180,11 +180,24 @@ class DriveUploadService(
                 tmpAbs.delete()
                 throw BadRequestException("final file size mismatch")
             }
-            try {
-                Files.move(tmpAbs.toPath(), absPath.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (e: Exception) {
+
+            // Dedup: identical content already stored → reference the existing
+            // blob and discard the freshly assembled bytes. Blob removal is
+            // refcounted (removeBlobIfOrphan), so shared blobs stay alive.
+            // Best-effort: any lookup error just falls back to storing a new blob.
+            var createdNewBlob = true
+            val reuse = runCatching { driveService.findReusableBlob(hash, u.size) }.getOrNull()
+            if (!reuse.isNullOrBlank()) {
+                relPath = reuse
+                createdNewBlob = false
                 tmpAbs.delete()
-                throw e
+            } else {
+                try {
+                    Files.move(tmpAbs.toPath(), absPath.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                } catch (e: Exception) {
+                    tmpAbs.delete()
+                    throw e
+                }
             }
 
             val node = try {
@@ -194,7 +207,9 @@ class DriveUploadService(
                     driveService.createFileNode(u.parentId, finalName, relPath, hash, u.size)
                 }
             } catch (e: Exception) {
-                absPath.delete()
+                // Only remove a blob this request created — a reused blob
+                // belongs to other node rows.
+                if (createdNewBlob) absPath.delete()
                 throw e
             }
 

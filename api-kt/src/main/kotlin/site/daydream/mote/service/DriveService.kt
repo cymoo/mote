@@ -6,7 +6,9 @@ import org.jooq.exception.IntegrityConstraintViolationException
 import org.jooq.impl.DSL
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import site.daydream.mote.config.UploadConfig
 import site.daydream.mote.exception.BadRequestException
 import site.daydream.mote.exception.ConflictException
@@ -26,7 +28,10 @@ class DriveService(
     private val dsl: DSLContext,
     private val uploadConfig: UploadConfig,
     private val driveThumbService: DriveThumbServiceProvider, // forward ref to avoid cycle
+    txManager: PlatformTransactionManager,
 ) {
+    private val tx = TransactionTemplate(txManager)
+
     init {
         Files.createDirectories(Paths.get(uploadConfig.uploadDir, "drive"))
         Files.createDirectories(Paths.get(uploadConfig.uploadDir, "drive", "_chunks"))
@@ -331,30 +336,114 @@ class DriveService(
         for (id in ids) purgeOne(id)
     }
 
-    @Transactional
-    fun purgeOne(id: Long) {
-        // Keep as raw SQL: recursive CTE to collect the full subtree.
-        val rows = dsl.resultQuery(
-            """
-            WITH RECURSIVE subtree(id) AS (
-              SELECT id FROM drive_nodes WHERE id = ?
-              UNION ALL
-              SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
-            )
-            SELECT n.id, n.blob_path FROM drive_nodes n WHERE n.id IN (SELECT id FROM subtree)
-            """.trimIndent(),
-            id,
-        ).fetch { rec -> rec.get("id", Long::class.java) to rec.get("blob_path", String::class.java) }
-        if (rows.isEmpty()) throw NotFoundException("drive node not found")
+    private fun purgeOne(id: Long) {
+        // Blobs can be shared by rows outside this subtree (copies, deduplicated
+        // uploads). Decide which blobs became orphans INSIDE the tx — SQLite's
+        // single writer serializes this against a concurrent copy — but remove
+        // files only after commit so a rollback can't have deleted live data.
+        val orphans = tx.execute {
+            // Keep as raw SQL: recursive CTE to collect the full subtree.
+            val rows = dsl.resultQuery(
+                """
+                WITH RECURSIVE subtree(id) AS (
+                  SELECT id FROM drive_nodes WHERE id = ?
+                  UNION ALL
+                  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+                )
+                SELECT n.id, n.blob_path FROM drive_nodes n WHERE n.id IN (SELECT id FROM subtree)
+                """.trimIndent(),
+                id,
+            ).fetch { rec -> rec.get("id", Long::class.java) to rec.get("blob_path", String::class.java) }
+            if (rows.isEmpty()) throw NotFoundException("drive node not found")
 
-        // Delete the whole subtree explicitly (don't rely on FK cascade — test profile may have FK off).
-        val subtreeIds = rows.map { it.first }
-        dsl.deleteFrom(DRIVE_NODES).where(DRIVE_NODES.ID.`in`(subtreeIds)).execute()
-        for ((_, blob) in rows) {
-            if (blob.isNullOrBlank()) continue
+            // Delete the whole subtree explicitly (don't rely on FK cascade — test profile may have FK off).
+            val subtreeIds = rows.map { it.first }
+            dsl.deleteFrom(DRIVE_NODES).where(DRIVE_NODES.ID.`in`(subtreeIds)).execute()
+
+            rows.mapNotNull { it.second }.filter { it.isNotBlank() }.distinct()
+                .filter { blob -> dsl.fetchCount(DRIVE_NODES, DRIVE_NODES.BLOB_PATH.eq(blob)) == 0 }
+        }!!
+        for (blob in orphans) {
             runCatching { File(blobAbsPath(blob)).delete() }
             driveThumbService.purgeThumb(blob)
         }
+    }
+
+    /**
+     * Hard-deletes nodes trashed before [cutoff] (epoch-ms) — the topmost
+     * deleted batch roots and all their descendants — and removes blob files
+     * that became orphans along with their cached thumbnails. Returns the
+     * number of purged rows.
+     */
+    fun purgeTrashOlderThan(cutoff: Long): Int {
+        // Keep as raw SQL: recursive CTE over deleted batch roots + descendants.
+        val rows = dsl.resultQuery(
+            """
+            WITH RECURSIVE trash(id) AS (
+              SELECT id FROM drive_nodes
+              WHERE deleted_at IS NOT NULL AND deleted_at < ?
+                AND (
+                  parent_id IS NULL
+                  OR NOT EXISTS (
+                    SELECT 1 FROM drive_nodes p
+                    WHERE p.id = drive_nodes.parent_id
+                      AND p.deleted_at IS NOT NULL
+                      AND p.delete_batch_id = drive_nodes.delete_batch_id
+                  )
+                )
+              UNION ALL
+              SELECT n.id FROM drive_nodes n JOIN trash t ON n.parent_id = t.id
+            )
+            SELECT n.id, n.blob_path FROM drive_nodes n WHERE n.id IN (SELECT id FROM trash)
+            """.trimIndent(),
+            cutoff,
+        ).fetch { rec -> rec.get("id", Long::class.java) to rec.get("blob_path", String::class.java) }
+        if (rows.isEmpty()) return 0
+
+        dsl.deleteFrom(DRIVE_NODES).where(DRIVE_NODES.ID.`in`(rows.map { it.first })).execute()
+
+        // Blobs may still be referenced by rows outside the purged set (copies,
+        // deduplicated uploads) — only remove files that became orphans, along
+        // with their cached thumbnails.
+        rows.mapNotNull { it.second }.filter { it.isNotBlank() }.distinct()
+            .forEach { removeBlobIfOrphan(it) }
+        return rows.size
+    }
+
+    /**
+     * Removes the blob file and its cached thumbnail when no drive_nodes row
+     * (active or trashed) references [blobPath] anymore. Blobs can be shared
+     * by several rows (copies, deduplicated uploads), so removal must always
+     * be gated on this check. Call it AFTER the rows that dropped the
+     * reference have been committed.
+     */
+    fun removeBlobIfOrphan(blobPath: String) {
+        if (blobPath.isBlank()) return
+        val refs = try {
+            dsl.fetchCount(DRIVE_NODES, DRIVE_NODES.BLOB_PATH.eq(blobPath))
+        } catch (_: Exception) {
+            return
+        }
+        if (refs > 0) return
+        runCatching { File(blobAbsPath(blobPath)).delete() }
+        driveThumbService.purgeThumb(blobPath)
+    }
+
+    /**
+     * Returns the blob_path of an existing node (active or trashed) with the
+     * same content hash and size whose file is still present on disk, or null
+     * when there is none. Used to deduplicate uploads.
+     */
+    fun findReusableBlob(hash: String?, size: Long): String? {
+        if (hash.isNullOrEmpty()) return null
+        return dsl.selectDistinct(DRIVE_NODES.BLOB_PATH)
+            .from(DRIVE_NODES)
+            .where(DRIVE_NODES.HASH.eq(hash))
+            .and(DRIVE_NODES.SIZE.eq(size))
+            .and(DRIVE_NODES.BLOB_PATH.isNotNull)
+            .limit(8)
+            .fetch { it.value1() }
+            .firstOrNull { !it.isNullOrBlank() && File(blobAbsPath(it)).exists() }
     }
 
     data class DescendantRow(
@@ -421,32 +510,31 @@ class DriveService(
     }
 
     /** Replace an existing same-name file ("overwrite" collision strategy). */
-    @Transactional
     fun replaceFileNode(parentId: Long?, name: String, blobPath: String, hash: String?, size: Long): DriveNode {
         validateName(name)
-        val existing = findActiveSibling(parentId, name)
-        val now = System.currentTimeMillis()
-
-        if (existing == null || existing.type != "file") {
-            return try {
-                createFileNode(parentId, name, blobPath, hash, size)
-            } catch (e: ConflictException) {
-                throw e
+        var oldBlob: String? = null
+        val nodeId = tx.execute {
+            val existing = findActiveSibling(parentId, name)
+            if (existing == null || existing.type != "file") {
+                // Nothing to overwrite (or existing is a folder); insert fresh.
+                createFileNode(parentId, name, blobPath, hash, size).id
+            } else {
+                oldBlob = existing.blobPath
+                dsl.update(DRIVE_NODES)
+                    .set(DRIVE_NODES.BLOB_PATH, blobPath)
+                    .set(DRIVE_NODES.SIZE, size)
+                    .set(DRIVE_NODES.HASH, if (hash.isNullOrEmpty()) null else hash)
+                    .set(DRIVE_NODES.UPDATED_AT, System.currentTimeMillis())
+                    .where(DRIVE_NODES.ID.eq(existing.id))
+                    .execute()
+                existing.id
             }
-        }
-        val oldBlob = existing.blobPath
-        dsl.update(DRIVE_NODES)
-            .set(DRIVE_NODES.BLOB_PATH, blobPath)
-            .set(DRIVE_NODES.SIZE, size)
-            .set(DRIVE_NODES.HASH, if (hash.isNullOrEmpty()) null else hash)
-            .set(DRIVE_NODES.UPDATED_AT, now)
-            .where(DRIVE_NODES.ID.eq(existing.id))
-            .execute()
-        if (!oldBlob.isNullOrBlank() && oldBlob != blobPath) {
-            runCatching { File(blobAbsPath(oldBlob)).delete() }
-            driveThumbService.purgeThumb(oldBlob)
-        }
-        return findById(existing.id)
+        }!!
+        // The previous blob may still back other rows (copies, deduplicated
+        // uploads) — or be the very blob we just reused; only remove orphans,
+        // and only after the reference drop has been committed.
+        oldBlob?.let { if (it.isNotBlank() && it != blobPath) removeBlobIfOrphan(it) }
+        return findById(nodeId)
     }
 
     /** Generate a non-conflicting filename (e.g. "report.pdf" -> "report (1).pdf"). */

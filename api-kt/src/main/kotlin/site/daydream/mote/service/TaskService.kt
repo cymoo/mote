@@ -10,7 +10,13 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 @Service
-class TaskService(private val searchService: SearchService, private val dsl: DSLContext) {
+class TaskService(
+    private val searchService: SearchService,
+    private val dsl: DSLContext,
+    private val driveService: DriveService,
+    private val driveUploadService: DriveUploadService,
+    private val driveShareService: DriveShareService,
+) {
 
     @Scheduled(cron = "0 0 3 * * ?")
     fun clearPosts() {
@@ -21,6 +27,32 @@ class TaskService(private val searchService: SearchService, private val dsl: DSL
             .execute()
         if (deletedCount > 0) {
             logger.info("Successfully deleted $deletedCount posts.")
+        }
+    }
+
+    @Scheduled(cron = "0 0 * * * ?")
+    fun purgeExpiredDriveUploads() {
+        val n = driveUploadService.purgeExpired()
+        if (n > 0) {
+            logger.info("Purged $n expired drive uploads.")
+        }
+    }
+
+    @Scheduled(cron = "0 0 * * * ?")
+    fun purgeExpiredDriveShares() {
+        val n = driveShareService.purgeExpired()
+        if (n > 0) {
+            logger.info("Purged $n expired drive shares.")
+        }
+    }
+
+    /** Hard-deletes drive nodes trashed more than 30 days ago; blob removal is refcounted. */
+    @Scheduled(cron = "0 30 2 * * ?")
+    fun purgeOldDriveTrash() {
+        val cutoff = Instant.now().minus(30, ChronoUnit.DAYS).toEpochMilli()
+        val n = driveService.purgeTrashOlderThan(cutoff)
+        if (n > 0) {
+            logger.info("Purged $n drive nodes from trash.")
         }
     }
 
