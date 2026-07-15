@@ -569,8 +569,15 @@ WITH RECURSIVE subtree(id) AS (
   SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
 )
 SELECT n.id, n.blob_path FROM drive_nodes n WHERE n.id IN (SELECT id FROM subtree)`
+
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	var rows []row
-	if err := s.db.SelectContext(ctx, &rows, q, id); err != nil {
+	if err := tx.SelectContext(ctx, &rows, q, id); err != nil {
 		return err
 	}
 	if len(rows) == 0 {
@@ -578,16 +585,80 @@ SELECT n.id, n.blob_path FROM drive_nodes n WHERE n.id IN (SELECT id FROM subtre
 	}
 
 	// Foreign keys cascade: deleting the root row removes descendants.
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM drive_nodes WHERE id = ?`, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM drive_nodes WHERE id = ?`, id); err != nil {
 		return err
 	}
+
+	// Blobs can be shared by rows outside this subtree (copies, deduplicated
+	// uploads). Decide which blobs became orphans INSIDE the tx — SQLite's
+	// single writer serializes this against a concurrent Copy — but remove
+	// files only after commit so a rollback can't have deleted live data.
+	blobs := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
-		if r.BlobPath.Valid {
-			_ = os.Remove(s.BlobAbsPath(r.BlobPath.String))
-			s.PurgeThumb(r.BlobPath.String)
+		if r.BlobPath.Valid && r.BlobPath.String != "" {
+			blobs[r.BlobPath.String] = struct{}{}
 		}
 	}
+	orphans := make([]string, 0, len(blobs))
+	for blob := range blobs {
+		var refs int
+		if err := tx.GetContext(ctx, &refs,
+			`SELECT COUNT(*) FROM drive_nodes WHERE blob_path = ?`, blob); err != nil {
+			return err
+		}
+		if refs == 0 {
+			orphans = append(orphans, blob)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	for _, blob := range orphans {
+		_ = os.Remove(s.BlobAbsPath(blob))
+		s.PurgeThumb(blob)
+	}
 	return nil
+}
+
+// removeBlobIfOrphan removes the blob file and its cached thumbnail when no
+// drive_nodes row (active or trashed) references blobPath anymore. Blobs can
+// be shared by several rows (copies, deduplicated uploads), so removal must
+// always be gated on this check. Call it AFTER the rows that dropped the
+// reference have been committed.
+func (s *DriveService) removeBlobIfOrphan(ctx context.Context, blobPath string) {
+	if blobPath == "" {
+		return
+	}
+	var refs int
+	if err := s.db.GetContext(ctx, &refs,
+		`SELECT COUNT(*) FROM drive_nodes WHERE blob_path = ?`, blobPath); err != nil || refs > 0 {
+		return
+	}
+	_ = os.Remove(s.BlobAbsPath(blobPath))
+	s.PurgeThumb(blobPath)
+}
+
+// FindReusableBlob returns the blob_path of an existing node (active or
+// trashed) with the same content hash and size whose file is still present
+// on disk, or "" when there is none. Used to deduplicate uploads.
+func (s *DriveService) FindReusableBlob(ctx context.Context, hash string, size int64) (string, error) {
+	if hash == "" {
+		return "", nil
+	}
+	var candidates []string
+	if err := s.db.SelectContext(ctx, &candidates, `
+SELECT DISTINCT blob_path FROM drive_nodes
+WHERE hash = ? AND size = ? AND blob_path IS NOT NULL
+LIMIT 8`, hash, size); err != nil {
+		return "", err
+	}
+	for _, blob := range candidates {
+		if _, err := os.Stat(s.BlobAbsPath(blob)); err == nil {
+			return blob, nil
+		}
+	}
+	return "", nil
 }
 
 // CollectDescendants returns the full descendant set (excluding deleted) for a folder.
@@ -730,8 +801,7 @@ WHERE id = ?`, blobPath, size, hash, now, existing.ID)
 		return nil, err
 	}
 	if oldBlob != "" && oldBlob != blobPath {
-		_ = os.Remove(s.BlobAbsPath(oldBlob))
-		s.PurgeThumb(oldBlob)
+		s.removeBlobIfOrphan(ctx, oldBlob)
 	}
 	return s.FindByID(ctx, existing.ID)
 }

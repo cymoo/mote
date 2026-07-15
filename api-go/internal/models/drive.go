@@ -21,6 +21,7 @@ type DriveNode struct {
 	BlobPath      NullString `json:"-" db:"blob_path"`
 	Size          NullInt64  `json:"size" db:"size"`
 	Hash          NullString `json:"hash,omitempty" db:"hash"`
+	StarredAt     NullInt64  `json:"starred_at,omitempty" db:"starred_at"`
 	DeletedAt     NullInt64  `json:"deleted_at,omitempty" db:"deleted_at"`
 	DeleteBatchID NullString `json:"-" db:"delete_batch_id"`
 	CreatedAt     int64      `json:"created_at" db:"created_at"`

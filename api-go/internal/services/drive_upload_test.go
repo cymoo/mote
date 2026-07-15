@@ -35,6 +35,7 @@ CREATE TABLE drive_nodes (
   blob_path TEXT,
   size INTEGER,
   hash TEXT,
+  starred_at INTEGER,
   deleted_at INTEGER,
   delete_batch_id TEXT,
   created_at INTEGER NOT NULL,
@@ -403,6 +404,75 @@ func TestShare_ListByNode(t *testing.T) {
 	}
 }
 
+// Two uploads with identical content must share one blob on disk.
+func TestUpload_DedupReusesBlob(t *testing.T) {
+	_, drive, upload, _ := setupDriveFullDB(t)
+	body := []byte("identical bytes")
+
+	n1 := performUpload(t, upload, nil, "one.txt", body, 1<<20, "ask")
+	n2 := performUpload(t, upload, nil, "two.txt", body, 1<<20, "ask")
+
+	if !n2.BlobPath.Valid || n2.BlobPath.String != n1.BlobPath.String {
+		t.Fatalf("expected shared blob, got %q vs %q", n1.BlobPath.String, n2.BlobPath.String)
+	}
+	// Exactly one blob file in drive/ (chunks/thumbs live in subdirectories).
+	entries, err := os.ReadDir(filepath.Join(drive.config.BasePath, "drive"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files int
+	for _, e := range entries {
+		if !e.IsDir() {
+			files++
+		}
+	}
+	if files != 1 {
+		t.Fatalf("expected 1 blob file, got %d", files)
+	}
+}
+
+// Dedup must skip candidates whose blob no longer exists on disk.
+func TestUpload_DedupSkipsMissingBlobOnDisk(t *testing.T) {
+	_, drive, upload, _ := setupDriveFullDB(t)
+	body := []byte("payload to lose")
+
+	n1 := performUpload(t, upload, nil, "one.txt", body, 1<<20, "ask")
+	// Simulate external deletion of the stored blob.
+	if err := os.Remove(drive.BlobAbsPath(n1.BlobPath.String)); err != nil {
+		t.Fatal(err)
+	}
+
+	n2 := performUpload(t, upload, nil, "two.txt", body, 1<<20, "ask")
+	if n2.BlobPath.String == n1.BlobPath.String {
+		t.Fatalf("must not reuse a missing blob")
+	}
+	if _, err := os.Stat(drive.BlobAbsPath(n2.BlobPath.String)); err != nil {
+		t.Fatalf("fresh blob missing: %v", err)
+	}
+}
+
+// Overwriting a file with identical content dedups against the very blob being
+// replaced and must not delete it.
+func TestUpload_DedupOverwriteSameContent(t *testing.T) {
+	_, drive, upload, _ := setupDriveFullDB(t)
+	body := []byte("same content twice")
+
+	n1 := performUpload(t, upload, nil, "dup.txt", body, 1<<20, "ask")
+	n2 := performUpload(t, upload, nil, "dup.txt", body, 1<<20, "overwrite")
+
+	if n2.BlobPath.String != n1.BlobPath.String {
+		t.Fatalf("expected overwrite to reuse the identical blob, got %q vs %q",
+			n2.BlobPath.String, n1.BlobPath.String)
+	}
+	got, err := os.ReadFile(drive.BlobAbsPath(n2.BlobPath.String))
+	if err != nil {
+		t.Fatalf("blob gone after self-overwrite: %v", err)
+	}
+	if !bytes.Equal(got, body) {
+		t.Fatal("content mismatch after overwrite")
+	}
+}
+
 // Complete must re-validate the parent folder; if it was soft-deleted between
 // Init and Complete, we should refuse rather than orphan the file.
 func TestUpload_CompleteRefusesDeletedParent(t *testing.T) {
@@ -448,7 +518,7 @@ CREATE TABLE drive_nodes (
   parent_id INTEGER REFERENCES drive_nodes(id) ON DELETE CASCADE,
   type TEXT NOT NULL,
   name TEXT NOT NULL,
-  blob_path TEXT, size INTEGER, hash TEXT,
+  blob_path TEXT, size INTEGER, hash TEXT, starred_at INTEGER,
   deleted_at INTEGER, delete_batch_id TEXT,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );

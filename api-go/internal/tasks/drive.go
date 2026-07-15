@@ -119,10 +119,27 @@ WHERE deleted_at IS NOT NULL AND deleted_at < ?
 		return fmt.Errorf("deleting old trash: %w", err)
 	}
 
+	// Blobs may still be referenced by rows outside the purged set (copies,
+	// deduplicated uploads) — only remove files that became orphans, and drop
+	// their cached thumbnails as well.
+	blobs := make(map[string]struct{}, len(rows))
 	for _, r := range rows {
 		if r.BlobPath != "" {
-			_ = os.Remove(filepath.Join(uploadPath, r.BlobPath))
+			blobs[r.BlobPath] = struct{}{}
 		}
+	}
+	for blob := range blobs {
+		var refs int
+		if err := db.GetContext(ctx, &refs,
+			`SELECT COUNT(*) FROM drive_nodes WHERE blob_path = ?`, blob); err != nil {
+			log.Printf("trash purge: refcount %s: %v", blob, err)
+			continue
+		}
+		if refs > 0 {
+			continue
+		}
+		_ = os.Remove(filepath.Join(uploadPath, blob))
+		_ = os.Remove(filepath.Join(uploadPath, "drive", "_thumbs", filepath.Base(blob)+".jpg"))
 	}
 	n, _ := res.RowsAffected()
 	if n > 0 {

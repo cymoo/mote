@@ -33,6 +33,7 @@ CREATE TABLE drive_nodes (
   blob_path TEXT,
   size INTEGER,
   hash TEXT,
+  starred_at INTEGER,
   deleted_at INTEGER,
   delete_batch_id TEXT,
   created_at INTEGER NOT NULL,
@@ -541,5 +542,76 @@ func TestDrive_AutoRenameSkipsDeleted(t *testing.T) {
 	}
 	if cand != "report (2).pdf" {
 		t.Fatalf("after soft-delete expected report (2).pdf, got %q", cand)
+	}
+}
+
+// Purging one of two nodes that share a blob (copy / deduplicated upload)
+// must keep the blob file; purging the last reference removes it and its thumb.
+func TestDrive_PurgeKeepsSharedBlob(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	blob := filepath.Join("drive", "shared.txt")
+	abs := svc.BlobAbsPath(blob)
+	_ = os.MkdirAll(filepath.Dir(abs), 0755)
+	_ = os.WriteFile(abs, []byte("shared"), 0644)
+
+	a, err := svc.CreateFileNode(ctx, nil, "a.txt", blob, "h", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := svc.CreateFileNode(ctx, nil, "b.txt", blob, "h", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Purge(ctx, []int64{a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(abs); err != nil {
+		t.Fatalf("blob removed while still referenced: %v", err)
+	}
+
+	if err := svc.Purge(ctx, []int64{b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(abs); !os.IsNotExist(err) {
+		t.Fatalf("blob should be gone after last reference purged, stat err = %v", err)
+	}
+}
+
+// Overwriting one of two nodes that share a blob must not delete the blob the
+// other node still references; overwriting the last reference removes it.
+func TestDrive_ReplaceKeepsSharedBlob(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	oldBlob := filepath.Join("drive", "old.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(oldBlob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(oldBlob), []byte("old"), 0644)
+	newBlob := filepath.Join("drive", "new.txt")
+	_ = os.WriteFile(svc.BlobAbsPath(newBlob), []byte("new"), 0644)
+
+	if _, err := svc.CreateFileNode(ctx, nil, "a.txt", oldBlob, "h", 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateFileNode(ctx, nil, "b.txt", oldBlob, "h", 3); err != nil {
+		t.Fatal(err)
+	}
+
+	// Overwrite a.txt with the new blob; the old blob is still used by b.txt.
+	if _, err := svc.ReplaceFileNode(ctx, nil, "a.txt", newBlob, "h2", 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(svc.BlobAbsPath(oldBlob)); err != nil {
+		t.Fatalf("shared old blob removed: %v", err)
+	}
+
+	// Overwrite b.txt too — the old blob is now orphaned and must go.
+	if _, err := svc.ReplaceFileNode(ctx, nil, "b.txt", newBlob, "h2", 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(svc.BlobAbsPath(oldBlob)); !os.IsNotExist(err) {
+		t.Fatalf("orphaned old blob should be removed, stat err = %v", err)
 	}
 }
