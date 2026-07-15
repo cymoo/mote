@@ -20,6 +20,7 @@
     "@react-spring/web": "^9.7.5",
     "@tailwindcss/vite": "^4.0.8",
     "@types/turndown": "^5.0.6",
+    "highlight.js": "^11.11.1",
     "lucide-react": "^0.476.0",
     "marked": "^18.0.2",
     "photoswipe": "^5.4.4",

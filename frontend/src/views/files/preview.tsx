@@ -1,11 +1,13 @@
 import 'photoswipe/style.css'
 
-import { ClipboardCheckIcon, ClipboardIcon, DownloadIcon, ExternalLinkIcon, MusicIcon, XIcon } from 'lucide-react'
+import { ClipboardCheckIcon, ClipboardIcon, DownloadIcon, ExternalLinkIcon, MusicIcon, PictureInPicture2Icon, XIcon } from 'lucide-react'
 import { marked } from 'marked'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
-import { ReactNode, useEffect, useRef, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 
 import { cx } from '@/utils/css.ts'
+import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
 import { useIsMobile } from './hooks'
 
@@ -144,7 +146,12 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        // Let the browser exit video fullscreen first; only the next Esc
+        // closes the preview.
+        if (document.fullscreenElement) return
+        onClose()
+      }
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -188,7 +195,7 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
   } else if (isHtml(node)) {
     body = <HtmlPreview url={url} node={node} />
   } else if (mt.startsWith('text/') || mt === 'application/json' || mt === 'application/xml') {
-    body = <TextPreview url={url} />
+    body = <TextPreview url={url} node={node} />
   } else {
     body = <NoPreview node={node} onDownload={onDownload} lang={lang} />
   }
@@ -226,23 +233,50 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
   )
 }
 
-function TextPreview({ url }: { url: string }) {
+// Highlighting is capped below the 500KB fetch cap — coloring hundreds of KB
+// of tokens janks the modal for little benefit.
+const HIGHLIGHT_MAX_CHARS = 200_000
+
+function TextPreview({ url, node }: { url: string; node: DriveNode }) {
   const [text, setText] = useState<string | null>(null)
+  const [highlighted, setHighlighted] = useState<string | null>(null)
   useEffect(() => {
+    let cancelled = false
     void (async () => {
       try {
         const tok = localStorage.getItem('token') ?? ''
         const res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } })
-        const tx = await res.text()
-        setText(tx.slice(0, 500_000))
+        const tx = (await res.text()).slice(0, 500_000)
+        if (cancelled) return
+        setText(tx)
+        // Extension-less names fall through whole ("Makefile" → makefile).
+        const ext = (node.name.split('.').pop() ?? '').toLowerCase()
+        if (ext && tx.length <= HIGHLIGHT_MAX_CHARS) {
+          try {
+            // The language pack is a lazy chunk; unknown extensions return
+            // null and keep the plain <pre>.
+            const { highlightCode } = await import('./highlight')
+            const html = highlightCode(tx, ext)
+            if (!cancelled && html) setHighlighted(html)
+          } catch {
+            /* plain text fallback */
+          }
+        }
       } catch {
-        setText('(unable to load preview)')
+        if (!cancelled) setText('(unable to load preview)')
       }
     })()
-  }, [url])
+    return () => {
+      cancelled = true
+    }
+  }, [url, node.name])
   return (
     <pre className="bg-card text-foreground border-border max-h-[80vh] max-w-[80vw] overflow-auto rounded-lg border p-4 font-mono text-sm whitespace-pre-wrap shadow-xl">
-      {text ?? 'Loading…'}
+      {highlighted != null ? (
+        <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
+      ) : (
+        (text ?? 'Loading…')
+      )}
     </pre>
   )
 }
@@ -271,6 +305,7 @@ function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
   const [raw, setRaw] = useState<string | null>(null)
   const [html, setHtml] = useState<string>('')
   const [copied, setCopied] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     void (async () => {
@@ -287,6 +322,25 @@ function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
       }
     })()
   }, [url])
+
+  // Colorize fenced code blocks in place after render. Only blocks with an
+  // explicit language (marked's `language-*` class) are touched, so untagged
+  // blocks never get mis-detected colors.
+  useEffect(() => {
+    if (!html) return
+    let cancelled = false
+    void import('./highlight')
+      .then(({ highlightElement }) => {
+        if (cancelled) return
+        bodyRef.current
+          ?.querySelectorAll('pre code[class*="language-"]')
+          .forEach((el) => highlightElement(el))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [html])
 
   const handleCopy = () => {
     if (raw == null) return
@@ -314,6 +368,7 @@ function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
         </button>
       </div>
       <div
+        ref={bodyRef}
         className="prose overflow-auto px-8 py-6 text-sm"
         // marked output is sanitised; XSS surface here is user's own files
         dangerouslySetInnerHTML={{ __html: html || '<p class="text-muted-foreground">Loading…</p>' }}
@@ -323,6 +378,18 @@ function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
 }
 
 // ---------- video preview ----------
+
+const VIDEO_POS_PREFIX = 'drive_video_pos:'
+const VIDEO_RATE_KEY = 'drive_video_rate'
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+function formatTime(sec: number): string {
+  const s = Math.floor(sec % 60)
+  const m = Math.floor(sec / 60) % 60
+  const h = Math.floor(sec / 3600)
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 
 function VideoPreview({
   url,
@@ -336,16 +403,150 @@ function VideoPreview({
   lang: 'en' | 'zh'
 }) {
   const [error, setError] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const lastSaveRef = useRef(0)
+  const [rate, setRate] = useState(
+    () => Number(localStorage.getItem(VIDEO_RATE_KEY)) || 1,
+  )
+  const canPiP =
+    typeof document !== 'undefined' && 'pictureInPictureEnabled' in document
+      ? document.pictureInPictureEnabled
+      : false
+
+  const posKey = `${VIDEO_POS_PREFIX}${node.id}`
+
+  // Position memory: save (throttled) while playing, clear once ~finished,
+  // resume on the next open.
+  const savePos = useCallback(() => {
+    const v = videoRef.current
+    if (!v || !v.duration || Number.isNaN(v.duration)) return
+    if (v.ended || v.currentTime >= v.duration * 0.95) {
+      localStorage.removeItem(posKey)
+      return
+    }
+    if (v.currentTime > 5) localStorage.setItem(posKey, String(Math.floor(v.currentTime)))
+  }, [posKey])
+
+  useEffect(() => () => savePos(), [savePos])
+
+  const onLoadedMetadata = () => {
+    const v = videoRef.current
+    if (!v) return
+    v.playbackRate = rate
+    const saved = Number(localStorage.getItem(posKey))
+    if (saved > 5 && v.duration && saved < v.duration * 0.95) {
+      v.currentTime = saved
+      toast(t('resumedPlayback', lang, true, formatTime(saved)), { id: 'video-resume' })
+    }
+  }
+
+  const onTimeUpdate = () => {
+    const now = Date.now()
+    if (now - lastSaveRef.current < 3000) return
+    lastSaveRef.current = now
+    savePos()
+  }
+
+  const seekBy = (delta: number) => {
+    const v = videoRef.current
+    if (!v || !v.duration) return
+    v.currentTime = Math.min(Math.max(0, v.currentTime + delta), v.duration)
+  }
+
+  const changeRate = (r: number) => {
+    setRate(r)
+    localStorage.setItem(VIDEO_RATE_KEY, String(r))
+    if (videoRef.current) videoRef.current.playbackRate = r
+  }
+
+  const togglePiP = async () => {
+    const v = videoRef.current
+    if (!v) return
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture()
+      else await v.requestPictureInPicture()
+    } catch {
+      /* codec/state doesn't support PiP */
+    }
+  }
+
+  // When the native controls have focus the browser already handles these
+  // keys — the `when` guard prevents double-firing.
+  const videoNotFocused = () => document.activeElement?.tagName !== 'VIDEO'
+  useShortcuts({
+    space: {
+      run: () => {
+        const v = videoRef.current
+        if (!v) return
+        if (v.paused) void v.play()
+        else v.pause()
+      },
+      when: videoNotFocused,
+    },
+    arrowleft: { run: () => seekBy(-10), when: videoNotFocused },
+    arrowright: { run: () => seekBy(10), when: videoNotFocused },
+    f: {
+      run: () => {
+        const v = videoRef.current
+        if (!v) return
+        if (document.fullscreenElement) void document.exitFullscreen()
+        else void v.requestFullscreen().catch(() => {})
+      },
+      when: videoNotFocused,
+    },
+    m: {
+      run: () => {
+        const v = videoRef.current
+        if (v) v.muted = !v.muted
+      },
+      when: videoNotFocused,
+    },
+  })
+
   if (error) return <NoPreview node={node} onDownload={onDownload} lang={lang} />
   return (
-    <video
-      key={url}
-      src={url}
-      controls
-      autoPlay
-      className="max-h-[85vh] w-[90vw] max-w-5xl rounded-lg shadow-2xl"
-      onError={() => setError(true)}
-    />
+    <div className="flex flex-col items-center gap-2">
+      <video
+        key={url}
+        ref={videoRef}
+        src={url}
+        controls
+        autoPlay
+        className="max-h-[80vh] w-[90vw] max-w-5xl rounded-lg shadow-2xl"
+        onError={() => setError(true)}
+        onLoadedMetadata={onLoadedMetadata}
+        onTimeUpdate={onTimeUpdate}
+        onPause={savePos}
+        onEnded={() => localStorage.removeItem(posKey)}
+      />
+      <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white">
+        <label className="flex cursor-pointer items-center gap-1.5">
+          <span className="opacity-70">{t('playbackSpeed', lang)}</span>
+          <select
+            value={rate}
+            onChange={(e) => changeRate(Number(e.target.value))}
+            className="cursor-pointer rounded bg-transparent py-1 outline-none [&>option]:text-black"
+          >
+            {PLAYBACK_RATES.map((r) => (
+              <option key={r} value={r}>
+                {r}x
+              </option>
+            ))}
+          </select>
+        </label>
+        {canPiP && (
+          <button
+            type="button"
+            onClick={() => void togglePiP()}
+            title={t('pictureInPicture', lang)}
+            aria-label={t('pictureInPicture', lang)}
+            className="hover:bg-white/20 rounded-full p-1.5 transition-colors"
+          >
+            <PictureInPicture2Icon className="size-4" />
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
