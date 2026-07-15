@@ -22,6 +22,8 @@ import site.daydream.mote.service.DriveZipService
 import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @RestController
 @RequestMapping("/api/drive")
@@ -145,10 +147,29 @@ class DriveApiController(
     }
 
     @GetMapping("/download-zip")
-    fun downloadZip(@RequestParam id: Long): ResponseEntity<StreamingResponseBody> {
-        val node = driveService.findById(id)
+    fun downloadZip(
+        @RequestParam(required = false) id: Long?,
+        @RequestParam(required = false) ids: String?,
+    ): ResponseEntity<StreamingResponseBody> {
+        // Multi-select: ?ids=1,2,3 zips an arbitrary selection.
+        if (!ids.isNullOrBlank()) {
+            val idList = parseIdList(ids)
+            if (idList.isEmpty()) throw BadRequestException("invalid ids")
+            // Resolve targets BEFORE streaming so an all-deleted/missing
+            // selection still yields a clean 404 instead of a broken body.
+            val targets = zipService.zipTargets(idList)
+            val name = "mote-drive-" + LocalDateTime.now().format(ZIP_NAME_TS) + ".zip"
+            val body = StreamingResponseBody { out -> zipService.zipResolvedNodes(targets, out) }
+            return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/zip")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''${urlEncode(name)}")
+                .header("X-Content-Type-Options", "nosniff")
+                .body(body)
+        }
+
+        val node = driveService.findById(id ?: throw NotFoundException("not found"))
         if (node.type != "folder" || node.deletedAt != null) throw NotFoundException("not found")
-        val body = StreamingResponseBody { out -> zipService.zipFolder(id, out) }
+        val body = StreamingResponseBody { out -> zipService.zipFolder(node.id, out) }
         return ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_TYPE, "application/zip")
             .header(
@@ -268,6 +289,12 @@ class DriveApiController(
     }
 
     companion object {
+        private val ZIP_NAME_TS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
+
+        /** Parses a comma-separated id list, ignoring blank/invalid parts. */
+        fun parseIdList(s: String): List<Long> =
+            s.split(',').mapNotNull { it.trim().toLongOrNull() }.filter { it > 0 }
+
         fun urlEncode(s: String): String =
             URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20")
 
