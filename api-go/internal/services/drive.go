@@ -906,3 +906,201 @@ func isUniqueErr(err error) bool {
 	return strings.Contains(msg, "UNIQUE constraint failed") ||
 		strings.Contains(msg, "constraint failed: UNIQUE")
 }
+
+// ---------- copy / star / usage ----------
+
+// Copy deep-copies nodes into newParentID (nil = root), one id at a time.
+// File copies reference the SAME blob_path — zero disk cost; refcounted blob
+// removal keeps shared blobs alive. Copies get fresh timestamps and never
+// carry stars or shares. Copying a folder into its own subtree is rejected
+// (ErrDriveCycle), matching Move. Destination name conflicts resolve via
+// AutoRename ("name (1)"), so duplicate-in-place works naturally.
+func (s *DriveService) Copy(ctx context.Context, ids []int64, newParentID *int64) ([]models.DriveNode, error) {
+	if newParentID != nil {
+		if _, err := s.requireActiveFolder(ctx, *newParentID); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]models.DriveNode, 0, len(ids))
+	for _, id := range ids {
+		n, err := s.copyOne(ctx, id, newParentID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *n)
+	}
+	return out, nil
+}
+
+func (s *DriveService) copyOne(ctx context.Context, id int64, newParentID *int64) (*models.DriveNode, error) {
+	src, err := s.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if src.DeletedAt.Valid {
+		return nil, ErrDriveNotFound
+	}
+	// Cycle check: copying a folder into itself or its own descendant would
+	// mean copying the destination into itself; reject like Move does.
+	if newParentID != nil && src.Type == "folder" {
+		if *newParentID == id {
+			return nil, ErrDriveCycle
+		}
+		var hit int
+		err := s.db.QueryRowxContext(ctx, `
+WITH RECURSIVE descendants(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ?
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN descendants d ON n.parent_id = d.id
+)
+SELECT EXISTS(SELECT 1 FROM descendants WHERE id = ?)`, id, *newParentID).Scan(&hit)
+		if err != nil {
+			return nil, err
+		}
+		if hit == 1 {
+			return nil, ErrDriveCycle
+		}
+	}
+
+	// Pre-tx, read-only; the unique index backstops races (→ conflict error).
+	rootName, err := s.AutoRename(ctx, newParentID, src.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	type snapRow struct {
+		ID       int64          `db:"id"`
+		ParentID sql.NullInt64  `db:"parent_id"`
+		Type     string         `db:"type"`
+		Name     string         `db:"name"`
+		BlobPath sql.NullString `db:"blob_path"`
+		Size     sql.NullInt64  `db:"size"`
+		Hash     sql.NullString `db:"hash"`
+		Depth    int            `db:"depth"`
+	}
+
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Snapshot the whole source subtree up-front (depth-ordered so parents
+	// are copied before children); inserting from the snapshot means freshly
+	// created copies can never be re-visited.
+	var snap []snapRow
+	if err := tx.SelectContext(ctx, &snap, `
+WITH RECURSIVE subtree(id, parent_id, type, name, blob_path, size, hash, depth) AS (
+  SELECT id, parent_id, type, name, blob_path, size, hash, 0
+  FROM drive_nodes WHERE id = ? AND deleted_at IS NULL
+  UNION ALL
+  SELECT n.id, n.parent_id, n.type, n.name, n.blob_path, n.size, n.hash, s.depth + 1
+  FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NULL
+)
+SELECT id, parent_id, type, name, blob_path, size, hash, depth
+FROM subtree ORDER BY depth, id`, id); err != nil {
+		return nil, err
+	}
+	if len(snap) == 0 {
+		return nil, ErrDriveNotFound
+	}
+
+	now := time.Now().UnixMilli()
+	idMap := make(map[int64]int64, len(snap))
+	var newRootID int64
+	for _, r := range snap {
+		var parentID *int64
+		name := r.Name
+		if r.ID == id {
+			parentID = newParentID
+			name = rootName
+		} else {
+			np := idMap[r.ParentID.Int64]
+			parentID = &np
+		}
+		var newID int64
+		if err := tx.QueryRowxContext(ctx, `
+INSERT INTO drive_nodes (parent_id, type, name, blob_path, size, hash, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+			parentID, r.Type, name, r.BlobPath, r.Size, r.Hash, now, now).Scan(&newID); err != nil {
+			if isUniqueErr(err) {
+				return nil, ErrDriveNameConflict
+			}
+			return nil, err
+		}
+		idMap[r.ID] = newID
+		if r.ID == id {
+			newRootID = newID
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.FindByID(ctx, newRootID)
+}
+
+// SetStarred stars (starred=true) or unstars the given active nodes. Starring
+// is a metadata toggle — it deliberately does not bump updated_at so the
+// "modified" sort stays stable.
+func (s *DriveService) SetStarred(ctx context.Context, ids []int64, starred bool) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	var val any
+	if starred {
+		val = time.Now().UnixMilli()
+	}
+	q, args, err := sqlx.In(
+		`UPDATE drive_nodes SET starred_at = ? WHERE id IN (?) AND deleted_at IS NULL`, val, ids)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, s.db.Rebind(q), args...)
+	return err
+}
+
+// ListStarred returns starred, non-deleted nodes (most recently starred
+// first), with ancestor paths and share counts populated like search results.
+func (s *DriveService) ListStarred(ctx context.Context) ([]models.DriveNode, error) {
+	var out []models.DriveNode
+	if err := s.db.SelectContext(ctx, &out, `
+SELECT * FROM drive_nodes
+WHERE starred_at IS NOT NULL AND deleted_at IS NULL
+ORDER BY starred_at DESC, id DESC`); err != nil {
+		return nil, err
+	}
+	if len(out) > 0 {
+		if err := s.populatePaths(ctx, out); err != nil {
+			return nil, err
+		}
+		if err := s.populateShareCounts(ctx, out); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// Usage reports drive storage consumption; see models.DriveUsage.
+func (s *DriveService) Usage(ctx context.Context) (*models.DriveUsage, error) {
+	var u models.DriveUsage
+	if err := s.db.QueryRowxContext(ctx, `
+SELECT COALESCE(SUM(size), 0), COUNT(*) FROM drive_nodes
+WHERE type = 'file' AND deleted_at IS NULL`).Scan(&u.ActiveBytes, &u.ActiveCount); err != nil {
+		return nil, err
+	}
+	if err := s.db.QueryRowxContext(ctx, `
+SELECT COALESCE(SUM(size), 0), COUNT(*) FROM drive_nodes
+WHERE type = 'file' AND deleted_at IS NOT NULL`).Scan(&u.TrashBytes, &u.TrashCount); err != nil {
+		return nil, err
+	}
+	// Each distinct blob counted once — copies/deduplicated rows share blobs.
+	if err := s.db.QueryRowxContext(ctx, `
+SELECT COALESCE(SUM(sz), 0) FROM (
+  SELECT MAX(size) AS sz FROM drive_nodes
+  WHERE blob_path IS NOT NULL GROUP BY blob_path
+)`).Scan(&u.PhysicalBytes); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}

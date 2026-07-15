@@ -615,3 +615,225 @@ func TestDrive_ReplaceKeepsSharedBlob(t *testing.T) {
 		t.Fatalf("orphaned old blob should be removed, stat err = %v", err)
 	}
 }
+
+// A file copy shares the source's blob and never carries stars or shares.
+func TestDrive_CopyFileSharesBlobAndStripsMeta(t *testing.T) {
+	db, svc := setupDriveDB(t)
+	ctx := context.Background()
+	dest, _ := svc.CreateFolder(ctx, nil, "dest")
+
+	blob := filepath.Join("drive", "src.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+	src, err := svc.CreateFileNode(ctx, nil, "src.txt", blob, "h", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetStarred(ctx, []int64{src.ID}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO drive_shares
+(node_id, token_hash, token_prefix, expires_at, created_at) VALUES (?, 'tk', 'tk', NULL, 1)`, src.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := svc.Copy(ctx, []int64{src.ID}, &dest.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("copies = %d, want 1", len(out))
+	}
+	cp := out[0]
+	if cp.ID == src.ID {
+		t.Fatal("copy must be a fresh row")
+	}
+	if !cp.BlobPath.Valid || cp.BlobPath.String != blob {
+		t.Fatalf("copy should share blob, got %+v", cp.BlobPath)
+	}
+	if cp.StarredAt.Valid {
+		t.Fatal("copy must not inherit the star")
+	}
+	var shares int
+	_ = db.Get(&shares, `SELECT COUNT(*) FROM drive_shares WHERE node_id = ?`, cp.ID)
+	if shares != 0 {
+		t.Fatalf("copy must not inherit shares, got %d", shares)
+	}
+}
+
+// Copying a folder replicates the whole subtree; the root gets AutoRenamed on
+// destination conflicts while children keep their names.
+func TestDrive_CopyFolderRecursive(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	a, _ := svc.CreateFolder(ctx, nil, "a")
+	b, _ := svc.CreateFolder(ctx, &a.ID, "b")
+	blob := filepath.Join("drive", "c.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("c"), 0644)
+	if _, err := svc.CreateFileNode(ctx, &b.ID, "c.txt", blob, "h", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateFileNode(ctx, &a.ID, "d.txt", blob, "h", 1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Copy a → root: name "a" is taken by the source itself → "a (1)".
+	out, err := svc.Copy(ctx, []int64{a.ID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := out[0]
+	if root.Name != "a (1)" {
+		t.Fatalf("root copy name = %q, want %q", root.Name, "a (1)")
+	}
+
+	l1, _ := svc.List(ctx, &root.ID, nil, "name", "asc")
+	if len(l1) != 2 || l1[0].Name != "b" || l1[1].Name != "d.txt" {
+		t.Fatalf("level1 = %+v", l1)
+	}
+	l2, _ := svc.List(ctx, &l1[0].ID, nil, "name", "asc")
+	if len(l2) != 1 || l2[0].Name != "c.txt" || l2[0].BlobPath.String != blob {
+		t.Fatalf("level2 = %+v", l2)
+	}
+}
+
+// Copying a folder into itself or its own descendant is rejected.
+func TestDrive_CopyIntoOwnSubtreeRejected(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+	a, _ := svc.CreateFolder(ctx, nil, "a")
+	b, _ := svc.CreateFolder(ctx, &a.ID, "b")
+
+	if _, err := svc.Copy(ctx, []int64{a.ID}, &b.ID); !errors.Is(err, ErrDriveCycle) {
+		t.Fatalf("expected cycle error, got %v", err)
+	}
+	if _, err := svc.Copy(ctx, []int64{a.ID}, &a.ID); !errors.Is(err, ErrDriveCycle) {
+		t.Fatalf("expected cycle error self, got %v", err)
+	}
+}
+
+// Duplicate-in-place twice yields "x (1)" then "x (2)".
+func TestDrive_DuplicateInPlaceTwice(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+	parent, _ := svc.CreateFolder(ctx, nil, "p")
+
+	blob := filepath.Join("drive", "x.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("x"), 0644)
+	src, err := svc.CreateFileNode(ctx, &parent.ID, "x.txt", blob, "h", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c1, err := svc.Copy(ctx, []int64{src.ID}, &parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2, err := svc.Copy(ctx, []int64{src.ID}, &parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c1[0].Name != "x (1).txt" || c2[0].Name != "x (2).txt" {
+		t.Fatalf("dup names = %q, %q", c1[0].Name, c2[0].Name)
+	}
+}
+
+// Star/unstar toggling, trash filtering, and the starred listing.
+func TestDrive_StarUnstarAndList(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	folder, _ := svc.CreateFolder(ctx, nil, "f")
+	blob := filepath.Join("drive", "s.txt")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blob), []byte("s"), 0644)
+	file, err := svc.CreateFileNode(ctx, &folder.ID, "s.txt", blob, "h", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SetStarred(ctx, []int64{folder.ID, file.ID}, true); err != nil {
+		t.Fatal(err)
+	}
+	out, err := svc.ListStarred(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("starred = %d, want 2", len(out))
+	}
+	for _, n := range out {
+		if n.ID == file.ID && n.Path != "f" {
+			t.Fatalf("file path = %q, want f", n.Path)
+		}
+	}
+
+	// Trashed items disappear from the listing but keep their star.
+	if err := svc.SoftDelete(ctx, []int64{file.ID}); err != nil {
+		t.Fatal(err)
+	}
+	out, _ = svc.ListStarred(ctx)
+	if len(out) != 1 || out[0].ID != folder.ID {
+		t.Fatalf("after trash: %+v", out)
+	}
+	if err := svc.Restore(ctx, file.ID); err != nil {
+		t.Fatal(err)
+	}
+	out, _ = svc.ListStarred(ctx)
+	if len(out) != 2 {
+		t.Fatalf("after restore = %d, want 2", len(out))
+	}
+
+	// Unstar both.
+	if err := svc.SetStarred(ctx, []int64{folder.ID, file.ID}, false); err != nil {
+		t.Fatal(err)
+	}
+	out, _ = svc.ListStarred(ctx)
+	if len(out) != 0 {
+		t.Fatalf("after unstar = %d, want 0", len(out))
+	}
+}
+
+// Usage counts logical bytes per row but each distinct blob only once.
+func TestDrive_Usage(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	blobX := filepath.Join("drive", "x.bin")
+	_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blobX)), 0755)
+	_ = os.WriteFile(svc.BlobAbsPath(blobX), []byte("xxxxx"), 0644)
+	blobY := filepath.Join("drive", "y.bin")
+	_ = os.WriteFile(svc.BlobAbsPath(blobY), []byte("yyyyyyy"), 0644)
+
+	f1, err := svc.CreateFileNode(ctx, nil, "one.bin", blobX, "hx", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Copy(ctx, []int64{f1.ID}, nil); err != nil { // shares blobX
+		t.Fatal(err)
+	}
+	f3, err := svc.CreateFileNode(ctx, nil, "three.bin", blobY, "hy", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SoftDelete(ctx, []int64{f3.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	u, err := svc.Usage(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.ActiveBytes != 10 || u.ActiveCount != 2 {
+		t.Fatalf("active = %d bytes / %d rows, want 10 / 2", u.ActiveBytes, u.ActiveCount)
+	}
+	if u.TrashBytes != 7 || u.TrashCount != 1 {
+		t.Fatalf("trash = %d bytes / %d rows, want 7 / 1", u.TrashBytes, u.TrashCount)
+	}
+	if u.PhysicalBytes != 12 {
+		t.Fatalf("physical = %d, want 12", u.PhysicalBytes)
+	}
+}

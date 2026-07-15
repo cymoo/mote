@@ -170,6 +170,16 @@ type DriveMoveRequest struct {
 	NewParentID *int64  `json:"new_parent_id"`
 }
 
+type DriveCopyRequest struct {
+	IDs         []int64 `json:"ids"`
+	NewParentID *int64  `json:"new_parent_id"`
+}
+
+type DriveStarRequest struct {
+	IDs     []int64 `json:"ids"`
+	Starred bool    `json:"starred"`
+}
+
 type DriveDeleteRequest struct {
 	IDs []int64 `json:"ids"`
 }
@@ -219,4 +229,15 @@ type DriveSharePasswordRequest struct {
 type DriveBreadcrumb struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+}
+
+// DriveUsage summarises drive storage consumption. Logical bytes count every
+// file row; physical bytes count each distinct blob once (copies and
+// deduplicated uploads share blobs, so physical ≤ logical).
+type DriveUsage struct {
+	ActiveBytes   int64 `json:"active_bytes"`
+	TrashBytes    int64 `json:"trash_bytes"`
+	PhysicalBytes int64 `json:"physical_bytes"`
+	ActiveCount   int64 `json:"active_count"`
+	TrashCount    int64 `json:"trash_count"`
 }
