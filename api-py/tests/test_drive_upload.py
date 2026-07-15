@@ -139,3 +139,53 @@ def test_collision_overwrite(svc):
     n1 = _do_upload(svc, 'dup.bin', b'1234')
     n2 = _do_upload(svc, 'dup.bin', b'5678', on_collision='overwrite')
     assert n2.id == n1.id
+
+
+def test_dedup_reuses_blob(svc, drive_svc):
+    """Two uploads with identical content must share one blob on disk."""
+    import os
+
+    body = b'identical bytes'
+    n1 = _do_upload(svc, 'one.txt', body)
+    n2 = _do_upload(svc, 'two.txt', body)
+
+    assert n2.blob_path == n1.blob_path
+    # Exactly one blob file in drive/ (chunks/thumbs live in subdirectories).
+    drive_dir = os.path.join(drive_svc.base_path, 'drive')
+    files = [
+        e for e in os.listdir(drive_dir)
+        if not os.path.isdir(os.path.join(drive_dir, e))
+    ]
+    assert len(files) == 1
+
+
+def test_dedup_skips_missing_blob_on_disk(svc, drive_svc):
+    """Dedup must skip candidates whose blob no longer exists on disk."""
+    import os
+
+    body = b'payload to lose'
+    n1 = _do_upload(svc, 'one.txt', body)
+    # Simulate external deletion of the stored blob.
+    os.remove(drive_svc.blob_abs_path(n1.blob_path))
+
+    n2 = _do_upload(svc, 'two.txt', body)
+    assert n2.blob_path != n1.blob_path
+    assert os.path.exists(drive_svc.blob_abs_path(n2.blob_path))
+
+
+def test_dedup_overwrite_same_content(svc, drive_svc):
+    """Overwriting a file with identical content dedups against the very blob
+    being replaced and must not delete it.
+    """
+    import os
+
+    body = b'same content twice'
+    n1 = _do_upload(svc, 'dup.txt', body)
+    n2 = _do_upload(svc, 'dup.txt', body, on_collision='overwrite')
+
+    assert n2.blob_path == n1.blob_path
+    abs_p = drive_svc.blob_abs_path(n2.blob_path)
+    assert os.path.exists(abs_p), 'blob gone after self-overwrite'
+    with open(abs_p, 'rb') as f:
+        got = f.read()
+    assert got.startswith(body)

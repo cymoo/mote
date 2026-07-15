@@ -169,3 +169,64 @@ def test_purge(svc):
     svc.purge([f.id])
     assert svc.list_trash() == []
     assert not os.path.exists(blob_abs)
+
+
+def _shared_blob(svc, rel_name, content=b'shared'):
+    """Helper: write one blob file and return its drive-relative path."""
+    blob_rel = os.path.join('drive', rel_name)
+    abs_p = svc.blob_abs_path(blob_rel)
+    os.makedirs(os.path.dirname(abs_p), exist_ok=True)
+    with open(abs_p, 'wb') as f:
+        f.write(content)
+    return blob_rel
+
+
+def test_purge_keeps_shared_blob(svc):
+    """Purging one of two nodes that share a blob (copy / deduplicated upload)
+    must keep the blob file; purging the last reference removes it.
+    """
+    blob = _shared_blob(svc, 'shared.txt')
+    abs_p = svc.blob_abs_path(blob)
+    a = svc.create_file_node(None, 'a.txt', blob, 'h', 6)
+    b = svc.create_file_node(None, 'b.txt', blob, 'h', 6)
+
+    svc.purge([a.id])
+    assert os.path.exists(abs_p), 'blob removed while still referenced'
+
+    svc.purge([b.id])
+    assert not os.path.exists(abs_p), 'blob should be gone after last reference'
+
+
+def test_replace_keeps_shared_blob(svc):
+    """Overwriting one of two nodes that share a blob must not delete the blob
+    the other node still references; overwriting the last reference removes it.
+    """
+    old_blob = _shared_blob(svc, 'old.txt', b'old')
+    new_blob = _shared_blob(svc, 'new.txt', b'new')
+
+    svc.create_file_node(None, 'a.txt', old_blob, 'h', 3)
+    svc.create_file_node(None, 'b.txt', old_blob, 'h', 3)
+
+    # Overwrite a.txt with the new blob; the old blob is still used by b.txt.
+    svc.replace_file_node(None, 'a.txt', new_blob, 'h2', 3)
+    assert os.path.exists(svc.blob_abs_path(old_blob)), 'shared old blob removed'
+
+    # Overwrite b.txt too — the old blob is now orphaned and must go.
+    svc.replace_file_node(None, 'b.txt', new_blob, 'h2', 3)
+    assert not os.path.exists(svc.blob_abs_path(old_blob))
+
+
+def test_purge_old_trash_keeps_shared_blob(svc):
+    """The scheduled trash purge inherits refcounted blob removal: a trashed
+    row's blob survives while an active copy still references it.
+    """
+    from app.models import utc_now_ms
+
+    blob = _shared_blob(svc, 'trashy.txt')
+    doomed = svc.create_file_node(None, 'doomed.txt', blob, 'h', 6)
+    svc.create_file_node(None, 'keeper.txt', blob, 'h', 6)
+
+    svc.soft_delete([doomed.id])
+    purged = svc.purge_old_trash(utc_now_ms() + 1000)
+    assert purged == 1
+    assert os.path.exists(svc.blob_abs_path(blob))

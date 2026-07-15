@@ -19,8 +19,6 @@ from ..extension import db
 from ..models import utc_now_ms
 from .drive import (
     DriveError,
-    DriveNameConflict,
-    DriveNotFound,
     DriveService,
     new_blob_name,
     valid_name,
@@ -318,13 +316,39 @@ class DriveUploadService:
                                 break
                             out.write(buf)
                             h.update(buf)
-            os.replace(tmp, blob_abs)
         except Exception:
             try:
                 os.remove(tmp)
             except OSError:
                 pass
             raise
+
+        # Dedup: identical content already stored → reference the existing
+        # blob and discard the freshly assembled bytes. Blob removal is
+        # refcounted (remove_blob_if_orphan), so shared blobs stay alive.
+        # Best-effort: any lookup error just falls back to storing a new blob.
+        created_new_blob = True
+        try:
+            reuse = self.drive.find_reusable_blob(h.hexdigest(), row.size)
+        except Exception:
+            reuse = ''
+        if reuse:
+            blob_rel = reuse
+            blob_abs = self.drive.blob_abs_path(blob_rel)
+            created_new_blob = False
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        else:
+            try:
+                os.replace(tmp, blob_abs)
+            except Exception:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                raise
 
         try:
             if sib is not None and on_collision == 'overwrite':
@@ -335,11 +359,14 @@ class DriveUploadService:
                 node = self.drive.create_file_node(
                     parent_id, name, blob_rel, h.hexdigest(), row.size
                 )
-        except DriveNameConflict:
-            try:
-                os.remove(blob_abs)
-            except OSError:
-                pass
+        except Exception:
+            # Only remove a blob this request created — a reused blob belongs
+            # to other node rows.
+            if created_new_blob:
+                try:
+                    os.remove(blob_abs)
+                except OSError:
+                    pass
             raise
 
         # Mark done + cleanup chunks.

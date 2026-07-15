@@ -548,17 +548,72 @@ class DriveService:
             db.session.execute(
                 text('DELETE FROM drive_nodes WHERE id = :id'), {'id': node_id}
             )
+            # Blobs can be shared by rows outside this subtree (copies,
+            # deduplicated uploads). Decide which blobs became orphans INSIDE
+            # the transaction — SQLite's single writer serializes this against
+            # a concurrent copy — but remove files only after commit so a
+            # rollback can't have deleted live data.
+            blobs = {r.blob_path for r in rows if r.blob_path}
+            orphans = []
+            for blob in blobs:
+                refs = db.session.execute(
+                    text('SELECT COUNT(*) FROM drive_nodes WHERE blob_path = :bp'),
+                    {'bp': blob},
+                ).scalar()
+                if not refs:
+                    orphans.append(blob)
             db.session.commit()
         except Exception:
             db.session.rollback()
             raise
+        for blob in orphans:
+            try:
+                os.remove(self.blob_abs_path(blob))
+            except OSError:
+                pass
+            _purge_thumb(self.base_path, blob)
+
+    def remove_blob_if_orphan(self, blob_path: str) -> None:
+        """Remove the blob file and its cached thumbnail when no drive_nodes
+        row (active or trashed) references ``blob_path`` anymore. Blobs can be
+        shared by several rows (copies, deduplicated uploads), so removal must
+        always be gated on this check. Call it AFTER the rows that dropped the
+        reference have been committed.
+        """
+        if not blob_path:
+            return
+        refs = db.session.execute(
+            text('SELECT COUNT(*) FROM drive_nodes WHERE blob_path = :bp'),
+            {'bp': blob_path},
+        ).scalar()
+        if refs:
+            return
+        try:
+            os.remove(self.blob_abs_path(blob_path))
+        except OSError:
+            pass
+        _purge_thumb(self.base_path, blob_path)
+
+    def find_reusable_blob(self, hash_hex: str, size: int) -> str:
+        """Return the blob_path of an existing node (active or trashed) with
+        the same content hash and size whose file is still present on disk, or
+        '' when there is none. Used to deduplicate uploads. An empty hash
+        never matches (NULL hashes are unreachable via ``hash = :h``).
+        """
+        if not hash_hex:
+            return ''
+        rows = db.session.execute(
+            text(
+                'SELECT DISTINCT blob_path FROM drive_nodes '
+                'WHERE hash = :h AND size = :size AND blob_path IS NOT NULL '
+                'LIMIT 8'
+            ),
+            {'h': hash_hex, 'size': size},
+        ).all()
         for r in rows:
-            if r.blob_path:
-                try:
-                    os.remove(self.blob_abs_path(r.blob_path))
-                except OSError:
-                    pass
-                _purge_thumb(self.base_path, r.blob_path)
+            if os.path.exists(self.blob_abs_path(r.blob_path)):
+                return r.blob_path
+        return ''
 
     # -- file-node helpers (used by upload service) ----------------------------
 
@@ -667,11 +722,9 @@ class DriveService:
             raise
 
         if old_blob and old_blob != blob_path:
-            try:
-                os.remove(self.blob_abs_path(old_blob))
-            except OSError:
-                pass
-            _purge_thumb(self.base_path, old_blob)
+            # The old blob may still back other rows (copies, deduplicated
+            # uploads) — remove it only once orphaned.
+            self.remove_blob_if_orphan(old_blob)
         return self.find_by_id(existing.id)
 
     def find_active_sibling(
@@ -770,6 +823,9 @@ class DriveService:
     def purge_old_trash(self, older_than_ms: int) -> int:
         """Hard-delete soft-deleted nodes whose deleted_at is older than the
         given epoch-ms threshold. Returns the count of root rows purged.
+
+        Delegates to :meth:`purge`, so blob removal is refcounted (shared
+        blobs survive) and cached thumbnails are dropped alongside.
         """
         rows = db.session.execute(
             text(
