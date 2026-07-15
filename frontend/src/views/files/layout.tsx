@@ -5,6 +5,7 @@ import {
   HomeIcon,
   LinkIcon,
   Share2Icon,
+  StarIcon,
   Trash2Icon,
 } from 'lucide-react'
 import { ReactNode } from 'react'
@@ -16,7 +17,8 @@ import { Button } from '@/components/button.tsx'
 import { useStableNavigate } from '@/components/router.tsx'
 import { T, t, useLang } from '@/components/translation.tsx'
 
-import { useCookieAuthSync } from './hooks'
+import { humanSize } from './api'
+import { useCookieAuthSync, useDriveUsage } from './hooks'
 import { UploadDock } from './upload-dock'
 
 type Lang = 'en' | 'zh'
@@ -40,6 +42,7 @@ export function FilesLayout() {
 // 为将来的新入口留出位置。
 function FilesRail({ lang }: { lang: Lang }) {
   const navigate = useStableNavigate()
+  const usage = useDriveUsage()
   return (
     <aside className="hidden w-[210px] flex-none flex-col px-1 py-1 md:flex">
       <Button
@@ -68,14 +71,29 @@ function FilesRail({ lang }: { lang: Lang }) {
           label={t('sharedFiles', lang)}
         />
         <RailLink
+          to="/files/starred"
+          icon={<StarIcon className="size-4" />}
+          label={t('starred', lang)}
+        />
+        <RailLink
           to="/files/trash"
           icon={<Trash2Icon className="size-4" />}
           label={t('trash', lang)}
         />
       </nav>
-      <p className="text-muted-foreground/60 mt-auto px-2.5 pb-2 text-[11.5px] leading-relaxed">
-        <T name="uploadHint" />
-      </p>
+      <div className="mt-auto px-2.5 pb-2">
+        {usage && (
+          <p
+            className="text-muted-foreground/60 pb-1 text-[11.5px] leading-relaxed tabular-nums"
+            title={t('onDisk', lang, true, humanSize(usage.physical_bytes))}
+          >
+            {t('usageSummary', lang, true, humanSize(usage.active_bytes), humanSize(usage.trash_bytes))}
+          </p>
+        )}
+        <p className="text-muted-foreground/60 text-[11.5px] leading-relaxed">
+          <T name="uploadHint" />
+        </p>
+      </div>
     </aside>
   )
 }
@@ -161,6 +179,11 @@ function FilesNavPills({ lang }: { lang: Lang }) {
         label={t('sharedFiles', lang)}
         icon={<Share2Icon className="size-4" />}
         activeColor="text-primary"
+      />
+      <NavPill
+        to="/files/starred"
+        label={t('starred', lang)}
+        icon={<StarIcon className="size-4" />}
       />
       <NavPill
         to="/files/trash"

@@ -52,6 +52,9 @@ const TrashPage = lazy(() =>
 const SharedPage = lazy(() =>
   import('./views/files/shared-page.tsx').then((m) => ({ default: m.SharedPage })),
 )
+const StarredPage = lazy(() =>
+  import('./views/files/starred-page.tsx').then((m) => ({ default: m.StarredPage })),
+)
 const StatsPage = lazy(() =>
   import('./views/stats/stats-page.tsx').then((m) => ({ default: m.StatsPage })),
 )
@@ -115,6 +118,7 @@ export const App = () => {
           <Route index element={<MyDrivePage />} />
           <Route path="trash" element={<TrashPage />} />
           <Route path="shared" element={<SharedPage />} />
+          <Route path="starred" element={<StarredPage />} />
         </Route>
         <Route
           path="*"

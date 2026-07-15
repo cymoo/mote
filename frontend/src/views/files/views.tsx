@@ -1,4 +1,4 @@
-import { ArrowDownIcon, ArrowUpIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, StarIcon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -7,7 +7,7 @@ import { Button } from '@/components/button.tsx'
 import { T, t } from '@/components/translation.tsx'
 
 import { DriveNode, SharedItem, humanSize } from './api'
-import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu, ShareBadge } from './parts'
+import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu, ShareBadge, StarBadge } from './parts'
 
 type Lang = 'en' | 'zh'
 
@@ -24,6 +24,7 @@ interface ListViewProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
   sortKey: SortKey
   sortDir: SortDir
   onSort: (k: SortKey) => void
@@ -39,6 +40,7 @@ export const ListView = memo(function ListView({
   onOpen,
   onAction,
   onNavigateToParent,
+  onContextMenu,
   sortKey,
   sortDir,
   onSort,
@@ -89,6 +91,7 @@ export const ListView = memo(function ListView({
             onOpen={onOpen}
             onAction={onAction}
             onNavigateToParent={onNavigateToParent}
+            onContextMenu={onContextMenu}
             lang={lang}
             dimmed={showDotFiles && n.name.startsWith('.')}
           />
@@ -106,6 +109,7 @@ interface ListRowProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
   lang: Lang
   dimmed?: boolean
 }
@@ -118,6 +122,7 @@ const ListRow = memo(function ListRow({
   onOpen,
   onAction,
   onNavigateToParent,
+  onContextMenu,
   lang,
   dimmed,
 }: ListRowProps) {
@@ -137,6 +142,7 @@ const ListRow = memo(function ListRow({
           onOpen(node, index)
         }
       }}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, node) : undefined}
     >
       <td className="px-3" onClick={(e) => e.stopPropagation()}>
         <span
@@ -169,6 +175,7 @@ const ListRow = memo(function ListRow({
           >
             {node.name}
           </button>
+          {!!node.starred_at && <StarBadge lang={lang} />}
           {!!node.share_count && (
             <ShareBadge count={node.share_count} lang={lang} />
           )}
@@ -216,6 +223,7 @@ interface GridViewProps {
   onToggle: (id: number, additive: boolean) => void
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
   lang: Lang
   showDotFiles?: boolean
 }
@@ -226,6 +234,7 @@ export const GridView = memo(function GridView({
   onToggle,
   onOpen,
   onAction,
+  onContextMenu,
   lang,
   showDotFiles,
 }: GridViewProps) {
@@ -240,6 +249,7 @@ export const GridView = memo(function GridView({
           onToggle={onToggle}
           onOpen={onOpen}
           onAction={onAction}
+          onContextMenu={onContextMenu}
           lang={lang}
           dimmed={showDotFiles && n.name.startsWith('.')}
         />
@@ -255,6 +265,7 @@ interface GridCardProps {
   onToggle: (id: number, additive: boolean) => void
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
   lang: Lang
   dimmed?: boolean
 }
@@ -266,6 +277,7 @@ const GridCard = memo(function GridCard({
   onToggle,
   onOpen,
   onAction,
+  onContextMenu,
   lang,
   dimmed,
 }: GridCardProps) {
@@ -290,6 +302,7 @@ const GridCard = memo(function GridCard({
       onKeyDown={(e) => {
         if (e.key === 'Enter') onOpen(node, index)
       }}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, node) : undefined}
       title={node.name}
     >
       {/* hover-revealed checkbox in top-left (always visible on mobile) */}
@@ -324,6 +337,7 @@ const GridCard = memo(function GridCard({
       </div>
       <div className="flex w-full min-w-0 items-center justify-center gap-1">
         <span className="truncate text-xs leading-4">{node.name}</span>
+        {!!node.starred_at && <StarBadge lang={lang} />}
         {!!node.share_count && (
           <ShareBadge count={node.share_count} lang={lang} />
         )}
@@ -445,15 +459,22 @@ function SortHeader({
 export const EmptyState = memo(function EmptyState({
   trash,
   shared,
+  starred,
   lang,
 }: {
   trash: boolean
   shared?: boolean
+  starred?: boolean
   lang: Lang
 }) {
   return (
     <div className="text-muted-foreground flex h-full animate-[fadeIn_200ms_ease-out] flex-col items-center justify-center gap-3 text-sm">
-      {shared ? (
+      {starred ? (
+        <>
+          <StarIcon className="size-12 opacity-30" strokeWidth={1.25} />
+          <span>{t('noStarred', lang)}</span>
+        </>
+      ) : shared ? (
         <>
           <Share2Icon className="size-12 opacity-30" strokeWidth={1.25} />
           <span>{t('noActiveShares', lang)}</span>

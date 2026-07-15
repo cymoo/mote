@@ -18,6 +18,8 @@ export interface DriveNode {
   // Number of currently-active public shares for this node. Omitted by the
   // server when zero — undefined / 0 means "not shared".
   share_count?: number
+  // Epoch-ms when the node was starred; null/undefined means not starred.
+  starred_at?: number | null
 }
 
 export interface DriveBreadcrumb {
@@ -104,6 +106,34 @@ export const renameNode = (id: number, name: string) =>
 export const moveNodes = (ids: number[], newParentID: number | null) =>
   jsonFetch<void>('POST', `${BASE}/move`, { ids, new_parent_id: newParentID })
 
+// Deep-copies nodes into the target folder (file copies share blobs
+// server-side, so this is cheap even for large files). Returns the new roots.
+export const copyNodes = (ids: number[], newParentID: number | null) =>
+  jsonFetch<DriveNode[]>('POST', `${BASE}/copy`, { ids, new_parent_id: newParentID })
+
+export const setStarred = (ids: number[], starred: boolean) =>
+  jsonFetch<void>('POST', `${BASE}/star`, { ids, starred })
+
+export const listStarred = () => jsonFetch<DriveNode[]>('GET', `${BASE}/starred`)
+
+export interface DriveUsage {
+  active_bytes: number
+  trash_bytes: number
+  physical_bytes: number
+  active_count: number
+  trash_count: number
+}
+
+export const usage = () => jsonFetch<DriveUsage>('GET', `${BASE}/usage`)
+
+// Get-or-create a nested folder chain like "a/b/c" under parentID; returns
+// the final folder. Used by folder uploads.
+export const ensureFolderPath = (parentID: number | null, path: string) =>
+  jsonFetch<DriveNode>('POST', `${BASE}/folders/ensure-path`, {
+    parent_id: parentID,
+    path,
+  })
+
 export const deleteNodes = (ids: number[]) =>
   jsonFetch<void>('POST', `${BASE}/delete`, { ids })
 
@@ -117,6 +147,9 @@ export const downloadURL = (id: number) => `${BASE}/download?id=${id}`
 export const previewURL = (id: number) => `${BASE}/preview?id=${id}`
 export const thumbURL = (id: number) => `${BASE}/thumb?id=${id}`
 export const downloadZipURL = (id: number) => `${BASE}/download-zip?id=${id}`
+// Multi-select: any mix of files and folders, streamed as one archive.
+export const downloadZipNodesURL = (ids: number[]) =>
+  `${BASE}/download-zip?ids=${ids.join(',')}`
 
 export const initUpload = (
   parentID: number | null,

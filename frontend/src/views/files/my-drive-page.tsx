@@ -1,9 +1,17 @@
 import {
+  CopyIcon,
+  DownloadIcon,
+  EyeIcon,
+  FolderInputIcon,
+  FolderOpenIcon,
   FolderPlusIcon,
   LayoutGridIcon,
   ListIcon,
   SearchIcon,
+  StarIcon,
+  Trash2Icon,
   UploadIcon,
+  XIcon,
 } from 'lucide-react'
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -14,6 +22,7 @@ import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
+import { MenuItem, MenuList, MenuSeparator } from '@/components/menu.tsx'
 import { useModal } from '@/components/modal.tsx'
 import { T, t, useLang } from '@/components/translation.tsx'
 
@@ -21,22 +30,36 @@ import {
   DriveBreadcrumb,
   DriveNode,
   breadcrumbs,
+  copyNodes,
   createFolder,
   deleteNodes,
   downloadURL,
+  downloadZipNodesURL,
   downloadZipURL,
   list,
   moveNodes,
   renameNode,
   search,
+  setStarred,
 } from './api'
+import { ContextMenu, useContextMenu } from './context-menu'
 import { MoveDialog, NameDialog, ShareDialog } from './dialogs'
-import { useRefreshOnUploadComplete, useSelection, useShowDotFiles, useSort } from './hooks'
+import {
+  useIsMobile,
+  useRefreshOnUploadComplete,
+  useSelection,
+  useShowDotFiles,
+  useSort,
+} from './hooks'
 import { TopBar } from './layout'
-import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
+import { Breadcrumbs, NodeMenuItems, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
 import { uploadManager } from './upload-manager'
 import { EmptyState, GridView, ListView, SearchEmptyState } from './views'
+
+// Payload for the desktop right-click menu: a single node, the whole
+// multi-selection, or the empty canvas.
+type CtxPayload = { kind: 'node'; node: DriveNode } | { kind: 'selection' } | { kind: 'empty' }
 
 type ViewMode = 'list' | 'grid'
 
@@ -75,7 +98,9 @@ export function MyDrivePage() {
     [items, showDotFiles],
   )
 
-  const { selected, toggle, toggleAll, clear } = useSelection(visibleItems)
+  const { selected, setSelected, toggle, toggleAll, clear } = useSelection(visibleItems)
+  const isMobile = useIsMobile()
+  const ctxMenu = useContextMenu<CtxPayload>()
 
   const refresh = useCallback(async () => {
     if (query.trim()) {
@@ -255,6 +280,50 @@ export function MyDrivePage() {
     })
   }
 
+  const handleCopy = (ids: number[]) => {
+    modal.open({
+      heading: t('copyTo', lang),
+      headingVisible: true,
+      content: (
+        <MoveDialog
+          movingIDs={new Set(ids)}
+          currentParentID={parentID}
+          allowCurrent
+          submitLabel={<T name="copyHere" />}
+          onCancel={() => modal.close()}
+          onSelect={async (target) => {
+            try {
+              const created = await copyNodes(ids, target)
+              modal.close()
+              toast.success(t('copiedItems', lang, true, String(created.length)))
+              await refresh()
+            } catch (err) {
+              toast.error((err as Error).message)
+            }
+          }}
+        />
+      ),
+    })
+  }
+
+  const handleDuplicate = async (n: DriveNode) => {
+    try {
+      await copyNodes([n.id], n.parent_id ?? null)
+      await refresh()
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  const handleStar = async (ids: number[], starred: boolean) => {
+    try {
+      await setStarred(ids, starred)
+      await refresh()
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
   const downloadOne = (n: DriveNode) => {
     const url = n.type === 'folder' ? downloadZipURL(n.id) : downloadURL(n.id)
     const a = document.createElement('a')
@@ -266,13 +335,19 @@ export function MyDrivePage() {
   }
 
   const downloadSelected = () => {
-    let delay = 0
-    selected.forEach((id) => {
-      const n = items.find((x) => x.id === id)
-      if (!n) return
-      setTimeout(() => downloadOne(n), delay)
-      delay += 300
-    })
+    const sel = [...selected]
+    if (sel.length === 1) {
+      const n = items.find((x) => x.id === sel[0])
+      if (n) downloadOne(n)
+      return
+    }
+    // One request: the server streams the whole selection as a single zip.
+    const a = document.createElement('a')
+    a.href = downloadZipNodesURL(sel)
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
   // ---- navigation ---------------------------------------------------------
@@ -302,10 +377,31 @@ export function MyDrivePage() {
       else if (action === 'rename') handleRename(n)
       else if (action === 'share') handleShare(n)
       else if (action === 'move') handleMove([n.id])
+      else if (action === 'copy') handleCopy([n.id])
+      else if (action === 'duplicate') void handleDuplicate(n)
+      else if (action === 'star') void handleStar([n.id], true)
+      else if (action === 'unstar') void handleStar([n.id], false)
       else if (action === 'delete') handleDelete([n.id])
     },
     [parentID, lang],
   )
+
+  // ---- context menu (desktop only) ----------------------------------------
+
+  const handleNodeCtx = useCallback(
+    (e: React.MouseEvent, n: DriveNode) => {
+      // Right-click inside a multi-selection acts on the selection; anywhere
+      // else it first single-selects the node under the cursor.
+      if (selected.size > 1 && selected.has(n.id)) {
+        ctxMenu.openAt(e, { kind: 'selection' })
+        return
+      }
+      if (!selected.has(n.id)) setSelected(new Set([n.id]))
+      ctxMenu.openAt(e, { kind: 'node', node: n })
+    },
+    [selected, setSelected, ctxMenu],
+  )
+  const nodeCtxHandler = isMobile ? undefined : handleNodeCtx
 
   // ---- shortcuts ----------------------------------------------------------
 
@@ -499,13 +595,25 @@ export function MyDrivePage() {
           onClear={clear}
           onDownload={downloadSelected}
           onMove={() => handleMove([...selected])}
+          onCopy={() => handleCopy([...selected])}
           onDelete={() => handleDelete([...selected])}
           lang={lang}
           floating
         />
       )}
 
-      <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
+      <main
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0"
+        onContextMenu={
+          isMobile
+            ? undefined
+            : (e) => {
+                // Row handlers stop propagation; anything that bubbles up
+                // here was a right-click on empty canvas.
+                ctxMenu.openAt(e, { kind: 'empty' })
+              }
+        }
+      >
         {visibleItems.length === 0 ? (
           query.trim() ? (
             <SearchEmptyState query={query.trim()} lang={lang} />
@@ -521,6 +629,7 @@ export function MyDrivePage() {
             onOpen={open}
             onAction={onAction}
             onNavigateToParent={goTo}
+            onContextMenu={nodeCtxHandler}
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={onSort}
@@ -534,6 +643,7 @@ export function MyDrivePage() {
             onToggle={toggle}
             onOpen={open}
             onAction={onAction}
+            onContextMenu={nodeCtxHandler}
             lang={lang}
             showDotFiles={showDotFiles}
           />
@@ -548,6 +658,124 @@ export function MyDrivePage() {
           onDownload={downloadOne}
         />
       )}
+
+      <ContextMenu menu={ctxMenu}>
+        {ctxMenu.payload?.kind === 'node' &&
+          (() => {
+            const n = ctxMenu.payload.node
+            return (
+              <MenuList className="min-w-44">
+                <MenuItem
+                  icon={
+                    n.type === 'folder' ? (
+                      <FolderOpenIcon className="size-3.5" />
+                    ) : (
+                      <EyeIcon className="size-3.5" />
+                    )
+                  }
+                  onClick={() => {
+                    ctxMenu.close()
+                    const idx = visibleItems.findIndex((x) => x.id === n.id)
+                    if (idx >= 0) open(n, idx)
+                  }}
+                >
+                  {n.type === 'folder' ? <T name="openFolder" /> : <T name="preview" />}
+                </MenuItem>
+                <MenuSeparator />
+                <NodeMenuItems
+                  node={n}
+                  fire={(action) => {
+                    ctxMenu.close()
+                    onAction(action, n)
+                  }}
+                />
+              </MenuList>
+            )
+          })()}
+        {ctxMenu.payload?.kind === 'selection' && (
+          <MenuList className="min-w-44">
+            <MenuItem
+              icon={<DownloadIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                downloadSelected()
+              }}
+            >
+              <T name="download" />
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              icon={<StarIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                void handleStar([...selected], true)
+              }}
+            >
+              <T name="star" />
+            </MenuItem>
+            <MenuItem
+              icon={<CopyIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleCopy([...selected])
+              }}
+            >
+              <T name="copyTo" />
+            </MenuItem>
+            <MenuItem
+              icon={<FolderInputIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleMove([...selected])
+              }}
+            >
+              <T name="move" />
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              danger
+              icon={<Trash2Icon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleDelete([...selected])
+              }}
+            >
+              <T name="delete" />
+            </MenuItem>
+            <MenuItem
+              icon={<XIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                clear()
+              }}
+            >
+              <T name="clearSelection" />
+            </MenuItem>
+          </MenuList>
+        )}
+        {ctxMenu.payload?.kind === 'empty' && (
+          <MenuList className="min-w-44">
+            <MenuItem
+              icon={<FolderPlusIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleNewFolder()
+              }}
+            >
+              <T name="newFolder" />
+            </MenuItem>
+            <MenuItem
+              icon={<UploadIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                fileInputRef.current?.click()
+              }}
+            >
+              <T name="upload" />
+            </MenuItem>
+          </MenuList>
+        )}
+      </ContextMenu>
     </div>
   )
 }

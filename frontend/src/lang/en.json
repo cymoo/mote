@@ -182,5 +182,19 @@
   "memosWithImages": "memos with images",
   "untaggedMemos": "untagged memos",
   "noStatsYet": "No activity in this range yet",
-  "appLocked": "app locked"
+  "appLocked": "app locked",
+  "copyTo": "copy to…",
+  "copyHere": "copy here",
+  "duplicate": "duplicate",
+  "copiedItems": "copied {0} item(s)",
+  "star": "star",
+  "unstar": "unstar",
+  "starred": "starred",
+  "noStarred": "no starred items yet",
+  "usageSummary": "{0} used · {1} in trash",
+  "onDisk": "{0} on disk",
+  "uploadFolder": "upload folder",
+  "playbackSpeed": "speed",
+  "pictureInPicture": "picture-in-picture",
+  "resumedPlayback": "resumed from {0}"
 }
