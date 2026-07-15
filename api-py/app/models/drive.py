@@ -17,6 +17,8 @@ class DriveNode(db.Model):
     blob_path = db.Column(db.Text, nullable=True)
     size = db.Column(db.BigInteger, nullable=True)
     hash = db.Column(db.Text, nullable=True)
+    # NULL = not starred; epoch-ms when starred (doubles as sort key).
+    starred_at = db.Column(db.BigInteger, nullable=True)
     deleted_at = db.Column(db.BigInteger, nullable=True)
     delete_batch_id = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.BigInteger, nullable=False)
@@ -40,6 +42,20 @@ class DriveNode(db.Model):
         Index('drive_nodes_deleted', 'deleted_at'),
         Index('drive_nodes_name', text('LOWER(name)')),
         Index('drive_nodes_delete_batch', 'delete_batch_id'),
+        # Dedup lookups (find_reusable_blob) filter by content hash.
+        Index('drive_nodes_hash', 'hash', sqlite_where=text('hash IS NOT NULL')),
+        # Blob refcount checks (remove_blob_if_orphan / purge) and
+        # physical-usage stats filter/group by blob_path.
+        Index(
+            'drive_nodes_blob_path',
+            'blob_path',
+            sqlite_where=text('blob_path IS NOT NULL'),
+        ),
+        Index(
+            'drive_nodes_starred',
+            'starred_at',
+            sqlite_where=text('starred_at IS NOT NULL'),
+        ),
     )
 
 
