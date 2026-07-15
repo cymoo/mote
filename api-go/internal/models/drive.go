@@ -21,6 +21,7 @@ type DriveNode struct {
 	BlobPath      NullString `json:"-" db:"blob_path"`
 	Size          NullInt64  `json:"size" db:"size"`
 	Hash          NullString `json:"hash,omitempty" db:"hash"`
+	StarredAt     NullInt64  `json:"starred_at,omitempty" db:"starred_at"`
 	DeletedAt     NullInt64  `json:"deleted_at,omitempty" db:"deleted_at"`
 	DeleteBatchID NullString `json:"-" db:"delete_batch_id"`
 	CreatedAt     int64      `json:"created_at" db:"created_at"`
@@ -169,6 +170,21 @@ type DriveMoveRequest struct {
 	NewParentID *int64  `json:"new_parent_id"`
 }
 
+type DriveCopyRequest struct {
+	IDs         []int64 `json:"ids"`
+	NewParentID *int64  `json:"new_parent_id"`
+}
+
+type DriveStarRequest struct {
+	IDs     []int64 `json:"ids"`
+	Starred bool    `json:"starred"`
+}
+
+type DriveEnsurePathRequest struct {
+	ParentID *int64 `json:"parent_id"`
+	Path     string `json:"path"` // slash-separated, relative, e.g. "a/b/c"
+}
+
 type DriveDeleteRequest struct {
 	IDs []int64 `json:"ids"`
 }
@@ -218,4 +234,15 @@ type DriveSharePasswordRequest struct {
 type DriveBreadcrumb struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
+}
+
+// DriveUsage summarises drive storage consumption. Logical bytes count every
+// file row; physical bytes count each distinct blob once (copies and
+// deduplicated uploads share blobs, so physical ≤ logical).
+type DriveUsage struct {
+	ActiveBytes   int64 `json:"active_bytes"`
+	TrashBytes    int64 `json:"trash_bytes"`
+	PhysicalBytes int64 `json:"physical_bytes"`
+	ActiveCount   int64 `json:"active_count"`
+	TrashCount    int64 `json:"trash_count"`
 }

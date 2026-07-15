@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useReducer, useState, useSyncExternalStore } from 'react'
+import { useLocation } from 'react-router'
 
+import { DriveUsage, usage } from './api'
 import { uploadManager } from './upload-manager'
 
 export type SortKey = 'name' | 'size' | 'updated_at'
@@ -81,6 +83,40 @@ export function useCookieAuthSync() {
 
 export function useRefreshOnUploadComplete(refresh: () => void) {
   useEffect(() => uploadManager.onCompleted(() => refresh()), [refresh])
+}
+
+// Storage usage -------------------------------------------------------------
+
+// Fetched on mount, on every navigation (location.key changes on folder hops
+// too, so mutations catch up quickly), and when an upload completes. Purely
+// informational — mild staleness after an in-page delete is fine.
+export function useDriveUsage(): DriveUsage | null {
+  const [data, setData] = useState<DriveUsage | null>(null)
+  const location = useLocation()
+
+  useEffect(() => {
+    let cancelled = false
+    usage()
+      .then((u) => {
+        if (!cancelled) setData(u)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [location.key])
+
+  useEffect(
+    () =>
+      uploadManager.onCompleted(() => {
+        usage()
+          .then(setData)
+          .catch(() => {})
+      }),
+    [],
+  )
+
+  return data
 }
 
 // Show dot files toggle ---------------------------------------------------

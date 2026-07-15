@@ -7,7 +7,7 @@ import {
   FolderIcon,
   FolderOpenIcon,
 } from 'lucide-react'
-import { memo, useEffect, useState } from 'react'
+import { ReactNode, memo, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { cx } from '@/utils/css.ts'
@@ -220,11 +220,18 @@ export function MoveDialog({
   currentParentID,
   onSelect,
   onCancel,
+  submitLabel,
+  allowCurrent,
 }: {
   movingIDs: Set<number>
   currentParentID: number | null
   onSelect: (target: number | null) => void
   onCancel: () => void
+  // Overrides the submit button label — the dialog doubles as the
+  // copy-destination picker ("copy here").
+  submitLabel?: ReactNode
+  // Copying into the current folder is valid (duplicate); moving isn't.
+  allowCurrent?: boolean
 }) {
   const [tree, setTree] = useState<MoveNode[]>([])
   const [target, setTarget] = useState<number | null>(currentParentID)
@@ -304,7 +311,7 @@ export function MoveDialog({
         <Button
           variant="primary"
           size="sm"
-          disabled={busy || target === currentParentID}
+          disabled={busy || (!allowCurrent && target === currentParentID)}
           onClick={async () => {
             setBusy(true)
             try {
@@ -314,7 +321,7 @@ export function MoveDialog({
             }
           }}
         >
-          <T name="moveHere" />
+          {submitLabel ?? <T name="moveHere" />}
         </Button>
       </div>
     </div>

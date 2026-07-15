@@ -1,6 +1,8 @@
 import {
   CheckIcon,
   ChevronRightIcon,
+  CopyIcon,
+  CopyPlusIcon,
   DownloadIcon,
   FileIcon,
   FileTextIcon,
@@ -13,9 +15,12 @@ import {
   PencilIcon,
   SearchIcon,
   Share2Icon,
+  StarIcon,
+  StarOffIcon,
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
+import { useDroppable } from '@dnd-kit/core'
 import { CSSProperties, ReactNode, Ref, memo, useRef, useState } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -39,10 +44,37 @@ interface BreadcrumbsProps {
   label?: string
   lang: Lang
   onSecretActivate?: () => void
+  // Makes the root and every non-current crumb a drag-to-move drop target.
+  // Only the main browser sets this (requires an enclosing <DndContext>).
+  droppable?: boolean
 }
 
 const SECRET_CLICK_TARGET = 10
 const SECRET_CLICK_TIMEOUT_MS = 2000
+
+// Wraps a crumb button in a droppable zone with a hover highlight.
+function CrumbDropZone({
+  id,
+  enabled,
+  children,
+}: {
+  id: string
+  enabled: boolean
+  children: ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: !enabled })
+  return (
+    <span
+      ref={setNodeRef}
+      className={cx(
+        'inline-flex rounded-md',
+        enabled && isOver ? 'bg-primary/15 ring-primary ring-2' : undefined,
+      )}
+    >
+      {children}
+    </span>
+  )
+}
 
 export const Breadcrumbs = memo(function Breadcrumbs({
   crumbs,
@@ -52,6 +84,7 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   label,
   lang,
   onSecretActivate,
+  droppable,
 }: BreadcrumbsProps) {
   const clickCount = useRef(0)
   const clickTimer = useRef<ReturnType<typeof setTimeout>>(null)
@@ -72,33 +105,37 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   }
   return (
     <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:[mask-image:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
-      <button
-        type="button"
-        className="hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md px-2 py-1 transition-colors"
-        onClick={handleRootClick}
-        title={t('myDrive', lang)}
-      >
-        <T name="myDrive" />
-      </button>
+      <CrumbDropZone id="crumb-root" enabled={!!droppable}>
+        <button
+          type="button"
+          className="hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md px-2 py-1 transition-colors"
+          onClick={handleRootClick}
+          title={t('myDrive', lang)}
+        >
+          <T name="myDrive" />
+        </button>
+      </CrumbDropZone>
       {!isTrash && !label &&
         crumbs?.map((c, i) => {
           const last = i === crumbs.length - 1
           return (
             <span key={c.id} className="flex shrink-0 items-center">
               <ChevronRightIcon className="size-3.5 opacity-60" />
-              <button
-                type="button"
-                disabled={last}
-                className={cx(
-                  'rounded-md px-2 py-1 transition-colors',
-                  last
-                    ? 'text-foreground font-medium'
-                    : 'hover:bg-accent hover:text-accent-foreground',
-                )}
-                onClick={() => onCrumb(c.id)}
-              >
-                {c.name}
-              </button>
+              <CrumbDropZone id={`crumb-${c.id}`} enabled={!!droppable && !last}>
+                <button
+                  type="button"
+                  disabled={last}
+                  className={cx(
+                    'rounded-md px-2 py-1 transition-colors',
+                    last
+                      ? 'text-foreground font-medium'
+                      : 'hover:bg-accent hover:text-accent-foreground',
+                  )}
+                  onClick={() => onCrumb(c.id)}
+                >
+                  {c.name}
+                </button>
+              </CrumbDropZone>
             </span>
           )
         })}
@@ -160,6 +197,7 @@ interface SelectionBarProps {
   onClear: () => void
   onDownload: () => void
   onMove: () => void
+  onCopy?: () => void
   onDelete: () => void
   lang: Lang
   // When true, render as a fixed bottom bar (used on mobile).
@@ -171,6 +209,7 @@ export const SelectionBar = memo(function SelectionBar({
   onClear,
   onDownload,
   onMove,
+  onCopy,
   onDelete,
   lang,
   floating,
@@ -202,6 +241,18 @@ export const SelectionBar = memo(function SelectionBar({
       >
         <DownloadIcon className="size-4" />
       </Button>
+      {onCopy && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={btnSize}
+          onClick={onCopy}
+          title={t('copyTo', lang)}
+          aria-label={t('copyTo', lang)}
+        >
+          <CopyIcon className="size-4" />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="sm"
@@ -390,7 +441,64 @@ export const Checkbox = memo(function Checkbox({
 
 // ---------- row menu ----------
 
-export type RowAction = 'download' | 'rename' | 'share' | 'move' | 'delete'
+export type RowAction =
+  | 'download'
+  | 'rename'
+  | 'share'
+  | 'move'
+  | 'copy'
+  | 'duplicate'
+  | 'star'
+  | 'unstar'
+  | 'delete'
+
+// The shared action list for a single node — used by both the kebab RowMenu
+// and the desktop right-click context menu so they never drift apart.
+export function NodeMenuItems({
+  node,
+  fire,
+}: {
+  node: DriveNode
+  fire: (action: RowAction) => void
+}) {
+  return (
+    <>
+      <MenuItem icon={<DownloadIcon className="size-3.5" />} onClick={() => fire('download')}>
+        {node.type === 'folder' ? <T name="downloadZip" /> : <T name="download" />}
+      </MenuItem>
+      <MenuItem icon={<Share2Icon className="size-3.5" />} onClick={() => fire('share')}>
+        <T name="shareLink" />
+      </MenuItem>
+      <MenuSeparator />
+      {node.starred_at ? (
+        <MenuItem icon={<StarOffIcon className="size-3.5" />} onClick={() => fire('unstar')}>
+          <T name="unstar" />
+        </MenuItem>
+      ) : (
+        <MenuItem icon={<StarIcon className="size-3.5" />} onClick={() => fire('star')}>
+          <T name="star" />
+        </MenuItem>
+      )}
+      <MenuItem icon={<CopyIcon className="size-3.5" />} onClick={() => fire('copy')}>
+        <T name="copyTo" />
+      </MenuItem>
+      <MenuItem icon={<CopyPlusIcon className="size-3.5" />} onClick={() => fire('duplicate')}>
+        <T name="duplicate" />
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<PencilIcon className="size-3.5" />} onClick={() => fire('rename')}>
+        <T name="rename" />
+      </MenuItem>
+      <MenuItem icon={<FolderInputIcon className="size-3.5" />} onClick={() => fire('move')}>
+        <T name="move" />
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem danger icon={<Trash2Icon className="size-3.5" />} onClick={() => fire('delete')}>
+        <T name="delete" />
+      </MenuItem>
+    </>
+  )
+}
 
 interface RowMenuProps {
   node: DriveNode
@@ -425,34 +533,27 @@ export const RowMenu = memo(function RowMenu({ node, onAction, lang }: RowMenuPr
       </PopoverTrigger>
       <PopoverContent>
         <MenuList className="min-w-40">
-          <MenuItem icon={<DownloadIcon className="size-3.5" />} onClick={() => fire('download')}>
-            {node.type === 'folder' ? <T name="downloadZip" /> : <T name="download" />}
-          </MenuItem>
-          {node.type === 'file' && (
-            <MenuItem icon={<Share2Icon className="size-3.5" />} onClick={() => fire('share')}>
-              <T name="shareLink" />
-            </MenuItem>
-          )}
-          <MenuItem icon={<PencilIcon className="size-3.5" />} onClick={() => fire('rename')}>
-            <T name="rename" />
-          </MenuItem>
-          <MenuItem icon={<FolderInputIcon className="size-3.5" />} onClick={() => fire('move')}>
-            <T name="move" />
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem
-            danger
-            icon={<Trash2Icon className="size-3.5" />}
-            onClick={() => fire('delete')}
-          >
-            <T name="delete" />
-          </MenuItem>
+          <NodeMenuItems node={node} fire={fire} />
         </MenuList>
       </PopoverContent>
     </Popover>
   )
 })
 
+
+// ---------- star badge ----------
+
+export const StarBadge = memo(function StarBadge({ lang }: { lang: Lang }) {
+  return (
+    <span
+      title={t('starred', lang)}
+      aria-label={t('starred', lang)}
+      className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-amber-500"
+    >
+      <StarIcon className="size-3 fill-current" />
+    </span>
+  )
+})
 
 // ---------- share badge ----------
 

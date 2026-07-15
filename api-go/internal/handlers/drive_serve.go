@@ -67,3 +67,22 @@ func serveStoredDriveBlob(
 	defer f.Close()
 	http.ServeContent(w, r, node.Name, time.UnixMilli(node.UpdatedAt), f)
 }
+
+// serveThumbFile streams a cached thumbnail JPEG from disk. Shared by the
+// authenticated /api/drive/thumb and the public /shared-files/{token}/thumb.
+func serveThumbFile(w http.ResponseWriter, r *http.Request, path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	http.ServeContent(w, r, "thumb.jpg", st.ModTime(), f)
+}

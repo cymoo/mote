@@ -305,7 +305,17 @@ func (s *DriveUploadService) Complete(
 		s.markUploading(id)
 		return nil, ErrUploadFinalSize
 	}
-	if err := os.Rename(tmpAbs, absPath); err != nil {
+
+	// Dedup: identical content already stored → reference the existing blob
+	// and discard the freshly assembled bytes. Blob removal is refcounted
+	// (removeBlobIfOrphan), so shared blobs stay alive. Best-effort: any
+	// lookup error just falls back to storing a new blob.
+	createdNewBlob := true
+	if reuse, derr := s.drive.FindReusableBlob(ctx, hash, u.Size); derr == nil && reuse != "" {
+		relPath = reuse
+		createdNewBlob = false
+		_ = os.Remove(tmpAbs)
+	} else if err := os.Rename(tmpAbs, absPath); err != nil {
 		_ = os.Remove(tmpAbs)
 		s.markUploading(id)
 		return nil, err
@@ -318,7 +328,11 @@ func (s *DriveUploadService) Complete(
 		node, err = s.drive.CreateFileNode(ctx, parentID, finalName, relPath, hash, u.Size)
 	}
 	if err != nil {
-		_ = os.Remove(absPath)
+		// Only remove a blob we just created — a reused blob belongs to other
+		// node rows.
+		if createdNewBlob {
+			_ = os.Remove(absPath)
+		}
 		s.markUploading(id)
 		return nil, err
 	}

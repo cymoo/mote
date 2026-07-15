@@ -1,4 +1,5 @@
-import { ArrowDownIcon, ArrowUpIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
+import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { ArrowDownIcon, ArrowUpIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, StarIcon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -7,7 +8,7 @@ import { Button } from '@/components/button.tsx'
 import { T, t } from '@/components/translation.tsx'
 
 import { DriveNode, SharedItem, humanSize } from './api'
-import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu, ShareBadge } from './parts'
+import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu, ShareBadge, StarBadge } from './parts'
 
 type Lang = 'en' | 'zh'
 
@@ -24,6 +25,10 @@ interface ListViewProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  // Enables drag-to-move (rows draggable, folder rows droppable). Only the
+  // main browser turns this on; requires an enclosing <DndContext>.
+  draggable?: boolean
   sortKey: SortKey
   sortDir: SortDir
   onSort: (k: SortKey) => void
@@ -39,6 +44,8 @@ export const ListView = memo(function ListView({
   onOpen,
   onAction,
   onNavigateToParent,
+  onContextMenu,
+  draggable,
   sortKey,
   sortDir,
   onSort,
@@ -89,6 +96,8 @@ export const ListView = memo(function ListView({
             onOpen={onOpen}
             onAction={onAction}
             onNavigateToParent={onNavigateToParent}
+            onContextMenu={onContextMenu}
+            draggable={draggable}
             lang={lang}
             dimmed={showDotFiles && n.name.startsWith('.')}
           />
@@ -106,6 +115,8 @@ interface ListRowProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  draggable?: boolean
   lang: Lang
   dimmed?: boolean
 }
@@ -118,16 +129,35 @@ const ListRow = memo(function ListRow({
   onOpen,
   onAction,
   onNavigateToParent,
+  onContextMenu,
+  draggable,
   lang,
   dimmed,
 }: ListRowProps) {
+  const {
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: node.id, disabled: !draggable })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `folder-${node.id}`,
+    disabled: !draggable || node.type !== 'folder',
+  })
   return (
     <tr
+      ref={(el) => {
+        setDragRef(el)
+        setDropRef(el)
+      }}
       className={cx(
         'group hover:bg-accent/60 cursor-pointer border-b transition-colors',
         'border-border/40',
         selected ? 'bg-primary/10 hover:bg-primary/15' : undefined,
         dimmed ? 'opacity-50' : undefined,
+        isDragging ? 'opacity-40' : undefined,
+        // Drop-target highlight (background only — box-shadow rings are
+        // unreliable on <tr>).
+        isOver ? 'bg-primary/20 hover:bg-primary/20' : undefined,
       )}
       onClick={(e) => {
         // 打开是高频操作：单击即打开；⌘/Ctrl/Shift+单击、或点复选框才是多选。
@@ -137,8 +167,14 @@ const ListRow = memo(function ListRow({
           onOpen(node, index)
         }
       }}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, node) : undefined}
+      {...(draggable ? listeners : {})}
     >
-      <td className="px-3" onClick={(e) => e.stopPropagation()}>
+      <td
+        className="px-3"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         <span
           className={cx(
             'inline-flex transition-opacity',
@@ -169,6 +205,7 @@ const ListRow = memo(function ListRow({
           >
             {node.name}
           </button>
+          {!!node.starred_at && <StarBadge lang={lang} />}
           {!!node.share_count && (
             <ShareBadge count={node.share_count} lang={lang} />
           )}
@@ -199,6 +236,7 @@ const ListRow = memo(function ListRow({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <span className="inline-flex opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
           <RowMenu node={node} onAction={onAction} lang={lang} />
@@ -216,6 +254,8 @@ interface GridViewProps {
   onToggle: (id: number, additive: boolean) => void
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  draggable?: boolean
   lang: Lang
   showDotFiles?: boolean
 }
@@ -226,6 +266,8 @@ export const GridView = memo(function GridView({
   onToggle,
   onOpen,
   onAction,
+  onContextMenu,
+  draggable,
   lang,
   showDotFiles,
 }: GridViewProps) {
@@ -240,6 +282,8 @@ export const GridView = memo(function GridView({
           onToggle={onToggle}
           onOpen={onOpen}
           onAction={onAction}
+          onContextMenu={onContextMenu}
+          draggable={draggable}
           lang={lang}
           dimmed={showDotFiles && n.name.startsWith('.')}
         />
@@ -255,6 +299,8 @@ interface GridCardProps {
   onToggle: (id: number, additive: boolean) => void
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
+  onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  draggable?: boolean
   lang: Lang
   dimmed?: boolean
 }
@@ -266,11 +312,26 @@ const GridCard = memo(function GridCard({
   onToggle,
   onOpen,
   onAction,
+  onContextMenu,
+  draggable,
   lang,
   dimmed,
 }: GridCardProps) {
+  const {
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: node.id, disabled: !draggable })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `folder-${node.id}`,
+    disabled: !draggable || node.type !== 'folder',
+  })
   return (
     <div
+      ref={(el) => {
+        setDragRef(el)
+        setDropRef(el)
+      }}
       role="button"
       tabIndex={0}
       className={cx(
@@ -278,6 +339,8 @@ const GridCard = memo(function GridCard({
         'hover:bg-accent/60 border-transparent hover:-translate-y-0.5 hover:shadow-md',
         selected ? 'border-primary/40 bg-primary/10 ring-primary/20 ring-2' : undefined,
         dimmed ? 'opacity-50' : undefined,
+        isDragging ? 'opacity-40' : undefined,
+        isOver ? 'ring-primary bg-primary/15 ring-2' : undefined,
       )}
       onClick={(e) => {
         // Modifier-click toggles selection; plain click opens.
@@ -290,7 +353,9 @@ const GridCard = memo(function GridCard({
       onKeyDown={(e) => {
         if (e.key === 'Enter') onOpen(node, index)
       }}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, node) : undefined}
       title={node.name}
+      {...(draggable ? listeners : {})}
     >
       {/* hover-revealed checkbox in top-left (always visible on mobile) */}
       <div
@@ -303,6 +368,7 @@ const GridCard = memo(function GridCard({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <Checkbox
           checked={selected}
@@ -316,6 +382,7 @@ const GridCard = memo(function GridCard({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <RowMenu node={node} onAction={onAction} lang={lang} />
       </div>
@@ -324,6 +391,7 @@ const GridCard = memo(function GridCard({
       </div>
       <div className="flex w-full min-w-0 items-center justify-center gap-1">
         <span className="truncate text-xs leading-4">{node.name}</span>
+        {!!node.starred_at && <StarBadge lang={lang} />}
         {!!node.share_count && (
           <ShareBadge count={node.share_count} lang={lang} />
         )}
@@ -445,15 +513,22 @@ function SortHeader({
 export const EmptyState = memo(function EmptyState({
   trash,
   shared,
+  starred,
   lang,
 }: {
   trash: boolean
   shared?: boolean
+  starred?: boolean
   lang: Lang
 }) {
   return (
     <div className="text-muted-foreground flex h-full animate-[fadeIn_200ms_ease-out] flex-col items-center justify-center gap-3 text-sm">
-      {shared ? (
+      {starred ? (
+        <>
+          <StarIcon className="size-12 opacity-30" strokeWidth={1.25} />
+          <span>{t('noStarred', lang)}</span>
+        </>
+      ) : shared ? (
         <>
           <Share2Icon className="size-12 opacity-30" strokeWidth={1.25} />
           <span>{t('noActiveShares', lang)}</span>

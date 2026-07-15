@@ -1,9 +1,28 @@
 import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  CopyIcon,
+  DownloadIcon,
+  EyeIcon,
+  FolderInputIcon,
+  FolderOpenIcon,
   FolderPlusIcon,
+  FolderUpIcon,
   LayoutGridIcon,
   ListIcon,
   SearchIcon,
+  StarIcon,
+  Trash2Icon,
   UploadIcon,
+  XIcon,
 } from 'lucide-react'
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -14,6 +33,7 @@ import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
 import { Button } from '@/components/button.tsx'
 import { useConfirm } from '@/components/confirm.tsx'
+import { MenuItem, MenuList, MenuSeparator } from '@/components/menu.tsx'
 import { useModal } from '@/components/modal.tsx'
 import { T, t, useLang } from '@/components/translation.tsx'
 
@@ -21,22 +41,101 @@ import {
   DriveBreadcrumb,
   DriveNode,
   breadcrumbs,
+  copyNodes,
   createFolder,
   deleteNodes,
+  ensureFolderPath,
   downloadURL,
+  downloadZipNodesURL,
   downloadZipURL,
   list,
   moveNodes,
   renameNode,
   search,
+  setStarred,
 } from './api'
+import { ContextMenu, useContextMenu } from './context-menu'
 import { MoveDialog, NameDialog, ShareDialog } from './dialogs'
-import { useRefreshOnUploadComplete, useSelection, useShowDotFiles, useSort } from './hooks'
+import {
+  useIsMobile,
+  useRefreshOnUploadComplete,
+  useSelection,
+  useShowDotFiles,
+  useSort,
+} from './hooks'
 import { TopBar } from './layout'
-import { Breadcrumbs, RowAction, SearchBox, SelectionBar } from './parts'
+import { Breadcrumbs, NodeIcon, NodeMenuItems, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
 import { uploadManager } from './upload-manager'
 import { EmptyState, GridView, ListView, SearchEmptyState } from './views'
+
+// Payload for the desktop right-click menu: a single node, the whole
+// multi-selection, or the empty canvas.
+type CtxPayload = { kind: 'node'; node: DriveNode } | { kind: 'selection' } | { kind: 'empty' }
+
+// ---- folder upload helpers --------------------------------------------------
+
+interface UploadEntry {
+  file: File
+  relDir?: string
+}
+
+// Guard against accidental drops of giant trees.
+const MAX_UPLOAD_ENTRIES = 2000
+
+// "/photos/2024/img.jpg" → "photos/2024"
+function parentDirOf(fullPath: string): string {
+  const p = fullPath.replace(/^\//, '')
+  const i = p.lastIndexOf('/')
+  return i < 0 ? '' : p.slice(0, i)
+}
+
+// Recursively walk dropped FileSystemEntry trees. Chrome's readEntries
+// returns at most ~100 entries per call — loop until an empty batch. Empty
+// directories are reported separately so the tree structure is preserved.
+async function traverseEntries(
+  entries: FileSystemEntry[],
+): Promise<{ files: UploadEntry[]; emptyDirs: string[] }> {
+  const files: UploadEntry[] = []
+  const emptyDirs: string[] = []
+
+  const walk = async (entry: FileSystemEntry): Promise<void> => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) => {
+        ;(entry as FileSystemFileEntry).file(resolve, reject)
+      })
+      const relDir = parentDirOf(entry.fullPath)
+      files.push({ file, relDir: relDir || undefined })
+      return
+    }
+    if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader()
+      let any = false
+      for (;;) {
+        const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+          reader.readEntries(resolve, reject)
+        })
+        if (batch.length === 0) break
+        any = true
+        for (const child of batch) await walk(child)
+      }
+      if (!any) emptyDirs.push(entry.fullPath.replace(/^\//, ''))
+    }
+  }
+
+  for (const e of entries) await walk(e)
+  return { files, emptyDirs }
+}
+
+// Folder-picker files carry webkitRelativePath ("root/sub/file.txt").
+function entriesFromFileList(files: FileList | null): UploadEntry[] {
+  if (!files) return []
+  return Array.from(files).map((file) => {
+    const rel = (file as File & { webkitRelativePath?: string }).webkitRelativePath ?? ''
+    const relDir = parentDirOf(rel)
+    return { file, relDir: relDir || undefined }
+  })
+}
 
 type ViewMode = 'list' | 'grid'
 
@@ -63,6 +162,7 @@ export function MyDrivePage() {
   const { showDotFiles, toggleShowDotFiles } = useShowDotFiles()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const confirm = useConfirm()
   const modal = useModal()
@@ -75,7 +175,69 @@ export function MyDrivePage() {
     [items, showDotFiles],
   )
 
-  const { selected, toggle, toggleAll, clear } = useSelection(visibleItems)
+  const { selected, setSelected, toggle, toggleAll, clear } = useSelection(visibleItems)
+  const isMobile = useIsMobile()
+  const ctxMenu = useContextMenu<CtxPayload>()
+
+  // ---- drag-to-move ---------------------------------------------------------
+
+  // 8px activation keeps plain clicks working (open-on-click stays primary).
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  // Search results mix folders from different parents — droppable rows would
+  // be ambiguous targets there; the move dialog covers that path.
+  const dndEnabled = !isMobile && !query.trim()
+  const dragIDsRef = useRef<number[]>([])
+  const [dragNode, setDragNode] = useState<DriveNode | null>(null)
+  const [dragCount, setDragCount] = useState(0)
+  // Swallow the click that lands on the row right after a drop.
+  const suppressClickRef = useRef(false)
+
+  const onDragStart = (e: DragStartEvent) => {
+    const id = Number(e.active.id)
+    // Dragging a selected node moves the whole selection; anything else
+    // becomes a fresh single selection.
+    const ids = selected.has(id) ? [...selected] : [id]
+    if (!selected.has(id)) setSelected(new Set([id]))
+    dragIDsRef.current = ids
+    setDragNode(items.find((n) => n.id === id) ?? null)
+    setDragCount(ids.length)
+  }
+
+  const resetDrag = () => {
+    dragIDsRef.current = []
+    setDragNode(null)
+    setDragCount(0)
+    suppressClickRef.current = true
+    setTimeout(() => {
+      suppressClickRef.current = false
+    }, 80)
+  }
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const ids = dragIDsRef.current
+    const overID = e.over ? String(e.over.id) : ''
+    resetDrag()
+    if (!overID || ids.length === 0) return
+
+    let target: number | null
+    if (overID === 'crumb-root') target = null
+    else if (overID.startsWith('crumb-')) target = Number(overID.slice('crumb-'.length))
+    else if (overID.startsWith('folder-')) target = Number(overID.slice('folder-'.length))
+    else return
+
+    // No-ops: dropping onto a dragged node itself or back into the current folder.
+    if (target != null && ids.includes(target)) return
+    if (target === parentID) return
+
+    void (async () => {
+      try {
+        await moveNodes(ids, target)
+        await refresh()
+      } catch (err) {
+        toast.error((err as Error).message)
+      }
+    })()
+  }
 
   const refresh = useCallback(async () => {
     if (query.trim()) {
@@ -113,24 +275,59 @@ export function MyDrivePage() {
 
   // ---- uploads ------------------------------------------------------------
 
-  const onUploadFiles = useCallback(
-    async (files: FileList | File[] | null) => {
-      if (!files || files.length === 0) return
-      // Fire uploads concurrently so the dock reflects all queued files at
-      // once (the upload manager itself caps per-file chunk concurrency).
-      // Otherwise users see a permanent "uploading 1…" because await-in-loop
-      // serializes everything.
+  const onUploadEntries = useCallback(
+    async (entries: UploadEntry[]) => {
+      if (entries.length === 0) return
+      if (entries.length > MAX_UPLOAD_ENTRIES) {
+        toast.error(t('tooManyFiles', lang, true, String(MAX_UPLOAD_ENTRIES)))
+        return
+      }
+      // Fire uploads concurrently so the dock reflects the whole queue at
+      // once; the manager itself caps how many files upload simultaneously
+      // (and chunk concurrency per file).
       await Promise.all(
-        Array.from(files).map((f) => uploadManager.add(f, parentID, 'ask')),
+        entries.map(({ file, relDir }) => uploadManager.add(file, parentID, 'ask', relDir)),
       )
       // The upload-completion hook handles refresh; nothing else to do here.
     },
-    [parentID],
+    [parentID, lang],
+  )
+
+  const onUploadFiles = useCallback(
+    (files: FileList | File[] | null) => {
+      if (!files || files.length === 0) return Promise.resolve()
+      return onUploadEntries(Array.from(files).map((file) => ({ file })))
+    },
+    [onUploadEntries],
   )
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
     setDragOver(false)
+    // Prefer the entries API (directory support); fall back to plain files.
+    const items = e.dataTransfer.items
+    const entries: FileSystemEntry[] = []
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry?.()
+        if (entry) entries.push(entry)
+      }
+    }
+    if (entries.length > 0) {
+      void (async () => {
+        try {
+          const { files, emptyDirs } = await traverseEntries(entries)
+          if (emptyDirs.length > 0) {
+            await Promise.all(emptyDirs.map((d) => ensureFolderPath(parentID, d)))
+            if (files.length === 0) await refresh()
+          }
+          await onUploadEntries(files)
+        } catch (err) {
+          toast.error((err as Error).message)
+        }
+      })()
+      return
+    }
     void onUploadFiles(e.dataTransfer.files)
   }
 
@@ -255,6 +452,50 @@ export function MyDrivePage() {
     })
   }
 
+  const handleCopy = (ids: number[]) => {
+    modal.open({
+      heading: t('copyTo', lang),
+      headingVisible: true,
+      content: (
+        <MoveDialog
+          movingIDs={new Set(ids)}
+          currentParentID={parentID}
+          allowCurrent
+          submitLabel={<T name="copyHere" />}
+          onCancel={() => modal.close()}
+          onSelect={async (target) => {
+            try {
+              const created = await copyNodes(ids, target)
+              modal.close()
+              toast.success(t('copiedItems', lang, true, String(created.length)))
+              await refresh()
+            } catch (err) {
+              toast.error((err as Error).message)
+            }
+          }}
+        />
+      ),
+    })
+  }
+
+  const handleDuplicate = async (n: DriveNode) => {
+    try {
+      await copyNodes([n.id], n.parent_id ?? null)
+      await refresh()
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
+  const handleStar = async (ids: number[], starred: boolean) => {
+    try {
+      await setStarred(ids, starred)
+      await refresh()
+    } catch (err) {
+      toast.error((err as Error).message)
+    }
+  }
+
   const downloadOne = (n: DriveNode) => {
     const url = n.type === 'folder' ? downloadZipURL(n.id) : downloadURL(n.id)
     const a = document.createElement('a')
@@ -266,13 +507,19 @@ export function MyDrivePage() {
   }
 
   const downloadSelected = () => {
-    let delay = 0
-    selected.forEach((id) => {
-      const n = items.find((x) => x.id === id)
-      if (!n) return
-      setTimeout(() => downloadOne(n), delay)
-      delay += 300
-    })
+    const sel = [...selected]
+    if (sel.length === 1) {
+      const n = items.find((x) => x.id === sel[0])
+      if (n) downloadOne(n)
+      return
+    }
+    // One request: the server streams the whole selection as a single zip.
+    const a = document.createElement('a')
+    a.href = downloadZipNodesURL(sel)
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
   // ---- navigation ---------------------------------------------------------
@@ -287,6 +534,8 @@ export function MyDrivePage() {
 
   const open = useCallback(
     (n: DriveNode, idx: number) => {
+      // The click right after a drop must not open the drop target.
+      if (suppressClickRef.current) return
       if (n.type === 'folder') {
         goTo(n.id)
         return
@@ -302,10 +551,31 @@ export function MyDrivePage() {
       else if (action === 'rename') handleRename(n)
       else if (action === 'share') handleShare(n)
       else if (action === 'move') handleMove([n.id])
+      else if (action === 'copy') handleCopy([n.id])
+      else if (action === 'duplicate') void handleDuplicate(n)
+      else if (action === 'star') void handleStar([n.id], true)
+      else if (action === 'unstar') void handleStar([n.id], false)
       else if (action === 'delete') handleDelete([n.id])
     },
     [parentID, lang],
   )
+
+  // ---- context menu (desktop only) ----------------------------------------
+
+  const handleNodeCtx = useCallback(
+    (e: React.MouseEvent, n: DriveNode) => {
+      // Right-click inside a multi-selection acts on the selection; anywhere
+      // else it first single-selects the node under the cursor.
+      if (selected.size > 1 && selected.has(n.id)) {
+        ctxMenu.openAt(e, { kind: 'selection' })
+        return
+      }
+      if (!selected.has(n.id)) setSelected(new Set([n.id]))
+      ctxMenu.openAt(e, { kind: 'node', node: n })
+    },
+    [selected, setSelected, ctxMenu],
+  )
+  const nodeCtxHandler = isMobile ? undefined : handleNodeCtx
 
   // ---- shortcuts ----------------------------------------------------------
 
@@ -364,6 +634,13 @@ export function MyDrivePage() {
   })
 
   return (
+    <DndContext
+      sensors={dndSensors}
+      collisionDetection={pointerWithin}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={resetDrag}
+    >
     <div
       className={cx(
         'flex min-h-0 flex-1 flex-col',
@@ -372,6 +649,10 @@ export function MyDrivePage() {
           : undefined,
       )}
       onDragOver={(e) => {
+        // Only OS file drags: internal drag-to-move is pointer-based and
+        // never fires HTML5 drag events, and dragged text/links must not
+        // light up the upload overlay.
+        if (!e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
         setDragOver(true)
       }}
@@ -390,6 +671,7 @@ export function MyDrivePage() {
             isTrash={false}
             lang={lang}
             onSecretActivate={handleToggleDotFiles}
+            droppable={dndEnabled}
           />
         }
         extra={
@@ -457,6 +739,17 @@ export function MyDrivePage() {
               <FolderPlusIcon className="size-4" />
               <T name="newFolder" />
             </Button>
+            {/* Folder upload is desktop-only (mobile browsers lack directory pickers). */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => folderInputRef.current?.click()}
+              title={t('uploadFolder', lang)}
+              aria-label={t('uploadFolder', lang)}
+              className="rounded-lg px-2.5 max-md:hidden"
+            >
+              <FolderUpIcon className="size-4" />
+            </Button>
             <Button
               variant="primary"
               size="sm"
@@ -481,6 +774,19 @@ export function MyDrivePage() {
           e.target.value = ''
         }}
       />
+      {/* Folder picker (Chromium/WebKit): files arrive flat but each carries
+          webkitRelativePath, which the upload manager maps back to folders. */}
+      <input
+        type="file"
+        multiple
+        hidden
+        ref={folderInputRef}
+        {...({ webkitdirectory: '' } as object)}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+          void onUploadEntries(entriesFromFileList(e.target.files))
+          e.target.value = ''
+        }}
+      />
 
       {/* 上传是移动端的高频入口：右下角 FAB（桌面在顶栏） */}
       <Button
@@ -499,13 +805,25 @@ export function MyDrivePage() {
           onClear={clear}
           onDownload={downloadSelected}
           onMove={() => handleMove([...selected])}
+          onCopy={() => handleCopy([...selected])}
           onDelete={() => handleDelete([...selected])}
           lang={lang}
           floating
         />
       )}
 
-      <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0">
+      <main
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pb-20 md:pb-0"
+        onContextMenu={
+          isMobile
+            ? undefined
+            : (e) => {
+                // Row handlers stop propagation; anything that bubbles up
+                // here was a right-click on empty canvas.
+                ctxMenu.openAt(e, { kind: 'empty' })
+              }
+        }
+      >
         {visibleItems.length === 0 ? (
           query.trim() ? (
             <SearchEmptyState query={query.trim()} lang={lang} />
@@ -521,6 +839,8 @@ export function MyDrivePage() {
             onOpen={open}
             onAction={onAction}
             onNavigateToParent={goTo}
+            onContextMenu={nodeCtxHandler}
+            draggable={dndEnabled}
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={onSort}
@@ -534,6 +854,8 @@ export function MyDrivePage() {
             onToggle={toggle}
             onOpen={open}
             onAction={onAction}
+            onContextMenu={nodeCtxHandler}
+            draggable={dndEnabled}
             lang={lang}
             showDotFiles={showDotFiles}
           />
@@ -548,6 +870,149 @@ export function MyDrivePage() {
           onDownload={downloadOne}
         />
       )}
+
+      <ContextMenu menu={ctxMenu}>
+        {ctxMenu.payload?.kind === 'node' &&
+          (() => {
+            const n = ctxMenu.payload.node
+            return (
+              <MenuList className="min-w-44">
+                <MenuItem
+                  icon={
+                    n.type === 'folder' ? (
+                      <FolderOpenIcon className="size-3.5" />
+                    ) : (
+                      <EyeIcon className="size-3.5" />
+                    )
+                  }
+                  onClick={() => {
+                    ctxMenu.close()
+                    const idx = visibleItems.findIndex((x) => x.id === n.id)
+                    if (idx >= 0) open(n, idx)
+                  }}
+                >
+                  {n.type === 'folder' ? <T name="openFolder" /> : <T name="preview" />}
+                </MenuItem>
+                <MenuSeparator />
+                <NodeMenuItems
+                  node={n}
+                  fire={(action) => {
+                    ctxMenu.close()
+                    onAction(action, n)
+                  }}
+                />
+              </MenuList>
+            )
+          })()}
+        {ctxMenu.payload?.kind === 'selection' && (
+          <MenuList className="min-w-44">
+            <MenuItem
+              icon={<DownloadIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                downloadSelected()
+              }}
+            >
+              <T name="download" />
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              icon={<StarIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                void handleStar([...selected], true)
+              }}
+            >
+              <T name="star" />
+            </MenuItem>
+            <MenuItem
+              icon={<CopyIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleCopy([...selected])
+              }}
+            >
+              <T name="copyTo" />
+            </MenuItem>
+            <MenuItem
+              icon={<FolderInputIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleMove([...selected])
+              }}
+            >
+              <T name="move" />
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              danger
+              icon={<Trash2Icon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleDelete([...selected])
+              }}
+            >
+              <T name="delete" />
+            </MenuItem>
+            <MenuItem
+              icon={<XIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                clear()
+              }}
+            >
+              <T name="clearSelection" />
+            </MenuItem>
+          </MenuList>
+        )}
+        {ctxMenu.payload?.kind === 'empty' && (
+          <MenuList className="min-w-44">
+            <MenuItem
+              icon={<FolderPlusIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                handleNewFolder()
+              }}
+            >
+              <T name="newFolder" />
+            </MenuItem>
+            <MenuItem
+              icon={<UploadIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                fileInputRef.current?.click()
+              }}
+            >
+              <T name="upload" />
+            </MenuItem>
+            <MenuItem
+              icon={<FolderUpIcon className="size-3.5" />}
+              onClick={() => {
+                ctxMenu.close()
+                folderInputRef.current?.click()
+              }}
+            >
+              <T name="uploadFolder" />
+            </MenuItem>
+          </MenuList>
+        )}
+      </ContextMenu>
     </div>
+
+    {/* Cursor-following chip while dragging (with a +N badge for multi-drag). */}
+    <DragOverlay dropAnimation={null}>
+      {dragNode && (
+        <div className="bg-popover border-border text-popover-foreground pointer-events-none flex w-fit max-w-60 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm shadow-xl">
+          <NodeIcon node={dragNode} />
+          <span className="truncate font-medium">{dragNode.name}</span>
+          {dragCount > 1 && (
+            <span className="bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+              +{dragCount - 1}
+            </span>
+          )}
+        </div>
+      )}
+    </DragOverlay>
+    </DndContext>
   )
 }

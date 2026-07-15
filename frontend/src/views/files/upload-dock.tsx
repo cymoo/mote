@@ -98,6 +98,14 @@ const UploadRow = memo(function UploadRow({
 
   return (
     <li className="border-border/60 px-3 py-2 text-xs last:border-0 [&:not(:last-child)]:border-b">
+      {item.path && (
+        <div
+          className="text-muted-foreground/70 truncate text-[10px] leading-tight"
+          title={item.path}
+        >
+          {item.path}/
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-medium" title={item.name}>
           {item.name}

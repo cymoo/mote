@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -40,9 +39,14 @@ func (h *DriveHandler) Routes(r chi.Router) {
 	r.Get("/list", m.H(h.List))
 	r.Get("/breadcrumbs", m.H(h.Breadcrumbs))
 	r.Get("/trash", m.H(h.Trash))
+	r.Get("/starred", m.H(h.Starred))
+	r.Get("/usage", m.H(h.Usage))
 	r.Post("/folder", m.H(h.CreateFolder))
+	r.Post("/folders/ensure-path", m.H(h.EnsurePath))
 	r.Post("/rename", m.H(h.Rename))
 	r.Post("/move", m.H(h.Move))
+	r.Post("/copy", m.H(h.Copy))
+	r.Post("/star", m.H(h.Star))
 	r.Post("/delete", m.H(h.Delete))
 	r.Post("/restore", m.H(h.Restore))
 	r.Post("/purge", m.H(h.Purge))
@@ -107,10 +111,35 @@ func (h *DriveHandler) Trash(r *http.Request) ([]models.DriveNode, error) {
 	return out, nil
 }
 
+func (h *DriveHandler) Starred(r *http.Request) ([]models.DriveNode, error) {
+	out, err := h.drive.ListStarred(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []models.DriveNode{}
+	}
+	return out, nil
+}
+
+func (h *DriveHandler) Usage(r *http.Request) (*models.DriveUsage, error) {
+	return h.drive.Usage(r.Context())
+}
+
 // ---------- mutations ----------
 
 func (h *DriveHandler) CreateFolder(r *http.Request, body m.JSON[models.DriveCreateFolderRequest]) (*models.DriveNode, error) {
 	n, err := h.drive.CreateFolder(r.Context(), body.Value.ParentID, body.Value.Name)
+	if err != nil {
+		return nil, mapDriveErr(err)
+	}
+	return n, nil
+}
+
+// EnsurePath get-or-creates a nested folder chain (folder uploads use this to
+// mirror client directory structure) and returns the final folder.
+func (h *DriveHandler) EnsurePath(r *http.Request, body m.JSON[models.DriveEnsurePathRequest]) (*models.DriveNode, error) {
+	n, err := h.drive.EnsureFolderPath(r.Context(), body.Value.ParentID, body.Value.Path)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
@@ -126,6 +155,24 @@ func (h *DriveHandler) Rename(r *http.Request, body m.JSON[models.DriveRenameReq
 
 func (h *DriveHandler) Move(r *http.Request, body m.JSON[models.DriveMoveRequest]) (m.StatusCode, error) {
 	if err := h.drive.Move(r.Context(), body.Value.IDs, body.Value.NewParentID); err != nil {
+		return 0, mapDriveErr(err)
+	}
+	return http.StatusNoContent, nil
+}
+
+func (h *DriveHandler) Copy(r *http.Request, body m.JSON[models.DriveCopyRequest]) ([]models.DriveNode, error) {
+	out, err := h.drive.Copy(r.Context(), body.Value.IDs, body.Value.NewParentID)
+	if err != nil {
+		return nil, mapDriveErr(err)
+	}
+	if out == nil {
+		out = []models.DriveNode{}
+	}
+	return out, nil
+}
+
+func (h *DriveHandler) Star(r *http.Request, body m.JSON[models.DriveStarRequest]) (m.StatusCode, error) {
+	if err := h.drive.SetStarred(r.Context(), body.Value.IDs, body.Value.Starred); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
@@ -181,20 +228,7 @@ func (h *DriveHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "private, max-age=86400")
-	http.ServeContent(w, r, "thumb.jpg", st.ModTime(), f)
+	serveThumbFile(w, r, path)
 }
 
 func (h *DriveHandler) serveBlob(w http.ResponseWriter, r *http.Request, forceAttachment bool) {
@@ -223,6 +257,31 @@ func (h *DriveHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 	// write deadline well beyond the global WriteTimeout.
 	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(2 * time.Hour))
 
+	// Multi-select: ?ids=1,2,3 zips an arbitrary selection.
+	if idsParam := r.URL.Query().Get("ids"); idsParam != "" {
+		ids := parseIDList(idsParam)
+		if len(ids) == 0 {
+			http.Error(w, "invalid ids", http.StatusBadRequest)
+			return
+		}
+		name := fmt.Sprintf("mote-drive-%s.zip", time.Now().Format("20060102-150405"))
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition",
+			fmt.Sprintf("attachment; filename*=UTF-8''%s", url.PathEscape(name)))
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if err := h.drive.ZipNodes(r.Context(), ids, w); err != nil {
+			// ZipNodes fails before writing anything when the whole selection
+			// is gone — a clean 404 is still possible then.
+			if errors.Is(err, services.ErrDriveNotFound) {
+				w.Header().Del("Content-Disposition")
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			log.Printf("zip download failed: %v", err)
+		}
+		return
+	}
+
 	idStr := r.URL.Query().Get("id")
 	id, _ := strconv.ParseInt(idStr, 10, 64)
 	node, err := h.drive.FindByID(r.Context(), id)
@@ -237,6 +296,18 @@ func (h *DriveHandler) DownloadZip(w http.ResponseWriter, r *http.Request) {
 	if err := h.drive.ZipFolder(r.Context(), id, w); err != nil {
 		log.Printf("zip download failed: %v", err)
 	}
+}
+
+// parseIDList parses a comma-separated id list, ignoring blank/invalid parts.
+func parseIDList(s string) []int64 {
+	parts := strings.Split(s, ",")
+	out := make([]int64, 0, len(parts))
+	for _, p := range parts {
+		if id, err := strconv.ParseInt(strings.TrimSpace(p), 10, 64); err == nil && id > 0 {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // ---------- uploads ----------

@@ -182,5 +182,20 @@
   "memosWithImages": "带图片的 memo",
   "untaggedMemos": "无标签 memo",
   "noStatsYet": "这个范围内还没有活动",
-  "appLocked": "应用已锁定"
+  "appLocked": "应用已锁定",
+  "copyTo": "复制到…",
+  "copyHere": "复制到此处",
+  "duplicate": "创建副本",
+  "copiedItems": "已复制 {0} 个项目",
+  "star": "收藏",
+  "unstar": "取消收藏",
+  "starred": "收藏",
+  "noStarred": "暂无收藏",
+  "usageSummary": "已用 {0} · 回收站 {1}",
+  "onDisk": "实际占用 {0}",
+  "uploadFolder": "上传文件夹",
+  "tooManyFiles": "文件太多（单次最多 {0} 个）",
+  "playbackSpeed": "倍速",
+  "pictureInPicture": "画中画",
+  "resumedPlayback": "已从 {0} 继续播放"
 }

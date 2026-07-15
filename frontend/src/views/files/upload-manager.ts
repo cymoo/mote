@@ -2,6 +2,7 @@ import {
   cancelUpload,
   completeUpload,
   CollisionPolicy,
+  ensureFolderPath,
   initUpload,
   putChunk,
 } from './api'
@@ -15,10 +16,17 @@ export interface UploadItem {
   error?: string
   parentID: number | null
   cancelled?: boolean
+  // Directory prefix relative to the drop/pick root ("photos/2024") for
+  // folder uploads; display-only in the dock.
+  path?: string
 }
 
 const CHUNK = 8 * 1024 * 1024
 const CONCURRENCY = 3
+// Files uploading at once (each with CONCURRENCY chunk streams). Without this
+// cap a folder drop with hundreds of files would open hundreds of concurrent
+// upload sessions.
+const MAX_ACTIVE_FILES = 3
 const MAX_SIZE = 4 * 1024 * 1024 * 1024
 
 type Listener = (items: UploadItem[]) => void
@@ -30,6 +38,40 @@ class UploadManager {
   private completedListeners = new Set<CompletedListener>()
   private uploadIDs = new Map<string, string>() // local id -> server upload id
   private cancellers = new Map<string, () => void>()
+  // One ensure-path request per unique (parent, relDir) — folder uploads
+  // resolve hundreds of files against a handful of directories.
+  private folderIDCache = new Map<string, Promise<number>>()
+  // File-level semaphore state.
+  private active = 0
+  private waiters: (() => void)[] = []
+
+  private async acquire(): Promise<void> {
+    if (this.active < MAX_ACTIVE_FILES) {
+      this.active++
+      return
+    }
+    // The releaser hands its still-counted slot to the woken waiter, so the
+    // count can never over-subscribe between release and wake-up.
+    await new Promise<void>((resolve) => this.waiters.push(resolve))
+  }
+
+  private release() {
+    const next = this.waiters.shift()
+    if (next) next()
+    else this.active--
+  }
+
+  private resolveDir(parentID: number | null, relDir: string): Promise<number> {
+    const key = `${parentID ?? 'root'}:${relDir}`
+    let p = this.folderIDCache.get(key)
+    if (!p) {
+      p = ensureFolderPath(parentID, relDir).then((n) => n.id)
+      // A failed resolution must not poison the cache for retries.
+      p.catch(() => this.folderIDCache.delete(key))
+      this.folderIDCache.set(key, p)
+    }
+    return p
+  }
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn)
@@ -75,6 +117,7 @@ class UploadManager {
     file: File,
     parentID: number | null,
     onCollision: CollisionPolicy = 'ask',
+    relDir?: string,
   ): Promise<{ id: string; conflict: boolean }> {
     if (file.size > MAX_SIZE) {
       throw new Error(`File too large (max ${MAX_SIZE / (1 << 30)} GB)`)
@@ -87,11 +130,24 @@ class UploadManager {
       loaded: 0,
       status: 'pending',
       parentID,
+      path: relDir,
     })
     this.emit()
 
+    // Register first (the dock shows the whole queue), then wait for a slot.
+    await this.acquire()
     try {
-      const init = await initUpload(parentID, file.name, file.size, CHUNK)
+      // The user may have cleared/cancelled the queued item while waiting.
+      const queued = this.items.get(localID)
+      if (!queued || queued.status !== 'pending') {
+        return { id: localID, conflict: false }
+      }
+
+      let targetParent = parentID
+      if (relDir) {
+        targetParent = await this.resolveDir(parentID, relDir)
+      }
+      const init = await initUpload(targetParent, file.name, file.size, CHUNK)
       this.uploadIDs.set(localID, init.upload_id)
       const received = new Set(init.received_chunks)
 
@@ -161,6 +217,7 @@ class UploadManager {
       // Don't re-throw: the dock already surfaces the failure clearly.
       return { id: localID, conflict: false }
     } finally {
+      this.release()
       this.cancellers.delete(localID)
     }
   }
