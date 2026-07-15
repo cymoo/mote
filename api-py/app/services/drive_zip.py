@@ -7,14 +7,18 @@ DriveService class stays focused on tree CRUD.
 from __future__ import annotations
 
 import io
+import json
 import os
 import zipfile
 from typing import Iterator
 
-from .drive import DriveNotFound, DriveService
+from sqlalchemy import text
+
+from ..extension import db
+from .drive import DriveNodeRow, DriveNotFound, DriveService
 
 
-__all__ = ['zip_folder_iter']
+__all__ = ['zip_folder_iter', 'zip_nodes_iter']
 
 
 def zip_folder_iter(service: DriveService, folder_id: int) -> Iterator[bytes]:
@@ -78,6 +82,171 @@ def zip_folder_iter(service: DriveService, folder_id: int) -> Iterator[bytes]:
     tail = buf.drain()
     if tail:
         yield tail
+
+
+def zip_nodes_iter(service: DriveService, ids: list[int]) -> Iterator[bytes]:
+    """Stream a ZIP archive of an arbitrary node selection.
+
+    Unlike :func:`zip_folder_iter` — which strips the root folder's own name —
+    selected folders appear as top-level directories and selected files as
+    top-level entries. Ids nested under other selected ids are skipped (their
+    content arrives via the ancestor). Same-named top-level entries get a
+    "name (1)" suffix rather than being silently dropped: a multi-select from
+    search results can legitimately pick same-named nodes from different
+    folders.
+
+    Targets are resolved eagerly, so :class:`DriveNotFound` is raised before
+    any body bytes exist when no valid node remains — the handler can still
+    send a clean 404.
+    """
+    uniq: list[int] = []
+    seen_ids: set[int] = set()
+    for nid in ids:
+        if nid in seen_ids:
+            continue
+        seen_ids.add(nid)
+        uniq.append(nid)
+
+    nested = _nested_selections(uniq)
+    targets: list[DriveNodeRow] = []
+    for nid in uniq:
+        if nid in nested:
+            continue
+        try:
+            n = service.find_by_id(nid)
+        except DriveNotFound:
+            continue
+        if n.deleted_at is not None:
+            continue
+        targets.append(n)
+    if not targets:
+        raise DriveNotFound('drive node not found')
+
+    def gen() -> Iterator[bytes]:
+        buf = _ChunkBuffer()
+        with zipfile.ZipFile(buf, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+            top_level: set[str] = set()
+            for root in targets:
+                if root.type == 'file':
+                    name = _unique_top_level(
+                        top_level, _sanitize_zip_path(root.name)
+                    )
+                    if not name or not root.blob_path:
+                        continue
+                    yield from _stream_blob_entry(service, zf, buf, name, root.blob_path)
+                    continue
+
+                descendants = service.collect_descendants(root.id)
+                top_name = _unique_top_level(
+                    top_level, _sanitize_zip_path(root.name)
+                )
+                if not top_name:
+                    continue
+                seen: set[str] = set()
+                for d in descendants:
+                    if d.id == root.id:
+                        rel = top_name
+                    else:
+                        # rel_path starts with the root's own name; swap it
+                        # for the (possibly suffixed) reserved top-level name.
+                        sub = d.rel_path
+                        if sub.startswith(root.name):
+                            sub = sub[len(root.name):]
+                        if sub.startswith('/'):
+                            sub = sub[1:]
+                        sub = _sanitize_zip_path(sub)
+                        if not sub:
+                            continue
+                        rel = top_name + '/' + sub
+                    if rel in seen:
+                        continue
+                    seen.add(rel)
+
+                    if d.type == 'folder':
+                        zi = zipfile.ZipInfo(rel + '/')
+                        zi.compress_type = zipfile.ZIP_DEFLATED
+                        zf.writestr(zi, b'')
+                        chunk = buf.drain()
+                        if chunk:
+                            yield chunk
+                        continue
+                    if not d.blob_path:
+                        continue
+                    yield from _stream_blob_entry(service, zf, buf, rel, d.blob_path)
+
+        tail = buf.drain()
+        if tail:
+            yield tail
+
+    return gen()
+
+
+def _stream_blob_entry(
+    service: DriveService,
+    zf: zipfile.ZipFile,
+    buf: '_ChunkBuffer',
+    rel: str,
+    blob_path: str,
+) -> Iterator[bytes]:
+    """Stream one stored blob into an open archive, yielding drained chunks.
+    A blob missing on disk is skipped (matches zip_folder_iter).
+    """
+    abs_path = service.blob_abs_path(blob_path)
+    if not os.path.exists(abs_path):
+        return
+    zi = zipfile.ZipInfo(rel)
+    zi.compress_type = zipfile.ZIP_DEFLATED
+    with zf.open(zi, mode='w', force_zip64=True) as zw, open(
+        abs_path, 'rb'
+    ) as src:
+        while True:
+            block = src.read(64 * 1024)
+            if not block:
+                break
+            zw.write(block)
+            chunk = buf.drain()
+            if chunk:
+                yield chunk
+
+
+def _nested_selections(ids: list[int]) -> set[int]:
+    """Return the subset of ids that are strict descendants of other ids in
+    the same selection (possible when multi-selecting from search results,
+    where ancestors and descendants can appear side by side).
+    """
+    if len(ids) < 2:
+        return set()
+    rows = db.session.execute(
+        text(
+            'WITH RECURSIVE selected(id) AS ('
+            '  SELECT value FROM json_each(:ids)'
+            '), '
+            'descendants(id) AS ('
+            '  SELECT n.id FROM drive_nodes n '
+            '  WHERE n.parent_id IN (SELECT id FROM selected) '
+            '  UNION ALL '
+            '  SELECT n.id FROM drive_nodes n JOIN descendants d ON n.parent_id = d.id'
+            ') SELECT id FROM selected WHERE id IN (SELECT id FROM descendants)'
+        ),
+        {'ids': json.dumps(ids)},
+    ).all()
+    return {r.id for r in rows}
+
+
+def _unique_top_level(seen: set[str], name: str) -> str:
+    """Reserve a unique top-level entry name, suffixing "stem (1).ext" style
+    on collision.
+    """
+    if not name:
+        return ''
+    cand = name
+    i = 1
+    while cand in seen:
+        stem, ext = os.path.splitext(name)
+        cand = f'{stem} ({i}){ext}'
+        i += 1
+    seen.add(cand)
+    return cand
 
 
 def _sanitize_zip_path(p: str) -> str:

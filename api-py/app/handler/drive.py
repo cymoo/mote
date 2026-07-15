@@ -5,6 +5,7 @@ Service instances are attached to the Flask app in app.py as
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import NoReturn
 from urllib.parse import quote
 
@@ -59,7 +60,7 @@ from ..services.drive_upload import (
     UploadInvalid,
     UploadNotFound,
 )
-from ..services.drive_zip import zip_folder_iter
+from ..services.drive_zip import zip_folder_iter, zip_nodes_iter
 from ..middleware import validate
 from .drive_serve import serve_drive_blob
 
@@ -301,19 +302,56 @@ def thumb(payload: DriveIdQuery):
     return resp
 
 
+def _parse_id_list(s: str) -> list[int]:
+    """Parse a comma-separated id list, ignoring blank/invalid parts."""
+    out: list[int] = []
+    for part in s.split(','):
+        part = part.strip()
+        try:
+            nid = int(part)
+        except ValueError:
+            continue
+        if nid > 0:
+            out.append(nid)
+    return out
+
+
 @drive_bp.get('/download-zip')
-@validate(type='query')
-def download_zip(payload: DriveIdQuery):
-    if payload.id <= 0:
+def download_zip():
+    drive = _drive()
+
+    # Multi-select: ?ids=1,2,3 zips an arbitrary selection.
+    ids_param = (request.args.get('ids') or '').strip()
+    if ids_param:
+        ids = _parse_id_list(ids_param)
+        if not ids:
+            raise APIError(400, 'Bad Request', 'invalid ids')
+        try:
+            # Targets resolve eagerly: when the whole selection is gone a
+            # clean 404 is still possible — nothing has been written yet.
+            gen = zip_nodes_iter(drive, ids)
+        except DriveNotFound:
+            raise APIError(404, 'Not Found')
+        name = datetime.now().strftime('mote-drive-%Y%m%d-%H%M%S.zip')
+        headers = {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': (
+                f"attachment; filename*=UTF-8''{quote(name, safe='')}"
+            ),
+            'X-Content-Type-Options': 'nosniff',
+        }
+        return Response(stream_with_context(gen), headers=headers)
+
+    node_id = request.args.get('id', type=int) or 0
+    if node_id <= 0:
         raise APIError(400, 'Bad Request', 'invalid id')
     try:
-        n = _drive().find_by_id(payload.id)
+        n = drive.find_by_id(node_id)
     except DriveNotFound:
         raise APIError(404, 'Not Found')
     if n.type != 'folder' or n.deleted_at is not None:
         raise APIError(404, 'Not Found')
-    drive = _drive()
-    gen = zip_folder_iter(drive, payload.id)
+    gen = zip_folder_iter(drive, node_id)
     headers = {
         'Content-Type': 'application/zip',
         'Content-Disposition': (
