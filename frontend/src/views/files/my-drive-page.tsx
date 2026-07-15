@@ -1,4 +1,14 @@
 import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
   CopyIcon,
   DownloadIcon,
   EyeIcon,
@@ -54,7 +64,7 @@ import {
   useSort,
 } from './hooks'
 import { TopBar } from './layout'
-import { Breadcrumbs, NodeMenuItems, RowAction, SearchBox, SelectionBar } from './parts'
+import { Breadcrumbs, NodeIcon, NodeMenuItems, RowAction, SearchBox, SelectionBar } from './parts'
 import { PreviewModal } from './preview'
 import { uploadManager } from './upload-manager'
 import { EmptyState, GridView, ListView, SearchEmptyState } from './views'
@@ -168,6 +178,66 @@ export function MyDrivePage() {
   const { selected, setSelected, toggle, toggleAll, clear } = useSelection(visibleItems)
   const isMobile = useIsMobile()
   const ctxMenu = useContextMenu<CtxPayload>()
+
+  // ---- drag-to-move ---------------------------------------------------------
+
+  // 8px activation keeps plain clicks working (open-on-click stays primary).
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+  // Search results mix folders from different parents — droppable rows would
+  // be ambiguous targets there; the move dialog covers that path.
+  const dndEnabled = !isMobile && !query.trim()
+  const dragIDsRef = useRef<number[]>([])
+  const [dragNode, setDragNode] = useState<DriveNode | null>(null)
+  const [dragCount, setDragCount] = useState(0)
+  // Swallow the click that lands on the row right after a drop.
+  const suppressClickRef = useRef(false)
+
+  const onDragStart = (e: DragStartEvent) => {
+    const id = Number(e.active.id)
+    // Dragging a selected node moves the whole selection; anything else
+    // becomes a fresh single selection.
+    const ids = selected.has(id) ? [...selected] : [id]
+    if (!selected.has(id)) setSelected(new Set([id]))
+    dragIDsRef.current = ids
+    setDragNode(items.find((n) => n.id === id) ?? null)
+    setDragCount(ids.length)
+  }
+
+  const resetDrag = () => {
+    dragIDsRef.current = []
+    setDragNode(null)
+    setDragCount(0)
+    suppressClickRef.current = true
+    setTimeout(() => {
+      suppressClickRef.current = false
+    }, 80)
+  }
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const ids = dragIDsRef.current
+    const overID = e.over ? String(e.over.id) : ''
+    resetDrag()
+    if (!overID || ids.length === 0) return
+
+    let target: number | null
+    if (overID === 'crumb-root') target = null
+    else if (overID.startsWith('crumb-')) target = Number(overID.slice('crumb-'.length))
+    else if (overID.startsWith('folder-')) target = Number(overID.slice('folder-'.length))
+    else return
+
+    // No-ops: dropping onto a dragged node itself or back into the current folder.
+    if (target != null && ids.includes(target)) return
+    if (target === parentID) return
+
+    void (async () => {
+      try {
+        await moveNodes(ids, target)
+        await refresh()
+      } catch (err) {
+        toast.error((err as Error).message)
+      }
+    })()
+  }
 
   const refresh = useCallback(async () => {
     if (query.trim()) {
@@ -464,6 +534,8 @@ export function MyDrivePage() {
 
   const open = useCallback(
     (n: DriveNode, idx: number) => {
+      // The click right after a drop must not open the drop target.
+      if (suppressClickRef.current) return
       if (n.type === 'folder') {
         goTo(n.id)
         return
@@ -562,6 +634,13 @@ export function MyDrivePage() {
   })
 
   return (
+    <DndContext
+      sensors={dndSensors}
+      collisionDetection={pointerWithin}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={resetDrag}
+    >
     <div
       className={cx(
         'flex min-h-0 flex-1 flex-col',
@@ -570,6 +649,10 @@ export function MyDrivePage() {
           : undefined,
       )}
       onDragOver={(e) => {
+        // Only OS file drags: internal drag-to-move is pointer-based and
+        // never fires HTML5 drag events, and dragged text/links must not
+        // light up the upload overlay.
+        if (!e.dataTransfer.types.includes('Files')) return
         e.preventDefault()
         setDragOver(true)
       }}
@@ -588,6 +671,7 @@ export function MyDrivePage() {
             isTrash={false}
             lang={lang}
             onSecretActivate={handleToggleDotFiles}
+            droppable={dndEnabled}
           />
         }
         extra={
@@ -756,6 +840,7 @@ export function MyDrivePage() {
             onAction={onAction}
             onNavigateToParent={goTo}
             onContextMenu={nodeCtxHandler}
+            draggable={dndEnabled}
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={onSort}
@@ -770,6 +855,7 @@ export function MyDrivePage() {
             onOpen={open}
             onAction={onAction}
             onContextMenu={nodeCtxHandler}
+            draggable={dndEnabled}
             lang={lang}
             showDotFiles={showDotFiles}
           />
@@ -912,5 +998,21 @@ export function MyDrivePage() {
         )}
       </ContextMenu>
     </div>
+
+    {/* Cursor-following chip while dragging (with a +N badge for multi-drag). */}
+    <DragOverlay dropAnimation={null}>
+      {dragNode && (
+        <div className="bg-popover border-border text-popover-foreground pointer-events-none flex w-fit max-w-60 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm shadow-xl">
+          <NodeIcon node={dragNode} />
+          <span className="truncate font-medium">{dragNode.name}</span>
+          {dragCount > 1 && (
+            <span className="bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums">
+              +{dragCount - 1}
+            </span>
+          )}
+        </div>
+      )}
+    </DragOverlay>
+    </DndContext>
   )
 }

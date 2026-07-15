@@ -1,3 +1,4 @@
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { ArrowDownIcon, ArrowUpIcon, FolderOpenIcon, KeyIcon, LinkIcon, RotateCcwIcon, SearchIcon, Share2Icon, StarIcon, Trash2Icon, UploadIcon, XIcon } from 'lucide-react'
 import React, { memo } from 'react'
 
@@ -25,6 +26,9 @@ interface ListViewProps {
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
   onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  // Enables drag-to-move (rows draggable, folder rows droppable). Only the
+  // main browser turns this on; requires an enclosing <DndContext>.
+  draggable?: boolean
   sortKey: SortKey
   sortDir: SortDir
   onSort: (k: SortKey) => void
@@ -41,6 +45,7 @@ export const ListView = memo(function ListView({
   onAction,
   onNavigateToParent,
   onContextMenu,
+  draggable,
   sortKey,
   sortDir,
   onSort,
@@ -92,6 +97,7 @@ export const ListView = memo(function ListView({
             onAction={onAction}
             onNavigateToParent={onNavigateToParent}
             onContextMenu={onContextMenu}
+            draggable={draggable}
             lang={lang}
             dimmed={showDotFiles && n.name.startsWith('.')}
           />
@@ -110,6 +116,7 @@ interface ListRowProps {
   onAction: (action: RowAction, n: DriveNode) => void
   onNavigateToParent: (parentID: number | null) => void
   onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  draggable?: boolean
   lang: Lang
   dimmed?: boolean
 }
@@ -123,16 +130,34 @@ const ListRow = memo(function ListRow({
   onAction,
   onNavigateToParent,
   onContextMenu,
+  draggable,
   lang,
   dimmed,
 }: ListRowProps) {
+  const {
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: node.id, disabled: !draggable })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `folder-${node.id}`,
+    disabled: !draggable || node.type !== 'folder',
+  })
   return (
     <tr
+      ref={(el) => {
+        setDragRef(el)
+        setDropRef(el)
+      }}
       className={cx(
         'group hover:bg-accent/60 cursor-pointer border-b transition-colors',
         'border-border/40',
         selected ? 'bg-primary/10 hover:bg-primary/15' : undefined,
         dimmed ? 'opacity-50' : undefined,
+        isDragging ? 'opacity-40' : undefined,
+        // Drop-target highlight (background only — box-shadow rings are
+        // unreliable on <tr>).
+        isOver ? 'bg-primary/20 hover:bg-primary/20' : undefined,
       )}
       onClick={(e) => {
         // 打开是高频操作：单击即打开；⌘/Ctrl/Shift+单击、或点复选框才是多选。
@@ -143,8 +168,13 @@ const ListRow = memo(function ListRow({
         }
       }}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, node) : undefined}
+      {...(draggable ? listeners : {})}
     >
-      <td className="px-3" onClick={(e) => e.stopPropagation()}>
+      <td
+        className="px-3"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         <span
           className={cx(
             'inline-flex transition-opacity',
@@ -206,6 +236,7 @@ const ListRow = memo(function ListRow({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <span className="inline-flex opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100">
           <RowMenu node={node} onAction={onAction} lang={lang} />
@@ -224,6 +255,7 @@ interface GridViewProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  draggable?: boolean
   lang: Lang
   showDotFiles?: boolean
 }
@@ -235,6 +267,7 @@ export const GridView = memo(function GridView({
   onOpen,
   onAction,
   onContextMenu,
+  draggable,
   lang,
   showDotFiles,
 }: GridViewProps) {
@@ -250,6 +283,7 @@ export const GridView = memo(function GridView({
           onOpen={onOpen}
           onAction={onAction}
           onContextMenu={onContextMenu}
+          draggable={draggable}
           lang={lang}
           dimmed={showDotFiles && n.name.startsWith('.')}
         />
@@ -266,6 +300,7 @@ interface GridCardProps {
   onOpen: (n: DriveNode, idx: number) => void
   onAction: (action: RowAction, n: DriveNode) => void
   onContextMenu?: (e: React.MouseEvent, n: DriveNode) => void
+  draggable?: boolean
   lang: Lang
   dimmed?: boolean
 }
@@ -278,11 +313,25 @@ const GridCard = memo(function GridCard({
   onOpen,
   onAction,
   onContextMenu,
+  draggable,
   lang,
   dimmed,
 }: GridCardProps) {
+  const {
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: node.id, disabled: !draggable })
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `folder-${node.id}`,
+    disabled: !draggable || node.type !== 'folder',
+  })
   return (
     <div
+      ref={(el) => {
+        setDragRef(el)
+        setDropRef(el)
+      }}
       role="button"
       tabIndex={0}
       className={cx(
@@ -290,6 +339,8 @@ const GridCard = memo(function GridCard({
         'hover:bg-accent/60 border-transparent hover:-translate-y-0.5 hover:shadow-md',
         selected ? 'border-primary/40 bg-primary/10 ring-primary/20 ring-2' : undefined,
         dimmed ? 'opacity-50' : undefined,
+        isDragging ? 'opacity-40' : undefined,
+        isOver ? 'ring-primary bg-primary/15 ring-2' : undefined,
       )}
       onClick={(e) => {
         // Modifier-click toggles selection; plain click opens.
@@ -304,6 +355,7 @@ const GridCard = memo(function GridCard({
       }}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, node) : undefined}
       title={node.name}
+      {...(draggable ? listeners : {})}
     >
       {/* hover-revealed checkbox in top-left (always visible on mobile) */}
       <div
@@ -316,6 +368,7 @@ const GridCard = memo(function GridCard({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <Checkbox
           checked={selected}
@@ -329,6 +382,7 @@ const GridCard = memo(function GridCard({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <RowMenu node={node} onAction={onAction} lang={lang} />
       </div>

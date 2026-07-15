@@ -20,6 +20,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
+import { useDroppable } from '@dnd-kit/core'
 import { CSSProperties, ReactNode, Ref, memo, useRef, useState } from 'react'
 
 import { cx } from '@/utils/css.ts'
@@ -43,10 +44,37 @@ interface BreadcrumbsProps {
   label?: string
   lang: Lang
   onSecretActivate?: () => void
+  // Makes the root and every non-current crumb a drag-to-move drop target.
+  // Only the main browser sets this (requires an enclosing <DndContext>).
+  droppable?: boolean
 }
 
 const SECRET_CLICK_TARGET = 10
 const SECRET_CLICK_TIMEOUT_MS = 2000
+
+// Wraps a crumb button in a droppable zone with a hover highlight.
+function CrumbDropZone({
+  id,
+  enabled,
+  children,
+}: {
+  id: string
+  enabled: boolean
+  children: ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id, disabled: !enabled })
+  return (
+    <span
+      ref={setNodeRef}
+      className={cx(
+        'inline-flex rounded-md',
+        enabled && isOver ? 'bg-primary/15 ring-primary ring-2' : undefined,
+      )}
+    >
+      {children}
+    </span>
+  )
+}
 
 export const Breadcrumbs = memo(function Breadcrumbs({
   crumbs,
@@ -56,6 +84,7 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   label,
   lang,
   onSecretActivate,
+  droppable,
 }: BreadcrumbsProps) {
   const clickCount = useRef(0)
   const clickTimer = useRef<ReturnType<typeof setTimeout>>(null)
@@ -76,33 +105,37 @@ export const Breadcrumbs = memo(function Breadcrumbs({
   }
   return (
     <nav className="text-muted-foreground flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto whitespace-nowrap text-sm [-ms-overflow-style:none] [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:[mask-image:none] md:flex-initial md:overflow-visible md:whitespace-normal [&::-webkit-scrollbar]:hidden">
-      <button
-        type="button"
-        className="hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md px-2 py-1 transition-colors"
-        onClick={handleRootClick}
-        title={t('myDrive', lang)}
-      >
-        <T name="myDrive" />
-      </button>
+      <CrumbDropZone id="crumb-root" enabled={!!droppable}>
+        <button
+          type="button"
+          className="hover:bg-accent hover:text-accent-foreground shrink-0 rounded-md px-2 py-1 transition-colors"
+          onClick={handleRootClick}
+          title={t('myDrive', lang)}
+        >
+          <T name="myDrive" />
+        </button>
+      </CrumbDropZone>
       {!isTrash && !label &&
         crumbs?.map((c, i) => {
           const last = i === crumbs.length - 1
           return (
             <span key={c.id} className="flex shrink-0 items-center">
               <ChevronRightIcon className="size-3.5 opacity-60" />
-              <button
-                type="button"
-                disabled={last}
-                className={cx(
-                  'rounded-md px-2 py-1 transition-colors',
-                  last
-                    ? 'text-foreground font-medium'
-                    : 'hover:bg-accent hover:text-accent-foreground',
-                )}
-                onClick={() => onCrumb(c.id)}
-              >
-                {c.name}
-              </button>
+              <CrumbDropZone id={`crumb-${c.id}`} enabled={!!droppable && !last}>
+                <button
+                  type="button"
+                  disabled={last}
+                  className={cx(
+                    'rounded-md px-2 py-1 transition-colors',
+                    last
+                      ? 'text-foreground font-medium'
+                      : 'hover:bg-accent hover:text-accent-foreground',
+                  )}
+                  onClick={() => onCrumb(c.id)}
+                >
+                  {c.name}
+                </button>
+              </CrumbDropZone>
             </span>
           )
         })}
