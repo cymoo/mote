@@ -263,37 +263,79 @@ async fn thumb(
     Ok(resp)
 }
 
+#[derive(Debug, serde::Deserialize, Default)]
+struct DriveZipQuery {
+    id: Option<i64>,
+    ids: Option<String>,
+}
+
 async fn download_zip(
     State(state): State<AppState>,
-    Query(q): Query<DriveIdQuery>,
+    Query(q): Query<DriveZipQuery>,
 ) -> ApiResult<Response> {
-    let node = state.drive.find_by_id(q.id).await?;
+    // Multi-select: ?ids=1,2,3 zips an arbitrary selection.
+    if let Some(ids_param) = q.ids.as_deref().filter(|s| !s.is_empty()) {
+        let ids = parse_id_list(ids_param);
+        if ids.is_empty() {
+            return Err(bad_request("invalid ids"));
+        }
+        // Targets are resolved before any body byte is written, so a fully
+        // deleted/missing selection still yields a clean 404.
+        let targets = state.drive_zip.resolve_zip_targets(&ids).await?;
+        let name = format!(
+            "mote-drive-{}.zip",
+            chrono::Local::now().format("%Y%m%d-%H%M%S")
+        );
+        let (writer, reader) = tokio::io::duplex(64 * 1024);
+        let zip_svc = state.drive_zip.clone();
+        tokio::spawn(async move {
+            if let Err(e) = zip_svc.zip_nodes(&targets, writer).await {
+                tracing::error!("zip_nodes failed: {:?}", e);
+            }
+        });
+        return Ok(zip_stream_response(reader, &name));
+    }
+
+    let id = q.id.unwrap_or(0);
+    let node = state.drive.find_by_id(id).await?;
     if node.r#type != "folder" || node.deleted_at.is_some() {
         return Err(ApiError::NotFound("not found".into()));
     }
     let (writer, reader) = tokio::io::duplex(64 * 1024);
     let zip_svc = state.drive_zip.clone();
-    let id = q.id;
     tokio::spawn(async move {
         if let Err(e) = zip_svc.zip_folder(id, writer).await {
             tracing::error!("zip_folder failed: {:?}", e);
         }
     });
+    Ok(zip_stream_response(reader, &format!("{}.zip", node.name)))
+}
+
+/// Builds a streaming zip response with attachment headers.
+pub(crate) fn zip_stream_response(reader: tokio::io::DuplexStream, filename: &str) -> Response {
     let stream = ReaderStream::new(reader);
     let body = Body::from_stream(stream);
     let mut resp = Response::new(body);
     let h = resp.headers_mut();
     h.insert(CONTENT_TYPE, HeaderValue::from_static("application/zip"));
     let disp = format!(
-        "attachment; filename*=UTF-8''{}.zip",
-        urlencoding::encode(&node.name)
+        "attachment; filename*=UTF-8''{}",
+        urlencoding::encode(filename)
     );
     h.insert(
         CONTENT_DISPOSITION,
         HeaderValue::from_str(&disp).unwrap_or(HeaderValue::from_static("attachment")),
     );
     h.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    Ok(resp)
+    resp
+}
+
+/// Parses a comma-separated id list, ignoring blank/invalid parts.
+fn parse_id_list(s: &str) -> Vec<i64> {
+    s.split(',')
+        .filter_map(|p| p.trim().parse::<i64>().ok())
+        .filter(|&v| v > 0)
+        .collect()
 }
 
 pub(crate) async fn serve_blob(
