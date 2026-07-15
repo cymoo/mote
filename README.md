@@ -18,7 +18,7 @@ Mote is a simple personal notebook and blog web app.
 * **Activity heat map** — GitHub-style grid showing daily writing frequency
 * **Stats panel** — total memo count, tag count, and active day count
 * **Recycle bin** — soft-delete with 30-day retention; restore or permanently delete
-* **Files** — built-in mini cloud drive: multi-level folders, drag-and-drop chunked & resumable uploads (up to 4 GB), in-browser preview (image / video / audio / PDF / text), zip download for folders, password-protected share links with optional expiry, and a separate trash with 30-day retention
+* **Files** — built-in mini cloud drive: multi-level folders, drag-and-drop chunked & resumable uploads (up to 4 GB) including whole-folder uploads, server-side dedup (identical files share one blob), copy / duplicate, drag-to-move, right-click context menus, starred favorites, storage-usage display, in-browser preview (image / video with resume & speed control / audio / PDF / text with syntax highlighting), zip download for folders and multi-selections, password-protected share links (files *and* folders, with a browsable visitor page) with optional expiry, and a separate trash with 30-day retention
 * **Dark / light theme**
 * **Mobile-friendly** responsive layout
 * **Bilingual UI** — switch between Chinese and English in settings
