@@ -132,13 +132,11 @@ class DriveShareService:
         password: Optional[str],
         expires_at: Optional[int],
     ) -> tuple[ShareRow, str]:
-        # Verify node exists, isn't deleted, and is a file (parity with
-        # api-go: folder shares are not allowed).
+        # Verify node exists and isn't deleted. Files and folders alike can
+        # be shared (parity with api-go).
         n = self.drive.find_by_id(node_id)
         if n.deleted_at is not None:
             raise DriveNotFound('drive node not found')
-        if n.type != 'file':
-            raise ShareInvalidNode('only files can be shared')
 
         token = secrets.token_urlsafe(SHARE_TOKEN_BYTES).rstrip('=')
         token_hash, prefix = _hash_token(token)
@@ -295,9 +293,36 @@ class DriveShareService:
         if share.expires_at is not None and share.expires_at <= utc_now_ms():
             raise ShareExpired('share has expired')
         node = self.drive.find_by_id(share.node_id)
-        if node.deleted_at is not None or node.type != 'file':
+        if node.deleted_at is not None:
             raise ShareNotFound('share not found')
         return share, node
+
+    def resolve_child(self, root_id: int, child_id: int):
+        """Return ``child_id``'s node iff it is ``root_id`` itself or an
+        ACTIVE descendant of it (every hop non-deleted). All ?id=/?dir=
+        lookups on the public share surface MUST go through this — it is what
+        scopes a folder share to its own subtree and keeps trashed content
+        unreachable.
+        """
+        if child_id == root_id:
+            n = self.drive.find_by_id(root_id)
+            if n.deleted_at is not None:
+                raise ShareNotFound('share not found')
+            return n
+        hit = db.session.execute(
+            text(
+                'WITH RECURSIVE subtree(id) AS ('
+                '  SELECT id FROM drive_nodes WHERE id = :root AND deleted_at IS NULL '
+                '  UNION ALL '
+                '  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id '
+                '  WHERE n.deleted_at IS NULL'
+                ') SELECT EXISTS(SELECT 1 FROM subtree WHERE id = :child)'
+            ),
+            {'root': root_id, 'child': child_id},
+        ).scalar()
+        if not hit:
+            raise ShareNotFound('share not found')
+        return self.drive.find_by_id(child_id)
 
     def verify_password(self, share: ShareRow, password: str) -> bool:
         if not share.password_hash:
