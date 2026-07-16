@@ -122,6 +122,10 @@ export interface DriveUsage {
   physical_bytes: number
   active_count: number
   trash_count: number
+  // Available / total bytes on the filesystem backing uploads (df-style); 0
+  // when the server can't determine them.
+  free_bytes: number
+  total_bytes: number
 }
 
 export const usage = () => jsonFetch<DriveUsage>('GET', `${BASE}/usage`)
