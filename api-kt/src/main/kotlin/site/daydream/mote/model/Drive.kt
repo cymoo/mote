@@ -253,6 +253,10 @@ data class DriveUsage(
     @JsonProperty("physical_bytes") val physicalBytes: Long,
     @JsonProperty("active_count") val activeCount: Long,
     @JsonProperty("trash_count") val trashCount: Long,
+    // Available and total bytes on the filesystem backing the uploads dir
+    // (df-style); 0 when the platform lookup fails.
+    @JsonProperty("free_bytes") val freeBytes: Long,
+    @JsonProperty("total_bytes") val totalBytes: Long,
 )
 
 data class DriveShareDto(

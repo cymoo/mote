@@ -331,5 +331,52 @@ class DriveServiceTest(
         assertEquals(7, u.trashBytes)
         assertEquals(1, u.trashCount)
         assertEquals(12, u.physicalBytes)
+
+        // Free/total disk space of the uploads filesystem (df-style).
+        assertTrue(
+            u.totalBytes in 1..Long.MAX_VALUE && u.freeBytes in 1..u.totalBytes,
+            "disk space: free=${u.freeBytes} total=${u.totalBytes} (want 0 < free <= total)",
+        )
+    }
+
+    // Emptying the trash must succeed even when it holds both a folder and its
+    // separately-batched deleted children: purging the folder cascade-deletes the
+    // children, so purging the (now-gone) children must be tolerated, not throw.
+    // Repro: delete 2 files from a folder, move a 3rd out, then delete the folder.
+    @Test
+    fun `empty trash tolerates cascade across separately-batched roots`() {
+        val folder = drive.createFolder(null, "F")
+        fun mk(name: String): Long {
+            val blob = "drive/et_$name"
+            writeBlob(blob, name.toByteArray())
+            return drive.createFileNode(folder.id, name, blob, "", name.length.toLong()).id
+        }
+        val a = mk("a.txt")
+        val b = mk("b.txt")
+        val c = mk("c.txt")
+
+        // Delete a & b from the folder (batch 1).
+        drive.softDelete(listOf(a, b))
+        // Move c out of the folder (stays active).
+        drive.move(listOf(c), null)
+        // Delete the folder itself (batch 2); a & b remain trashed inside it.
+        drive.softDelete(listOf(folder.id))
+
+        // Trash shows a, b and F as separate roots (different batches).
+        val ids = drive.listTrash().map { it.id }
+        assertEquals(3, ids.size, "trash roots should be a, b and F")
+
+        // Emptying the trash must not throw despite the cascade overlap: purging F
+        // cascade-removes a & b, so purging the now-gone a & b afterwards is a no-op.
+        assertDoesNotThrow { drive.purge(ids) }
+
+        // Everything trashed is gone; c (moved out, active) survives.
+        val remaining = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM drive_nodes WHERE deleted_at IS NOT NULL",
+            emptyMap<String, Any>(),
+            Int::class.java,
+        )
+        assertEquals(0, remaining, "trash should be fully purged")
+        assertNotNull(drive.findById(c), "moved-out file c should survive")
     }
 }

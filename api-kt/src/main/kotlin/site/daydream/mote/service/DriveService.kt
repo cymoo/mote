@@ -335,7 +335,16 @@ class DriveService(
     }
 
     fun purge(ids: List<Long>) {
-        for (id in ids) purgeOne(id)
+        for (id in ids) {
+            try {
+                purgeOne(id)
+            } catch (_: NotFoundException) {
+                // A node may already be gone when an ancestor earlier in the batch
+                // cascade-deleted it — e.g. emptying a trash that holds both a folder
+                // and its separately-batched deleted children. Treat the
+                // already-removed node as successfully purged.
+            }
+        }
     }
 
     private fun purgeOne(id: Long) {
@@ -728,14 +737,26 @@ class DriveService(
             )
             """.trimIndent(),
         ).fetchOne()!!.get(0, Long::class.java)
+        val (free, total) = diskSpace()
         return DriveUsage(
             activeBytes = active.get("b", Long::class.java),
             trashBytes = trash.get("b", Long::class.java),
             physicalBytes = physical,
             activeCount = active.get("c", Long::class.java),
             trashCount = trash.get("c", Long::class.java),
+            freeBytes = free,
+            totalBytes = total,
         )
     }
+
+    /**
+     * Available and total bytes on the filesystem backing the uploads dir
+     * (df-style); best-effort, returning (0, 0) when the platform lookup fails.
+     */
+    private fun diskSpace(): Pair<Long, Long> = runCatching {
+        val store = Files.getFileStore(Paths.get(uploadConfig.uploadDir))
+        store.usableSpace to store.totalSpace
+    }.getOrDefault(0L to 0L)
 
     /**
      * Walks/creates the folder chain [relPath] ("a/b/c") under [parentId] and
