@@ -531,7 +531,14 @@ class DriveService:
 
     def purge(self, ids: List[int]) -> None:
         for nid in ids:
-            self._purge_one(nid)
+            try:
+                self._purge_one(nid)
+            except DriveNotFound:
+                # A node may already be gone when an ancestor earlier in the
+                # batch cascade-deleted it — e.g. emptying a trash that holds
+                # both a folder and its separately-batched deleted children.
+                # Treat the already-removed node as successfully purged.
+                continue
 
     def _purge_one(self, node_id: int) -> None:
         rows = db.session.execute(
@@ -1014,12 +1021,16 @@ class DriveService:
                 ')'
             )
         ).scalar()
+        # Free/total space on the filesystem backing the uploads dir (df-style).
+        free_bytes, total_bytes = _disk_space(self.base_path)
         return {
             'active_bytes': active.b,
             'trash_bytes': trash.b,
             'physical_bytes': physical,
             'active_count': active.c,
             'trash_count': trash.c,
+            'free_bytes': free_bytes,
+            'total_bytes': total_bytes,
         }
 
     # -- descendants / zip ----------------------------------------------------
@@ -1111,3 +1122,15 @@ def _purge_thumb(base_path: str, blob_path: str) -> None:
     from .drive_thumb import purge_thumb
 
     purge_thumb(base_path, blob_path)
+
+
+def _disk_space(path: str) -> tuple[int, int]:
+    """Report the available and total bytes on the filesystem that contains
+    ``path`` (df-style). Best-effort: returns ``(0, 0)`` when the platform
+    lookup fails (e.g. non-POSIX). Mirrors api-go's ``diskSpace``.
+    """
+    try:
+        st = os.statvfs(path)
+    except OSError:
+        return 0, 0
+    return st.f_bavail * st.f_frsize, st.f_blocks * st.f_frsize

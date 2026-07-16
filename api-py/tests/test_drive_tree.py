@@ -171,6 +171,41 @@ def test_purge(svc):
     assert not os.path.exists(blob_abs)
 
 
+def test_empty_trash_with_cascading_batches(svc):
+    """Emptying a trash that holds both a folder and its separately-batched
+    deleted children must succeed: purging the folder cascade-deletes the
+    children, so purging the (now-gone) children must be tolerated, not raise.
+    Repro: delete 2 files from a folder, move a 3rd out, then delete the folder.
+    """
+    folder = svc.create_folder(None, 'F')
+    a = _file_node(svc, folder.id, 'a.txt')
+    b = _file_node(svc, folder.id, 'b.txt')
+    c = _file_node(svc, folder.id, 'c.txt')
+
+    # Delete a & b from inside the folder (batch 1).
+    svc.soft_delete([a.id, b.id])
+    # Move c out of the folder to the root.
+    svc.move([c.id], None)
+    # Delete the folder itself (batch 2); a & b stay trashed inside it.
+    svc.soft_delete([folder.id])
+
+    # Trash shows a, b and F as three separate roots (different batches).
+    ids = [t.id for t in svc.list_trash()]
+    assert len(ids) == 3
+    assert set(ids) == {a.id, b.id, folder.id}
+
+    # Empty the trash — purge the folder first so its cascade removes a & b,
+    # then purging the now-gone a & b must be tolerated rather than raise.
+    svc.purge([folder.id] + [i for i in ids if i != folder.id])
+
+    # Every trashed row is gone; c (moved out, still active) survives.
+    assert svc.list_trash() == []
+    for gone in (folder.id, a.id, b.id):
+        with pytest.raises(DriveNotFound):
+            svc.find_by_id(gone)
+    assert svc.find_by_id(c.id).id == c.id
+
+
 def _shared_blob(svc, rel_name, content=b'shared'):
     """Helper: write one blob file and return its drive-relative path."""
     blob_rel = os.path.join('drive', rel_name)
@@ -417,3 +452,5 @@ def test_usage(svc):
     assert u['trash_bytes'] == 7
     assert u['trash_count'] == 1
     assert u['physical_bytes'] == 12
+    # Free/total disk space of the tmp uploads filesystem (df-style).
+    assert 0 < u['free_bytes'] <= u['total_bytes']
