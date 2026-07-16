@@ -134,3 +134,18 @@ def test_ensure_path_route(client):
         '/api/drive/folders/ensure-path', json={'parent_id': None, 'path': '../up'}
     )
     assert rv.status_code == 400
+
+
+def test_drive_requires_auth(app, client):
+    # Unauthenticated request → 401 (the guard runs before the handler).
+    anon = app.test_client()
+    assert anon.get('/api/drive/list').status_code == 401
+    # The authenticated fixture client succeeds.
+    assert client.get('/api/drive/list').status_code == 200
+
+
+def test_shared_files_stays_public(app):
+    # The public share surface must NOT require the app token: an anonymous
+    # request reaches the handler (404 for a missing share, not 401).
+    anon = app.test_client()
+    assert anon.get('/shared-files/nonexistent').status_code == 404

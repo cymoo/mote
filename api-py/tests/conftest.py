@@ -7,6 +7,10 @@ from app.config import Config
 from app import create_app
 from app.extension import db as _db
 
+# The notes and drive APIs require MOTE_PASSWORD; pin it for tests so the value
+# the authenticated `client` fixture sends always matches what the app checks.
+os.environ.setdefault('MOTE_PASSWORD', 'foobar')
+
 
 @pytest.fixture(scope="session")
 def app():
@@ -45,7 +49,13 @@ def session(db):
 
 @pytest.fixture()
 def client(app, clean_drive):
-    return app.test_client()
+    c = app.test_client()
+    # /api/drive/* (and the notes API) require the app token; authenticate
+    # every request this client makes. /shared-files/* ignores it (public).
+    pw = os.getenv('MOTE_PASSWORD')
+    if pw:
+        c.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {pw}'
+    return c
 
 
 @pytest.fixture()
