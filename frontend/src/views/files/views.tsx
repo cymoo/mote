@@ -4,11 +4,10 @@ import React, { memo } from 'react'
 
 import { cx } from '@/utils/css.ts'
 
-import { Button } from '@/components/button.tsx'
 import { T, t } from '@/components/translation.tsx'
 
 import { DriveNode, SharedItem, humanSize } from './api'
-import { Checkbox, NodeIcon, PathChip, RowAction, RowMenu, ShareBadge, StarBadge } from './parts'
+import { Checkbox, NodeIcon, PathChip, RowAction, RowActionButton, RowMenu, ShareBadge, StarBadge } from './parts'
 
 type Lang = 'en' | 'zh'
 
@@ -440,31 +439,19 @@ export const TrashView = memo(function TrashView({
               </>
             ) : null}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void onRestore(n.id)}
+          <RowActionButton
+            icon={<RotateCcwIcon className="size-3.5" />}
+            label={t('restore', lang)}
             title={t('restore', lang)}
-            aria-label={t('restore', lang)}
-          >
-            <RotateCcwIcon className="size-4 md:mr-1" />
-            <span className="hidden md:inline">
-              <T name="restore" />
-            </span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            onClick={() => onPurge(n.id)}
+            onClick={() => void onRestore(n.id)}
+          />
+          <RowActionButton
+            icon={<Trash2Icon className="size-3.5" />}
+            label={t('delete', lang)}
             title={t('delete', lang)}
-            aria-label={t('delete', lang)}
-          >
-            <Trash2Icon className="size-4 md:mr-1" />
-            <span className="hidden md:inline">
-              <T name="delete" />
-            </span>
-          </Button>
+            danger
+            onClick={() => onPurge(n.id)}
+          />
         </li>
       ))}
     </ul>
@@ -655,30 +642,19 @@ export const SharedView = memo(function SharedView({
                 <span className="shrink-0 whitespace-nowrap">{formatExpiry(s.expires_at, lang)}</span>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onViewLink(s)}
+            <RowActionButton
+              icon={<LinkIcon className="size-3.5" />}
+              label={t('openLink', lang)}
               title={t('viewShareLink', lang)}
-              aria-label={t('viewShareLink', lang)}
-            >
-              <LinkIcon className="size-4 md:mr-1" />
-              <span className="hidden md:inline">
-                <T name="openLink" />
-              </span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => void onRevoke(s.id)}
+              onClick={() => onViewLink(s)}
+            />
+            <RowActionButton
+              icon={<XIcon className="size-3.5" />}
+              label={t('revoke', lang)}
               title={t('revoke', lang)}
-              aria-label={t('revoke', lang)}
-            >
-              <XIcon className="size-4 md:mr-1" />
-              <span className="hidden md:inline">
-                <T name="revoke" />
-              </span>
-            </Button>
+              danger
+              onClick={() => void onRevoke(s.id)}
+            />
           </li>
         )
       })}

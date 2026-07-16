@@ -601,3 +601,39 @@ export const PathChip = memo(function PathChip({
     </button>
   )
 })
+
+// ---------- row action button (trash / shared lists) ----------
+
+// Compact soft-ghost button matching the redesign: neutral by default,
+// subtle-red on hover for destructive actions. Label hides on mobile.
+export const RowActionButton = memo(function RowActionButton({
+  icon,
+  label,
+  title,
+  danger,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  title: string
+  danger?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className={cx(
+        'inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors',
+        danger
+          ? 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+          : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+      )}
+    >
+      {icon}
+      <span className="hidden md:inline">{label}</span>
+    </button>
+  )
+})

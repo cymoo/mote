@@ -193,9 +193,8 @@
   "noStarred": "no starred items yet",
   "usageSummary": "{0} used · {1} in trash",
   "onDisk": "{0} on disk",
+  "diskFree": "{0} free of {1}",
   "uploadFolder": "upload folder",
   "tooManyFiles": "too many files (max {0} per batch)",
-  "playbackSpeed": "speed",
-  "pictureInPicture": "picture-in-picture",
   "resumedPlayback": "resumed from {0}"
 }
