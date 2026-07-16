@@ -1,6 +1,6 @@
 # Mote
 
-Mote 是一个简单的个人笔记本和博客。
+Mote 是一个简单的个人笔记本和博客。**当前分支是 Kotlin 版** —— 后端位于 [api-kt](./api-kt)，基于 Spring Boot + JOOQ + SQLite 构建。
 
 ![screenshot](./samples/screenshot.png)
 
@@ -21,11 +21,22 @@ Mote 是一个简单的个人笔记本和博客。
 * **移动端适配**
 * **中英双语界面** — 可在设置中切换
 
+## 版本
+
+Mote 刻意做成多语言实现：共享同一套 React 前端和完全相同的 HTTP API，用多种语言各实现一份后端。每个后端各自占用一个长期分支：
+
+| 版本 | 分支 | 后端 |
+| --- | --- | --- |
+| Go（主版本） | `main` | `api-go` |
+| Rust | `feat/api-rs` | `api-rs` |
+| Kotlin | `feat/api-kt` | `api-kt` |
+| Python | `feat/api-py` | `api-py` |
+
+当前分支是 **`feat/api-kt`**。后端构建与运行见 [api-kt/README.md](./api-kt/README.md)；[frontend/](./frontend) 前端为各版本共享。
+
 ## 部署
 
-生产环境部署参见 [deploy/](./deploy)，提供 nginx + Docker Compose 方案，含 HTTPS 证书自动申请和数据备份。
-
-项目包含四种后端实现 — [api-go](./api-go)、[api-rs](./api-rs)、[api-kt](./api-kt)、[api-py](./api-py) — 对外暴露完全相同的 API。它们是逐次用新语言重写的产物，也可作为不同语言的对照参考。各目录下均有对应的开发指南。
+生产环境部署参见 [deploy/](./deploy)，提供 nginx + Docker Compose 方案，含 HTTPS 证书自动申请和数据备份。注意：部署脚本目前构建的是 Go 后端（`deploy/Dockerfile.api`、`deploy/compose.yml`），本版本需相应改为构建 `api-kt`。
 
 ## License
 

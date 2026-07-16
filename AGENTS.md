@@ -5,26 +5,22 @@ conventions any agent (or human) should follow when changing code here.
 
 ## Project overview
 
-Mote is a personal notebook + mini cloud drive web app. The repo is
-intentionally polyglot: a single React/Vite frontend speaks an identical HTTP
-API to **four independent backend implementations** in different languages.
-Each backend is a full rewrite of the same spec — they also serve as
-side-by-side reference implementations.
+Mote is a personal notebook + mini cloud drive web app. This branch
+(`feat/api-kt`) is the **Kotlin edition**: a single React/Vite frontend speaks
+an HTTP API to the Kotlin backend in `api-kt` (Spring Boot + JOOQ + SQLite,
+Flyway migrations).
 
 ```
 .
 ├── frontend/        React 18 + Vite + TypeScript + Tailwind. Single SPA.
-├── api-go/          Go (chi, sqlx, SQLite). Primary backend.
-├── api-rs/          Rust port.
-├── api-kt/          Kotlin port.
-├── api-py/          Python port.
+├── api-kt/          Kotlin backend (Spring Boot, JOOQ, SQLite, Flyway).
 ├── deploy/          nginx + Docker Compose for production.
 └── samples/         Sample database / screenshots.
 ```
 
-Day-to-day development almost always means **frontend + api-go**. Touch the
-other backends only when the task explicitly says so or you're keeping them in
-sync after a deliberate API change.
+The same HTTP API is implemented in other languages on their own long-lived
+branches — `main` (Go, canonical) plus `feat/api-rs` and `feat/api-py`. On this
+branch, day-to-day development means **frontend + api-kt**.
 
 ## Frontend (`frontend/`)
 
@@ -69,54 +65,20 @@ npm run playwright   # e2e
 `tsc --noEmit` and `npm run build` must both pass before any commit that
 changes TypeScript.
 
-## Go backend (`api-go/`)
+## Backend (`api-kt/`)
 
-* Go 1.22+, chi router, sqlx, SQLite (`mattn/go-sqlite3`), goose-style SQL
-  migrations under `assets/migrations/`.
-* Layout:
-  - `cmd/server/`            entry point
-  - `internal/app/`          wiring, routes, server lifecycle
-  - `internal/handlers/`     HTTP handlers (one file per resource)
-  - `internal/services/`     business logic; transactional boundaries
-  - `internal/models/`       row structs; column tags only — no logic
-  - `internal/tasks/`        background jobs (trash purge, share expiry)
-  - `internal/config/`       env-driven config
-  - `pkg/`                   small leaf packages (logger, http helpers)
-* SQLite is single-writer. **Wrap multi-statement writes in a transaction**
-  via the helper in `services/`; never run independent `Exec`s expecting
-  atomicity. Be deliberate about locking — long reads can starve writes.
-* Errors: return wrapped errors (`fmt.Errorf("doing X: %w", err)`), let
-  handlers map to HTTP via the central error helper. Don't `log.Fatal` from
-  request paths.
-* New SQL goes through a numbered migration pair (`NNN_name.up.sql` /
-  `.down.sql`). Don't edit existing migrations once committed.
-* Tests sit next to the code (`*_test.go`); use the in-repo SQLite test
-  helpers rather than mocking the DB.
+Kotlin + Spring Boot + JOOQ over SQLite, with Flyway migrations (and Redis).
+See [api-kt/README.md](./api-kt/README.md) — and the `Makefile` next to it
+(`make run` / `build` / `test` / `jooq` / `migrate`) — for the authoritative
+build, test, and run instructions. Two invariants to respect:
 
-### Go commands
-
-```bash
-cd api-go
-make build           # go build → /tmp/bin/mote
-make run             # build + run (dev DB at samples/app-dev.db by default)
-make live            # air, hot-reload
-make test            # go test -v -race ./...
-make tidy            # go mod tidy + go fmt
-go build ./...       # quick sanity check
-```
-
-`go build ./...` and `make test` must both pass before committing Go changes.
-
-## Other backends
-
-`api-rs/`, `api-kt/`, `api-py/` each have their own README and build system.
-**Do not** modify them as a side effect of frontend or Go work. Touch them
-only when:
-1. The task explicitly says "sync the other backends", or
-2. You changed the public HTTP/JSON contract and the user has agreed to fan
-   the change out.
-
-When fanning out, add a checklist and verify each backend's tests pass.
+* **Flyway migrations are append-only.** Add a new numbered migration; never
+  edit or renumber one that's already committed, and don't reset schema
+  versions.
+* **JOOQ codegen reads the schema of `samples/app-dev.db`** (see the
+  `jooq-codegen` config in `pom.xml`). The generated types are derived from
+  that database, so keep its schema in sync with the migrations before
+  regenerating.
 
 ## Coding conventions
 
@@ -125,7 +87,7 @@ When fanning out, add a checklist and verify each backend's tests pass.
 * Comment only code that needs clarification. No banner comments, no
   ASCII-art separators, no commented-out blocks (delete them).
 * Match existing style. Frontend files use ESLint + Prettier defaults baked
-  into the repo; Go uses `go fmt`.
+  into the repo; keep Kotlin in `api-kt` consistent with the surrounding code.
 * Keep diffs reviewable. If a change crosses 400+ lines, split it.
 * Add or update tests for any non-trivial behaviour change. Never remove a
   test to make CI pass.
@@ -133,8 +95,8 @@ When fanning out, add a checklist and verify each backend's tests pass.
 ## Running the full stack locally
 
 ```bash
-# terminal 1
-cd api-go && make live
+# terminal 1 — Kotlin backend (needs Redis up; see api-kt/README.md)
+cd api-kt && ./mvnw jooq-codegen:generate && MOTE_PASSWORD=foobar ./mvnw spring-boot:run
 # terminal 2
 cd frontend && npm run dev
 # open http://localhost:3000
@@ -148,15 +110,18 @@ identically to production.
 * **Plan before coding** for non-trivial tasks; ask clarifying questions
   rather than guessing scope.
 * **Verify before declaring done**: typecheck, build, and run the relevant
-  test command. `npm run build` and `go build ./...` are cheap.
+  test command. `npm run build` (frontend) and the `api-kt` Maven build /
+  tests (see [api-kt/README.md](./api-kt/README.md)) are the sanity checks.
 * **Commit messages**: imperative mood, short subject, body explaining the
   "why". Always include the `Co-authored-by` trailer for the Copilot agent
   when applicable. Use Conventional Commit prefixes (`feat`, `fix`,
   `refactor`, `chore`, `docs`, `test`).
-* **Don't commit**: `dump.rdb`, `samples/app-dev.db`, generated bundles,
-  `node_modules/`, `tmp/`, `.air.toml`, `*.sqlite-wal`/`-shm`. They're
-  gitignored — keep them that way.
-* **Don't touch** the four migration histories beyond appending. Don't reset
-  schema versions.
-* **Don't introduce** new dependencies casually. Prefer the in-house
-  primitives (`@/components/*`, `pkg/*`) and standard library.
+* **Don't commit**: `dump.rdb`, generated bundles, `node_modules/`, `tmp/`,
+  `target/`, `*.sqlite-wal`/`-shm`. They're gitignored — keep them that way.
+  `samples/app-dev.db`, by contrast, *is* tracked here on purpose (JOOQ codegen
+  reads its schema), so don't gitignore or delete it.
+* **Don't touch** this backend's Flyway migration history beyond appending.
+  Don't reset schema versions.
+* **Don't introduce** new dependencies casually. Prefer in-house primitives
+  (`@/components/*` on the frontend, existing helpers in `api-kt`) and the
+  standard library.
