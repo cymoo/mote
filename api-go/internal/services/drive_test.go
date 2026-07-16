@@ -912,4 +912,73 @@ func TestDrive_Usage(t *testing.T) {
 	if u.PhysicalBytes != 12 {
 		t.Fatalf("physical = %d, want 12", u.PhysicalBytes)
 	}
+	// Free/total disk space of the tmp uploads filesystem (df-style).
+	if u.TotalBytes <= 0 || u.FreeBytes <= 0 || u.FreeBytes > u.TotalBytes {
+		t.Fatalf("disk space: free=%d total=%d (want 0 < free <= total)", u.FreeBytes, u.TotalBytes)
+	}
+}
+
+// Emptying the trash must succeed even when it holds both a folder and its
+// separately-batched deleted children: purging the folder cascade-deletes the
+// children, so purging the (now-gone) children must be tolerated, not error.
+// Repro: delete 2 files from a folder, move a 3rd out, then delete the folder.
+func TestDrive_EmptyTrashWithCascadingBatches(t *testing.T) {
+	_, svc := setupDriveDB(t)
+	ctx := context.Background()
+
+	folder, _ := svc.CreateFolder(ctx, nil, "F")
+	mk := func(name string) int64 {
+		blob := filepath.Join("drive", "et_"+name)
+		_ = os.MkdirAll(filepath.Dir(svc.BlobAbsPath(blob)), 0755)
+		_ = os.WriteFile(svc.BlobAbsPath(blob), []byte(name), 0644)
+		n, err := svc.CreateFileNode(ctx, &folder.ID, name, blob, "", int64(len(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n.ID
+	}
+	a, b, c := mk("a.txt"), mk("b.txt"), mk("c.txt")
+
+	// Delete a & b from the folder (batch 1).
+	if err := svc.SoftDelete(ctx, []int64{a, b}); err != nil {
+		t.Fatal(err)
+	}
+	// Move c out of the folder.
+	if err := svc.Move(ctx, []int64{c}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the folder itself (batch 2); a & b remain trashed inside it.
+	if err := svc.SoftDelete(ctx, []int64{folder.ID}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Trash shows a, b and F as separate roots (different batches).
+	trash, err := svc.ListTrash(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]int64, len(trash))
+	for i := range trash {
+		ids[i] = trash[i].ID
+	}
+	if len(ids) != 3 {
+		t.Fatalf("trash roots = %d, want 3 (a, b, F)", len(ids))
+	}
+
+	// Empty the trash — must not error despite the cascade overlap.
+	if err := svc.Purge(ctx, ids); err != nil {
+		t.Fatalf("empty trash errored: %v", err)
+	}
+	// Everything trashed is gone; c (moved out, active) survives.
+	var remaining int
+	if err := svc.db.GetContext(ctx, &remaining,
+		`SELECT COUNT(*) FROM drive_nodes WHERE deleted_at IS NOT NULL`); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("trash not fully purged: %d rows remain", remaining)
+	}
+	if _, err := svc.FindByID(ctx, c); err != nil {
+		t.Fatalf("moved-out file c should survive: %v", err)
+	}
 }

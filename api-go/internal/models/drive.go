@@ -245,4 +245,8 @@ type DriveUsage struct {
 	PhysicalBytes int64 `json:"physical_bytes"`
 	ActiveCount   int64 `json:"active_count"`
 	TrashCount    int64 `json:"trash_count"`
+	// Available and total bytes on the filesystem backing the uploads dir
+	// (df-style); 0 when the platform lookup fails.
+	FreeBytes  int64 `json:"free_bytes"`
+	TotalBytes int64 `json:"total_bytes"`
 }

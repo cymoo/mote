@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cymoo/mote/internal/config"
@@ -548,6 +549,13 @@ WHERE id IN (SELECT id FROM subtree)`, id, n.DeleteBatchID.String); err != nil {
 func (s *DriveService) Purge(ctx context.Context, ids []int64) error {
 	for _, id := range ids {
 		if err := s.purgeOne(ctx, id); err != nil {
+			// A node may already be gone when an ancestor earlier in the batch
+			// cascade-deleted it — e.g. emptying a trash that holds both a
+			// folder and its separately-batched deleted children. Treat the
+			// already-removed node as successfully purged.
+			if errors.Is(err, ErrDriveNotFound) {
+				continue
+			}
 			return err
 		}
 	}
@@ -1164,5 +1172,18 @@ SELECT COALESCE(SUM(sz), 0) FROM (
 )`).Scan(&u.PhysicalBytes); err != nil {
 		return nil, err
 	}
+	// Free/total space on the filesystem backing the uploads dir (df-style).
+	u.FreeBytes, u.TotalBytes = diskSpace(s.config.BasePath)
 	return &u, nil
+}
+
+// diskSpace reports the available and total bytes on the filesystem that
+// contains path (best-effort; returns 0, 0 on error). Unix only.
+func diskSpace(path string) (free, total int64) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(path, &st); err != nil {
+		return 0, 0
+	}
+	bs := uint64(st.Bsize)
+	return int64(st.Bavail * bs), int64(st.Blocks * bs)
 }
