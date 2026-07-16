@@ -252,6 +252,10 @@ pub struct DriveUsage {
     pub physical_bytes: i64,
     pub active_count: i64,
     pub trash_count: i64,
+    /// Available and total bytes on the filesystem backing the uploads dir
+    /// (df-style); 0 when the platform lookup fails.
+    pub free_bytes: i64,
+    pub total_bytes: i64,
 }
 
 #[derive(Debug, Deserialize)]

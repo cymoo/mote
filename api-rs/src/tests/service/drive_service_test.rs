@@ -350,5 +350,78 @@ mod tests {
         assert_eq!((u.active_bytes, u.active_count), (10, 2));
         assert_eq!((u.trash_bytes, u.trash_count), (7, 1));
         assert_eq!(u.physical_bytes, 12);
+        // Free/total disk space of the tmp uploads filesystem (df-style).
+        assert!(
+            0 < u.free_bytes && u.free_bytes <= u.total_bytes,
+            "disk space: free={} total={} (want 0 < free <= total)",
+            u.free_bytes,
+            u.total_bytes
+        );
+    }
+
+    // Emptying the trash must succeed even when it holds both a folder and its
+    // separately-batched deleted children: purging the folder cascade-deletes
+    // the children, so purging the (now-gone) children must be tolerated, not
+    // error. Repro: delete 2 files from a folder, move a 3rd out, delete the
+    // folder, then empty the trash.
+    #[tokio::test]
+    async fn empty_trash_with_cascading_batches() {
+        let (pool, svc, _tmp) = setup().await;
+
+        let folder = svc.create_folder(None, "F").await.unwrap();
+        let a = mk_file(
+            &svc,
+            Some(folder.id),
+            "a.txt",
+            "drive/et_a.txt",
+            b"a.txt",
+            "ha",
+        )
+        .await;
+        let b = mk_file(
+            &svc,
+            Some(folder.id),
+            "b.txt",
+            "drive/et_b.txt",
+            b"b.txt",
+            "hb",
+        )
+        .await;
+        let c = mk_file(
+            &svc,
+            Some(folder.id),
+            "c.txt",
+            "drive/et_c.txt",
+            b"c.txt",
+            "hc",
+        )
+        .await;
+
+        // Delete a & b from the folder (batch 1).
+        svc.soft_delete(&[a.id, b.id]).await.unwrap();
+        // Move c out of the folder to the root.
+        svc.move_nodes(&[c.id], None).await.unwrap();
+        // Delete the folder itself (batch 2); a & b remain trashed inside it.
+        svc.soft_delete(&[folder.id]).await.unwrap();
+
+        // Trash shows a, b and F as separate roots (different batches).
+        let trash = svc.list_trash().await.unwrap();
+        let ids: Vec<i64> = trash.iter().map(|n| n.id).collect();
+        assert_eq!(ids.len(), 3, "trash roots should be a, b and F");
+
+        // Empty the trash — must not error despite the cascade overlap.
+        svc.purge(&ids).await.unwrap();
+
+        // Everything trashed is gone; c (moved out, active) survives.
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM drive_nodes WHERE deleted_at IS NOT NULL")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining, 0, "trash should be fully purged");
+        assert!(
+            svc.find_by_id(c.id).await.is_ok(),
+            "moved-out file c should survive"
+        );
     }
 }

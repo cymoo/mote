@@ -490,7 +490,15 @@ WHERE id IN (SELECT id FROM subtree)"#,
 
     pub async fn purge(&self, ids: &[i64]) -> DriveResult<()> {
         for &id in ids {
-            self.purge_one(id).await?;
+            match self.purge_one(id).await {
+                Ok(()) => {}
+                // A node may already be gone when an ancestor earlier in the
+                // batch cascade-deleted it — e.g. emptying a trash that holds
+                // both a folder and its separately-batched deleted children.
+                // Treat the already-removed node as successfully purged.
+                Err(DriveError::NotFound) => continue,
+                Err(e) => return Err(e),
+            }
         }
         Ok(())
     }
@@ -1038,12 +1046,16 @@ FROM subtree ORDER BY depth, id"#,
         )
         .fetch_one(&self.pool)
         .await?;
+        // Free/total space on the filesystem backing the uploads dir (df-style).
+        let (free_bytes, total_bytes) = disk_space(&self.config.base_path);
         Ok(DriveUsage {
             active_bytes,
             trash_bytes,
             physical_bytes,
             active_count,
             trash_count,
+            free_bytes,
+            total_bytes,
         })
     }
 
@@ -1168,4 +1180,18 @@ pub fn is_unique_err(e: &sqlx::Error) -> bool {
         }
     }
     false
+}
+
+/// Reports the available and total bytes on the filesystem backing `path`
+/// (df-style); returns (0, 0) when the platform lookup fails. Unix only.
+fn disk_space(path: &str) -> (i64, i64) {
+    match nix::sys::statvfs::statvfs(Path::new(path)) {
+        Ok(st) => {
+            let frsize = st.fragment_size();
+            let free = (st.blocks_available() as u64).saturating_mul(frsize);
+            let total = (st.blocks() as u64).saturating_mul(frsize);
+            (free as i64, total as i64)
+        }
+        Err(_) => (0, 0),
+    }
 }
