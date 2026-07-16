@@ -2,7 +2,13 @@
 
 [中文介绍](./README-zh.md)
 
-![screenshot](./samples/screenshot.png)
+**Notes** — capture, tag, and revisit your thoughts:
+
+![Notes home](./samples/home-notes.png)
+
+**Files** — the built-in mini cloud drive:
+
+![Cloud drive home](./samples/home-drive.png)
 
 Mote is a simple personal notebook and blog web app. **This `main` branch is the canonical Go edition** — the backend in [api-go](./api-go) is built with Go (chi, sqlx, SQLite).
 

@@ -2,7 +2,13 @@
 
 Mote 是一个简单的个人笔记本和博客。**当前 `main` 分支是主版本 Go 版** —— 后端位于 [api-go](./api-go)，基于 Go（chi、sqlx、SQLite）构建。
 
-![screenshot](./samples/screenshot.png)
+**笔记** —— 记录、打标签、随时回看：
+
+![笔记首页](./samples/home-notes.png)
+
+**文件** —— 内置迷你云盘：
+
+![云盘首页](./samples/home-drive.png)
 
 ## 功能
 
