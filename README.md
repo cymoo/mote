@@ -4,7 +4,7 @@
 
 ![screenshot](./samples/screenshot.png)
 
-Mote is a simple personal notebook and blog web app.
+Mote is a simple personal notebook and blog web app. **This branch is the Python edition** — the backend in [api-py](./api-py) is built with Flask + SQLite.
 
 ## Features
 
@@ -23,11 +23,22 @@ Mote is a simple personal notebook and blog web app.
 * **Mobile-friendly** responsive layout
 * **Bilingual UI** — switch between Chinese and English in settings
 
+## Editions
+
+Mote is intentionally polyglot: one shared React frontend and the same HTTP API, implemented in several languages. Each backend lives on its own long-lived branch:
+
+| Edition | Branch | Backend |
+| --- | --- | --- |
+| Go (canonical) | `main` | `api-go` |
+| Rust | `feat/api-rs` | `api-rs` |
+| Kotlin | `feat/api-kt` | `api-kt` |
+| Python | `feat/api-py` | `api-py` |
+
+You're on **`feat/api-py`**. See [api-py/README.md](./api-py/README.md) to build and run the backend; the frontend in [frontend/](./frontend) is shared across every edition.
+
 ## Deployment
 
-For production, see [deploy/](./deploy) — nginx + Docker Compose with HTTPS via certbot, automated backup included.
-
-Four independent backend implementations — [api-go](./api-go), [api-rs](./api-rs), [api-kt](./api-kt), [api-py](./api-py) — expose an identical API. Each was a rewrite in a new language, so they also serve as side-by-side reference implementations. Each directory contains its own development guide.
+For production, see [deploy/](./deploy) — nginx + Docker Compose with HTTPS via certbot and automated backups. Note: the deploy scripts currently build the Go backend (`deploy/Dockerfile.api`, `deploy/compose.yml`); adapt them to build `api-py` for this edition.
 
 ## License
 
