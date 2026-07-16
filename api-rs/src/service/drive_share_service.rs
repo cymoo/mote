@@ -29,10 +29,8 @@ impl DriveShareService {
         password: Option<&str>,
         expires_at: Option<i64>,
     ) -> DriveResult<CreatedShare> {
+        // Files and folders alike can be shared; only deleted nodes are refused.
         let n = self.drive.find_by_id(node_id).await?;
-        if n.r#type != "file" {
-            return Err(DriveError::ShareInvalidNode);
-        }
         if n.deleted_at.is_some() {
             return Err(DriveError::NotFound);
         }
@@ -116,10 +114,42 @@ impl DriveShareService {
             }
         }
         let node = self.drive.find_by_id(m.node_id).await?;
-        if node.deleted_at.is_some() || node.r#type != "file" {
+        if node.deleted_at.is_some() {
             return Err(DriveError::ShareNotFound);
         }
         Ok((m, node))
+    }
+
+    /// Returns `child_id`'s node iff it is `root_id` itself or an ACTIVE
+    /// descendant of `root_id` (every hop non-deleted). All ?id=/?dir= lookups
+    /// on the public share surface MUST go through this — it is what scopes a
+    /// folder share to its own subtree and keeps trashed content unreachable.
+    pub async fn resolve_child(&self, root_id: i64, child_id: i64) -> DriveResult<DriveNode> {
+        if child_id == root_id {
+            let n = self.drive.find_by_id(root_id).await?;
+            if n.deleted_at.is_some() {
+                return Err(DriveError::ShareNotFound);
+            }
+            return Ok(n);
+        }
+        let hit: i64 = sqlx::query_scalar(
+            r#"
+WITH RECURSIVE subtree(id) AS (
+  SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NULL
+  UNION ALL
+  SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+  WHERE n.deleted_at IS NULL
+)
+SELECT EXISTS(SELECT 1 FROM subtree WHERE id = ?)"#,
+        )
+        .bind(root_id)
+        .bind(child_id)
+        .fetch_one(&self.pool)
+        .await?;
+        if hit == 0 {
+            return Err(DriveError::ShareNotFound);
+        }
+        self.drive.find_by_id(child_id).await
     }
 
     pub fn verify_password(&self, share: &DriveShareRow, password: &str) -> DriveResult<()> {

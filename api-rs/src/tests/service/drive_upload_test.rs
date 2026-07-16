@@ -3,6 +3,7 @@ mod tests {
     use mote::config::UploadConfig;
     use mote::model::drive::*;
     use mote::service::drive_service::DriveService;
+    use mote::service::drive_share_service::DriveShareService;
     use mote::service::drive_upload_service::DriveUploadService;
     use sqlx::sqlite::SqlitePoolOptions;
     use std::io::Cursor;
@@ -10,6 +11,7 @@ mod tests {
     async fn setup() -> (
         std::sync::Arc<DriveService>,
         std::sync::Arc<DriveUploadService>,
+        std::sync::Arc<DriveShareService>,
         tempfile::TempDir,
     ) {
         let tmp = tempfile::tempdir().unwrap();
@@ -27,8 +29,9 @@ mod tests {
             image_formats: vec![],
         };
         let drive = DriveService::new(pool.clone(), cfg.clone());
-        let upload = DriveUploadService::new(pool, drive.clone(), cfg);
-        (drive, upload, tmp)
+        let upload = DriveUploadService::new(pool.clone(), drive.clone(), cfg);
+        let share = DriveShareService::new(pool, drive.clone());
+        (drive, upload, share, tmp)
     }
 
     /// Runs init → chunk(s) → complete and returns the resulting node.
@@ -62,7 +65,7 @@ mod tests {
 
     #[tokio::test]
     async fn upload_init_status_chunk_complete() {
-        let (_drive, upload, _tmp) = setup().await;
+        let (_drive, upload, _share, _tmp) = setup().await;
         let payload = b"hello world, this is a small test file.".to_vec();
         let init = upload
             .init(&DriveUploadInitRequest {
@@ -91,7 +94,7 @@ mod tests {
 
     #[tokio::test]
     async fn upload_init_rejects_bad_chunk_size() {
-        let (_drive, upload, _tmp) = setup().await;
+        let (_drive, upload, _share, _tmp) = setup().await;
         let err = upload
             .init(&DriveUploadInitRequest {
                 parent_id: None,
@@ -110,7 +113,7 @@ mod tests {
     // Two uploads with identical content must share one blob on disk.
     #[tokio::test]
     async fn dedup_reuses_blob() {
-        let (drive, upload, _tmp) = setup().await;
+        let (drive, upload, _share, _tmp) = setup().await;
         let body = b"identical bytes";
 
         let n1 = perform_upload(&upload, None, "one.txt", body, 1 << 20, "ask").await;
@@ -132,7 +135,7 @@ mod tests {
     // Dedup must skip candidates whose blob no longer exists on disk.
     #[tokio::test]
     async fn dedup_skips_missing_blob_on_disk() {
-        let (drive, upload, _tmp) = setup().await;
+        let (drive, upload, _share, _tmp) = setup().await;
         let body = b"payload to lose";
 
         let n1 = perform_upload(&upload, None, "one.txt", body, 1 << 20, "ask").await;
@@ -153,7 +156,7 @@ mod tests {
     // being replaced and must not delete it.
     #[tokio::test]
     async fn dedup_overwrite_same_content() {
-        let (drive, upload, _tmp) = setup().await;
+        let (drive, upload, _share, _tmp) = setup().await;
         let body = b"same content twice";
 
         let n1 = perform_upload(&upload, None, "dup.txt", body, 1 << 20, "ask").await;
@@ -166,5 +169,51 @@ mod tests {
         let got = std::fs::read(drive.blob_abs_path(n2.blob_path.as_deref().unwrap()))
             .expect("blob gone after self-overwrite");
         assert_eq!(got, body, "content mismatch after overwrite");
+    }
+
+    // Folders can be shared and resolve back to the folder node.
+    #[tokio::test]
+    async fn share_folder_create_and_resolve() {
+        let (drive, _upload, share, _tmp) = setup().await;
+        let folder = drive.create_folder(None, "Pics").await.unwrap();
+
+        let sh = share.create(folder.id, None, None).await.unwrap();
+        let (_, node) = share.resolve(&sh.token).await.unwrap();
+        assert_eq!(node.id, folder.id);
+        assert_eq!(node.r#type, "folder");
+    }
+
+    // resolve_child gates every ?id=/?dir= on the public folder-share surface:
+    // only the share root itself and its ACTIVE descendants may resolve.
+    #[tokio::test]
+    async fn share_resolve_child_scope() {
+        use mote::service::drive_service::DriveError;
+        let (drive, upload, share, _tmp) = setup().await;
+
+        let root = drive.create_folder(None, "root").await.unwrap();
+        let sub = drive.create_folder(Some(root.id), "sub").await.unwrap();
+        let inner = perform_upload(&upload, Some(sub.id), "in.txt", b"in", 1 << 20, "ask").await;
+        let outside = perform_upload(&upload, None, "out.txt", b"out", 1 << 20, "ask").await;
+
+        // The root itself resolves.
+        let n = share.resolve_child(root.id, root.id).await.unwrap();
+        assert_eq!(n.id, root.id);
+        // An active descendant resolves.
+        let n = share.resolve_child(root.id, inner.id).await.unwrap();
+        assert_eq!(n.id, inner.id);
+        // A node outside the share subtree → not found.
+        let err = share.resolve_child(root.id, outside.id).await.unwrap_err();
+        assert!(matches!(err, DriveError::ShareNotFound));
+        // A trashed descendant → not found.
+        drive.soft_delete(&[inner.id]).await.unwrap();
+        let err = share.resolve_child(root.id, inner.id).await.unwrap_err();
+        assert!(matches!(err, DriveError::ShareNotFound));
+        // A child inside a trashed folder → not found (the deleted hop breaks
+        // the chain).
+        let f2 = drive.create_folder(Some(root.id), "f2").await.unwrap();
+        let leaf = perform_upload(&upload, Some(f2.id), "leaf.txt", b"leaf", 1 << 20, "ask").await;
+        drive.soft_delete(&[f2.id]).await.unwrap();
+        let err = share.resolve_child(root.id, leaf.id).await.unwrap_err();
+        assert!(matches!(err, DriveError::ShareNotFound));
     }
 }
