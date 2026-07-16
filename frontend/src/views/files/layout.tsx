@@ -84,10 +84,15 @@ function FilesRail({ lang }: { lang: Lang }) {
       <div className="mt-auto px-2.5 pb-2">
         {usage && (
           <p
-            className="text-muted-foreground/60 pb-1 text-[11.5px] leading-relaxed tabular-nums"
+            className="text-muted-foreground/60 text-[11.5px] leading-relaxed tabular-nums"
             title={t('onDisk', lang, true, humanSize(usage.physical_bytes))}
           >
             {t('usageSummary', lang, true, humanSize(usage.active_bytes), humanSize(usage.trash_bytes))}
+          </p>
+        )}
+        {usage && usage.total_bytes > 0 && (
+          <p className="text-muted-foreground/60 pb-1 text-[11.5px] leading-relaxed tabular-nums">
+            {t('diskFree', lang, true, humanSize(usage.free_bytes), humanSize(usage.total_bytes))}
           </p>
         )}
         <p className="text-muted-foreground/60 text-[11.5px] leading-relaxed">

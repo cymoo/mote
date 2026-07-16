@@ -193,9 +193,8 @@
   "noStarred": "暂无收藏",
   "usageSummary": "已用 {0} · 回收站 {1}",
   "onDisk": "实际占用 {0}",
+  "diskFree": "可用 {0} / 共 {1}",
   "uploadFolder": "上传文件夹",
   "tooManyFiles": "文件太多（单次最多 {0} 个）",
-  "playbackSpeed": "倍速",
-  "pictureInPicture": "画中画",
   "resumedPlayback": "已从 {0} 继续播放"
 }
