@@ -2,7 +2,13 @@
 
 Mote 是一个简单的个人笔记本和博客。**当前分支是 Kotlin 版** —— 后端位于 [api-kt](./api-kt)，基于 Spring Boot + JOOQ + SQLite 构建。
 
-![screenshot](./samples/screenshot.png)
+**笔记** —— 记录、打标签、随时回看：
+
+![笔记首页](./samples/home-notes.png)
+
+**文件** —— 内置迷你云盘：
+
+![云盘首页](./samples/home-drive.png)
 
 ## 功能
 

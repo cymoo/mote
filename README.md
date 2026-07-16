@@ -2,7 +2,13 @@
 
 [中文介绍](./README-zh.md)
 
-![screenshot](./samples/screenshot.png)
+**Notes** — capture, tag, and revisit your thoughts:
+
+![Notes home](./samples/home-notes.png)
+
+**Files** — the built-in mini cloud drive:
+
+![Cloud drive home](./samples/home-drive.png)
 
 Mote is a simple personal notebook and blog web app. **This branch is the Kotlin edition** — the backend in [api-kt](./api-kt) is built with Spring Boot + JOOQ + SQLite.
 
