@@ -25,7 +25,6 @@ class DriveShareService(
 
     fun create(nodeId: Long, password: String?, expiresAt: Long?): Pair<DriveShare, String> {
         val n = driveService.findById(nodeId)
-        if (n.type != "file") throw BadRequestException("only files can be shared")
         if (n.deletedAt != null) throw NotFoundException("drive node not found")
 
         val token = newToken(32)
@@ -85,8 +84,37 @@ class DriveShareService(
             throw GoneException("share expired")
         }
         val node = driveService.findById(match.nodeId)
-        if (node.deletedAt != null || node.type != "file") throw NotFoundException("share not found")
+        if (node.deletedAt != null) throw NotFoundException("share not found")
         return match to node
+    }
+
+    /**
+     * Returns [childId]'s node iff it is [rootId] itself or an ACTIVE
+     * descendant of it (every hop non-deleted). All ?id=/?dir= lookups on the
+     * public share surface MUST go through this — it is what scopes a folder
+     * share to its own subtree and keeps trashed content unreachable.
+     */
+    fun resolveChild(rootId: Long, childId: Long): DriveNode {
+        if (childId == rootId) {
+            val n = driveService.findById(rootId)
+            if (n.deletedAt != null) throw NotFoundException("share not found")
+            return n
+        }
+        // Keep as raw SQL: recursive CTE over active descendants only.
+        val hit = dsl.fetchOne(
+            """
+            WITH RECURSIVE subtree(id) AS (
+              SELECT id FROM drive_nodes WHERE id = ? AND deleted_at IS NULL
+              UNION ALL
+              SELECT n.id FROM drive_nodes n JOIN subtree s ON n.parent_id = s.id
+              WHERE n.deleted_at IS NULL
+            )
+            SELECT EXISTS(SELECT 1 FROM subtree WHERE id = ?)
+            """.trimIndent(),
+            rootId, childId,
+        )?.get(0, Int::class.java) ?: 0
+        if (hit == 0) throw NotFoundException("share not found")
+        return driveService.findById(childId)
     }
 
     fun verifyPassword(share: DriveShare, password: String) {
