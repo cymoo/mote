@@ -5,26 +5,21 @@ conventions any agent (or human) should follow when changing code here.
 
 ## Project overview
 
-Mote is a personal notebook + mini cloud drive web app. The repo is
-intentionally polyglot: a single React/Vite frontend speaks an identical HTTP
-API to **four independent backend implementations** in different languages.
-Each backend is a full rewrite of the same spec — they also serve as
-side-by-side reference implementations.
+Mote is a personal notebook + mini cloud drive web app. This branch
+(`feat/api-rs`) is the **Rust edition**: a single React/Vite frontend speaks an
+HTTP API to the Rust backend in `api-rs` (Axum + SQLite + Redis).
 
 ```
 .
 ├── frontend/        React 18 + Vite + TypeScript + Tailwind. Single SPA.
-├── api-go/          Go (chi, sqlx, SQLite). Primary backend.
-├── api-rs/          Rust port.
-├── api-kt/          Kotlin port.
-├── api-py/          Python port.
+├── api-rs/          Rust backend (Axum, SQLite, Redis).
 ├── deploy/          nginx + Docker Compose for production.
 └── samples/         Sample database / screenshots.
 ```
 
-Day-to-day development almost always means **frontend + api-go**. Touch the
-other backends only when the task explicitly says so or you're keeping them in
-sync after a deliberate API change.
+The same HTTP API is implemented in other languages on their own long-lived
+branches — `main` (Go, canonical) and `feat/api-kt` / `feat/api-py`. Day-to-day
+development here almost always means **frontend + api-rs**.
 
 ## Frontend (`frontend/`)
 
@@ -69,54 +64,20 @@ npm run playwright   # e2e
 `tsc --noEmit` and `npm run build` must both pass before any commit that
 changes TypeScript.
 
-## Go backend (`api-go/`)
+## Backend (`api-rs/`)
 
-* Go 1.22+, chi router, sqlx, SQLite (`mattn/go-sqlite3`), goose-style SQL
-  migrations under `assets/migrations/`.
-* Layout:
-  - `cmd/server/`            entry point
-  - `internal/app/`          wiring, routes, server lifecycle
-  - `internal/handlers/`     HTTP handlers (one file per resource)
-  - `internal/services/`     business logic; transactional boundaries
-  - `internal/models/`       row structs; column tags only — no logic
-  - `internal/tasks/`        background jobs (trash purge, share expiry)
-  - `internal/config/`       env-driven config
-  - `pkg/`                   small leaf packages (logger, http helpers)
-* SQLite is single-writer. **Wrap multi-statement writes in a transaction**
-  via the helper in `services/`; never run independent `Exec`s expecting
-  atomicity. Be deliberate about locking — long reads can starve writes.
-* Errors: return wrapped errors (`fmt.Errorf("doing X: %w", err)`), let
-  handlers map to HTTP via the central error helper. Don't `log.Fatal` from
-  request paths.
-* New SQL goes through a numbered migration pair (`NNN_name.up.sql` /
-  `.down.sql`). Don't edit existing migrations once committed.
-* Tests sit next to the code (`*_test.go`); use the in-repo SQLite test
-  helpers rather than mocking the DB.
+The Rust backend (Axum + SQLite + Redis) lives in `api-rs/`. See
+[api-rs/README.md](./api-rs/README.md) for the full build / test / run guide
+(cargo, the `Makefile`, sqlx migrations, Redis).
 
-### Go commands
-
-```bash
-cd api-go
-make build           # go build → /tmp/bin/mote
-make run             # build + run (dev DB at samples/app-dev.db by default)
-make live            # air, hot-reload
-make test            # go test -v -race ./...
-make tidy            # go mod tidy + go fmt
-go build ./...       # quick sanity check
-```
-
-`go build ./...` and `make test` must both pass before committing Go changes.
-
-## Other backends
-
-`api-rs/`, `api-kt/`, `api-py/` each have their own README and build system.
-**Do not** modify them as a side effect of frontend or Go work. Touch them
-only when:
-1. The task explicitly says "sync the other backends", or
-2. You changed the public HTTP/JSON contract and the user has agreed to fan
-   the change out.
-
-When fanning out, add a checklist and verify each backend's tests pass.
+Conventions that still apply:
+* SQLite is single-writer. Wrap multi-statement writes in a transaction; never
+  run independent statements expecting atomicity. Long reads can starve writes.
+* New SQL goes through a numbered, embedded migration (a timestamped file under
+  `migrations/`, compiled into the binary via `sqlx::migrate!`). Don't edit
+  existing migrations once committed.
+* Tests live next to the code (inline `#[cfg(test)]` modules and `src/tests/`);
+  use the in-repo SQLite test helpers rather than mocking the DB.
 
 ## Coding conventions
 
@@ -134,7 +95,7 @@ When fanning out, add a checklist and verify each backend's tests pass.
 
 ```bash
 # terminal 1
-cd api-go && make live
+cd api-rs && MOTE_PASSWORD=xxx cargo run   # or: make live (cargo-watch hot-reload)
 # terminal 2
 cd frontend && npm run dev
 # open http://localhost:3000
@@ -156,7 +117,7 @@ identically to production.
 * **Don't commit**: `dump.rdb`, `samples/app-dev.db`, generated bundles,
   `node_modules/`, `tmp/`, `.air.toml`, `*.sqlite-wal`/`-shm`. They're
   gitignored — keep them that way.
-* **Don't touch** the four migration histories beyond appending. Don't reset
+* **Don't touch** the api-rs migration history beyond appending. Don't reset
   schema versions.
 * **Don't introduce** new dependencies casually. Prefer the in-house
   primitives (`@/components/*`, `pkg/*`) and standard library.
