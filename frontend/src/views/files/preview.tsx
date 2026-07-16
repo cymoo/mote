@@ -1,6 +1,6 @@
 import 'photoswipe/style.css'
 
-import { ClipboardCheckIcon, ClipboardIcon, DownloadIcon, ExternalLinkIcon, MusicIcon, PictureInPicture2Icon, XIcon } from 'lucide-react'
+import { ClipboardCheckIcon, ClipboardIcon, DownloadIcon, ExternalLinkIcon, MusicIcon, XIcon } from 'lucide-react'
 import { marked } from 'marked'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
@@ -380,8 +380,6 @@ function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
 // ---------- video preview ----------
 
 const VIDEO_POS_PREFIX = 'drive_video_pos:'
-const VIDEO_RATE_KEY = 'drive_video_rate'
-const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 function formatTime(sec: number): string {
   const s = Math.floor(sec % 60)
@@ -405,13 +403,6 @@ function VideoPreview({
   const [error, setError] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastSaveRef = useRef(0)
-  const [rate, setRate] = useState(
-    () => Number(localStorage.getItem(VIDEO_RATE_KEY)) || 1,
-  )
-  const canPiP =
-    typeof document !== 'undefined' && 'pictureInPictureEnabled' in document
-      ? document.pictureInPictureEnabled
-      : false
 
   const posKey = `${VIDEO_POS_PREFIX}${node.id}`
 
@@ -432,7 +423,6 @@ function VideoPreview({
   const onLoadedMetadata = () => {
     const v = videoRef.current
     if (!v) return
-    v.playbackRate = rate
     const saved = Number(localStorage.getItem(posKey))
     if (saved > 5 && v.duration && saved < v.duration * 0.95) {
       v.currentTime = saved
@@ -453,23 +443,8 @@ function VideoPreview({
     v.currentTime = Math.min(Math.max(0, v.currentTime + delta), v.duration)
   }
 
-  const changeRate = (r: number) => {
-    setRate(r)
-    localStorage.setItem(VIDEO_RATE_KEY, String(r))
-    if (videoRef.current) videoRef.current.playbackRate = r
-  }
-
-  const togglePiP = async () => {
-    const v = videoRef.current
-    if (!v) return
-    try {
-      if (document.pictureInPictureElement) await document.exitPictureInPicture()
-      else await v.requestPictureInPicture()
-    } catch {
-      /* codec/state doesn't support PiP */
-    }
-  }
-
+  // Playback speed and picture-in-picture are left to the browser's native
+  // controls (bottom-right of the player), so we don't duplicate them.
   // When the native controls have focus the browser already handles these
   // keys — the `when` guard prevents double-firing.
   const videoNotFocused = () => document.activeElement?.tagName !== 'VIDEO'
@@ -505,48 +480,19 @@ function VideoPreview({
 
   if (error) return <NoPreview node={node} onDownload={onDownload} lang={lang} />
   return (
-    <div className="flex flex-col items-center gap-2">
-      <video
-        key={url}
-        ref={videoRef}
-        src={url}
-        controls
-        autoPlay
-        className="max-h-[80vh] w-[90vw] max-w-5xl rounded-lg shadow-2xl"
-        onError={() => setError(true)}
-        onLoadedMetadata={onLoadedMetadata}
-        onTimeUpdate={onTimeUpdate}
-        onPause={savePos}
-        onEnded={() => localStorage.removeItem(posKey)}
-      />
-      <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white">
-        <label className="flex cursor-pointer items-center gap-1.5">
-          <span className="opacity-70">{t('playbackSpeed', lang)}</span>
-          <select
-            value={rate}
-            onChange={(e) => changeRate(Number(e.target.value))}
-            className="cursor-pointer rounded bg-transparent py-1 outline-none [&>option]:text-black"
-          >
-            {PLAYBACK_RATES.map((r) => (
-              <option key={r} value={r}>
-                {r}x
-              </option>
-            ))}
-          </select>
-        </label>
-        {canPiP && (
-          <button
-            type="button"
-            onClick={() => void togglePiP()}
-            title={t('pictureInPicture', lang)}
-            aria-label={t('pictureInPicture', lang)}
-            className="hover:bg-white/20 rounded-full p-1.5 transition-colors"
-          >
-            <PictureInPicture2Icon className="size-4" />
-          </button>
-        )}
-      </div>
-    </div>
+    <video
+      key={url}
+      ref={videoRef}
+      src={url}
+      controls
+      autoPlay
+      className="max-h-[85vh] w-[90vw] max-w-5xl rounded-lg shadow-2xl"
+      onError={() => setError(true)}
+      onLoadedMetadata={onLoadedMetadata}
+      onTimeUpdate={onTimeUpdate}
+      onPause={savePos}
+      onEnded={() => localStorage.removeItem(posKey)}
+    />
   )
 }
 
