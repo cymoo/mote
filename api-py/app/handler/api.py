@@ -352,11 +352,11 @@ def auth() -> NoContent:
     return NO_CONTENT
 
 
-@api.before_request
-def check_permission() -> None:
-    if request.path.endswith('login'):
-        return
-
+def require_app_token() -> None:
+    """Validate the app token from the `token` cookie or a `Bearer` header;
+    raise 401 when it's missing or invalid. Shared by the notes (`api`) and
+    drive (`drive_bp`) blueprints so both enforce auth identically.
+    """
     token = request.cookies.get('token')
 
     if not token:
@@ -370,6 +370,13 @@ def check_permission() -> None:
 
     if not is_valid_password(token):
         unauthorized("invalid authorization token")
+
+
+@api.before_request
+def check_permission() -> None:
+    if request.path.endswith('login'):
+        return
+    require_app_token()
 
 
 # Helper functions

@@ -62,9 +62,21 @@ from ..services.drive_upload import (
 )
 from ..services.drive_zip import zip_folder_iter, zip_nodes_iter
 from ..middleware import validate
+from .api import require_app_token
 from .drive_serve import serve_drive_blob
 
 drive_bp = Blueprint('drive', __name__)
+
+
+@drive_bp.before_request
+def require_auth() -> None:
+    """Every /api/drive/* route requires the app token, the same check the
+    notes API applies. The public share surface (/shared-files/*) is a
+    separate blueprint and stays unauthenticated by design.
+    """
+    if request.method == 'OPTIONS':  # let CORS preflight through
+        return
+    require_app_token()
 
 
 # ---------------------------------------------------------------------------
