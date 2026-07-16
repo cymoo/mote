@@ -1,6 +1,0 @@
-FLASK_APP = ./manager
-FLASK_DEBUG = True
-FLASK_ENV = development
-FLASK_RUN_HOST = 127.0.0.1
-FLASK_RUN_PORT = 8000
-# FLASK_RUN_EXTRA_FILES=file1:dirA/file2:dirB/

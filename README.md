@@ -4,7 +4,7 @@
 
 ![screenshot](./samples/screenshot.png)
 
-Mote is a simple personal notebook and blog web app.
+Mote is a simple personal notebook and blog web app. **This `main` branch is the canonical Go edition** — the backend in [api-go](./api-go) is built with Go (chi, sqlx, SQLite).
 
 ## Features
 
@@ -23,11 +23,20 @@ Mote is a simple personal notebook and blog web app.
 * **Mobile-friendly** responsive layout
 * **Bilingual UI** — switch between Chinese and English in settings
 
+## Editions
+
+Mote is intentionally polyglot: one shared React frontend and the same HTTP API, implemented in several languages. This `main` branch is the canonical **Go** edition; the other editions live on their own long-lived branches, each carrying its backend plus the shared frontend.
+
+| Edition | Branch | Backend |
+| --- | --- | --- |
+| Go (canonical) | `main` | `api-go` |
+| Rust | `feat/api-rs` | `api-rs` |
+| Kotlin | `feat/api-kt` | `api-kt` |
+| Python | `feat/api-py` | `api-py` |
+
 ## Deployment
 
 For production, see [deploy/](./deploy) — nginx + Docker Compose with HTTPS via certbot, automated backup included.
-
-Four independent backend implementations — [api-go](./api-go), [api-rs](./api-rs), [api-kt](./api-kt), [api-py](./api-py) — expose an identical API. Each was a rewrite in a new language, so they also serve as side-by-side reference implementations. Each directory contains its own development guide.
 
 ## License
 

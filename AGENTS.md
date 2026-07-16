@@ -5,26 +5,22 @@ conventions any agent (or human) should follow when changing code here.
 
 ## Project overview
 
-Mote is a personal notebook + mini cloud drive web app. The repo is
-intentionally polyglot: a single React/Vite frontend speaks an identical HTTP
-API to **four independent backend implementations** in different languages.
-Each backend is a full rewrite of the same spec — they also serve as
-side-by-side reference implementations.
+Mote is a personal notebook + mini cloud drive web app. This `main` branch is
+the canonical **Go** edition: a single React/Vite frontend speaking the HTTP
+API to the Go backend in `api-go`.
 
 ```
 .
 ├── frontend/        React 18 + Vite + TypeScript + Tailwind. Single SPA.
-├── api-go/          Go (chi, sqlx, SQLite). Primary backend.
-├── api-rs/          Rust port.
-├── api-kt/          Kotlin port.
-├── api-py/          Python port.
+├── api-go/          Go (chi, sqlx, SQLite). The backend.
 ├── deploy/          nginx + Docker Compose for production.
 └── samples/         Sample database / screenshots.
 ```
 
-Day-to-day development almost always means **frontend + api-go**. Touch the
-other backends only when the task explicitly says so or you're keeping them in
-sync after a deliberate API change.
+Mote is intentionally polyglot: the same API is implemented in several
+languages, each on its own branch — Go on `main` (this branch, canonical),
+Rust on `feat/api-rs`, Kotlin on `feat/api-kt`, Python on `feat/api-py`.
+Day-to-day work here means **frontend + api-go**.
 
 ## Frontend (`frontend/`)
 
@@ -107,16 +103,12 @@ go build ./...       # quick sanity check
 
 `go build ./...` and `make test` must both pass before committing Go changes.
 
-## Other backends
+## Other editions
 
-`api-rs/`, `api-kt/`, `api-py/` each have their own README and build system.
-**Do not** modify them as a side effect of frontend or Go work. Touch them
-only when:
-1. The task explicitly says "sync the other backends", or
-2. You changed the public HTTP/JSON contract and the user has agreed to fan
-   the change out.
-
-When fanning out, add a checklist and verify each backend's tests pass.
+The Rust, Kotlin, and Python editions live on the `feat/api-rs`, `feat/api-kt`,
+and `feat/api-py` branches (this branch doesn't contain them). If you change the
+public HTTP/JSON contract here and the user asks to fan the change out, apply
+the matching change on each edition branch and verify its tests pass.
 
 ## Coding conventions
 
@@ -156,7 +148,7 @@ identically to production.
 * **Don't commit**: `dump.rdb`, `samples/app-dev.db`, generated bundles,
   `node_modules/`, `tmp/`, `.air.toml`, `*.sqlite-wal`/`-shm`. They're
   gitignored — keep them that way.
-* **Don't touch** the four migration histories beyond appending. Don't reset
+* **Don't touch** api-go's migration history beyond appending. Don't reset
   schema versions.
 * **Don't introduce** new dependencies casually. Prefer the in-house
   primitives (`@/components/*`, `pkg/*`) and standard library.
