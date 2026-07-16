@@ -71,10 +71,20 @@ pub async fn start_jobs(state: AppState) -> Result<(), Box<dyn Error + Send + Sy
             if ids.is_empty() {
                 return;
             }
-            if let Err(e) = drive.purge(&ids).await {
-                tracing::warn!("purge drive trash failed: {:?}", e);
-            } else {
-                info!("[Daily] purged {} expired drive trash roots", ids.len());
+            // Purge roots one by one: a root nested under another expired root
+            // (separate delete batches) is cascade-deleted by its ancestor's
+            // purge, so a NotFound here just means "already gone". purge_one
+            // refcounts blobs and drops cached thumbnails for orphans.
+            let mut purged = 0usize;
+            for id in ids {
+                match drive.purge(&[id]).await {
+                    Ok(()) => purged += 1,
+                    Err(crate::service::drive_service::DriveError::NotFound) => {}
+                    Err(e) => tracing::warn!("purge drive trash {}: {:?}", id, e),
+                }
+            }
+            if purged > 0 {
+                info!("[Daily] purged {} expired drive trash roots", purged);
             }
         })
     })?;
