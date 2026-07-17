@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -77,8 +78,8 @@ type listQuery struct {
 	Sort     string  `schema:"sort"`
 }
 
-func (h *DriveHandler) List(r *http.Request, q m.Query[listQuery]) ([]models.DriveNode, error) {
-	out, err := h.drive.List(r.Context(), q.Value.ParentID, q.Value.Q, q.Value.OrderBy, q.Value.Sort)
+func (h *DriveHandler) List(ctx context.Context, q m.Query[listQuery]) ([]models.DriveNode, error) {
+	out, err := h.drive.List(ctx, q.Value.ParentID, q.Value.Q, q.Value.OrderBy, q.Value.Sort)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
@@ -92,16 +93,16 @@ type idQuery struct {
 	ID int64 `schema:"id"`
 }
 
-func (h *DriveHandler) Breadcrumbs(r *http.Request, q m.Query[idQuery]) ([]models.DriveBreadcrumb, error) {
-	out, err := h.drive.Breadcrumbs(r.Context(), q.Value.ID)
+func (h *DriveHandler) Breadcrumbs(ctx context.Context, q m.Query[idQuery]) ([]models.DriveBreadcrumb, error) {
+	out, err := h.drive.Breadcrumbs(ctx, q.Value.ID)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
 	return out, nil
 }
 
-func (h *DriveHandler) Trash(r *http.Request) ([]models.DriveNode, error) {
-	out, err := h.drive.ListTrash(r.Context())
+func (h *DriveHandler) Trash(ctx context.Context) ([]models.DriveNode, error) {
+	out, err := h.drive.ListTrash(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +112,8 @@ func (h *DriveHandler) Trash(r *http.Request) ([]models.DriveNode, error) {
 	return out, nil
 }
 
-func (h *DriveHandler) Starred(r *http.Request) ([]models.DriveNode, error) {
-	out, err := h.drive.ListStarred(r.Context())
+func (h *DriveHandler) Starred(ctx context.Context) ([]models.DriveNode, error) {
+	out, err := h.drive.ListStarred(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -122,14 +123,14 @@ func (h *DriveHandler) Starred(r *http.Request) ([]models.DriveNode, error) {
 	return out, nil
 }
 
-func (h *DriveHandler) Usage(r *http.Request) (*models.DriveUsage, error) {
-	return h.drive.Usage(r.Context())
+func (h *DriveHandler) Usage(ctx context.Context) (*models.DriveUsage, error) {
+	return h.drive.Usage(ctx)
 }
 
 // ---------- mutations ----------
 
-func (h *DriveHandler) CreateFolder(r *http.Request, body m.JSON[models.DriveCreateFolderRequest]) (*models.DriveNode, error) {
-	n, err := h.drive.CreateFolder(r.Context(), body.Value.ParentID, body.Value.Name)
+func (h *DriveHandler) CreateFolder(ctx context.Context, body m.JSON[models.DriveCreateFolderRequest]) (*models.DriveNode, error) {
+	n, err := h.drive.CreateFolder(ctx, body.Value.ParentID, body.Value.Name)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
@@ -138,30 +139,30 @@ func (h *DriveHandler) CreateFolder(r *http.Request, body m.JSON[models.DriveCre
 
 // EnsurePath get-or-creates a nested folder chain (folder uploads use this to
 // mirror client directory structure) and returns the final folder.
-func (h *DriveHandler) EnsurePath(r *http.Request, body m.JSON[models.DriveEnsurePathRequest]) (*models.DriveNode, error) {
-	n, err := h.drive.EnsureFolderPath(r.Context(), body.Value.ParentID, body.Value.Path)
+func (h *DriveHandler) EnsurePath(ctx context.Context, body m.JSON[models.DriveEnsurePathRequest]) (*models.DriveNode, error) {
+	n, err := h.drive.EnsureFolderPath(ctx, body.Value.ParentID, body.Value.Path)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
 	return n, nil
 }
 
-func (h *DriveHandler) Rename(r *http.Request, body m.JSON[models.DriveRenameRequest]) (m.StatusCode, error) {
-	if err := h.drive.Rename(r.Context(), body.Value.ID, body.Value.Name); err != nil {
+func (h *DriveHandler) Rename(ctx context.Context, body m.JSON[models.DriveRenameRequest]) (m.StatusCode, error) {
+	if err := h.drive.Rename(ctx, body.Value.ID, body.Value.Name); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
 }
 
-func (h *DriveHandler) Move(r *http.Request, body m.JSON[models.DriveMoveRequest]) (m.StatusCode, error) {
-	if err := h.drive.Move(r.Context(), body.Value.IDs, body.Value.NewParentID); err != nil {
+func (h *DriveHandler) Move(ctx context.Context, body m.JSON[models.DriveMoveRequest]) (m.StatusCode, error) {
+	if err := h.drive.Move(ctx, body.Value.IDs, body.Value.NewParentID); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
 }
 
-func (h *DriveHandler) Copy(r *http.Request, body m.JSON[models.DriveCopyRequest]) ([]models.DriveNode, error) {
-	out, err := h.drive.Copy(r.Context(), body.Value.IDs, body.Value.NewParentID)
+func (h *DriveHandler) Copy(ctx context.Context, body m.JSON[models.DriveCopyRequest]) ([]models.DriveNode, error) {
+	out, err := h.drive.Copy(ctx, body.Value.IDs, body.Value.NewParentID)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
@@ -171,29 +172,29 @@ func (h *DriveHandler) Copy(r *http.Request, body m.JSON[models.DriveCopyRequest
 	return out, nil
 }
 
-func (h *DriveHandler) Star(r *http.Request, body m.JSON[models.DriveStarRequest]) (m.StatusCode, error) {
-	if err := h.drive.SetStarred(r.Context(), body.Value.IDs, body.Value.Starred); err != nil {
+func (h *DriveHandler) Star(ctx context.Context, body m.JSON[models.DriveStarRequest]) (m.StatusCode, error) {
+	if err := h.drive.SetStarred(ctx, body.Value.IDs, body.Value.Starred); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
 }
 
-func (h *DriveHandler) Delete(r *http.Request, body m.JSON[models.DriveDeleteRequest]) (m.StatusCode, error) {
-	if err := h.drive.SoftDelete(r.Context(), body.Value.IDs); err != nil {
+func (h *DriveHandler) Delete(ctx context.Context, body m.JSON[models.DriveDeleteRequest]) (m.StatusCode, error) {
+	if err := h.drive.SoftDelete(ctx, body.Value.IDs); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
 }
 
-func (h *DriveHandler) Restore(r *http.Request, body m.JSON[models.DriveRestoreRequest]) (m.StatusCode, error) {
-	if err := h.drive.Restore(r.Context(), body.Value.ID); err != nil {
+func (h *DriveHandler) Restore(ctx context.Context, body m.JSON[models.DriveRestoreRequest]) (m.StatusCode, error) {
+	if err := h.drive.Restore(ctx, body.Value.ID); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
 }
 
-func (h *DriveHandler) Purge(r *http.Request, body m.JSON[models.DrivePurgeRequest]) (m.StatusCode, error) {
-	if err := h.drive.Purge(r.Context(), body.Value.IDs); err != nil {
+func (h *DriveHandler) Purge(ctx context.Context, body m.JSON[models.DrivePurgeRequest]) (m.StatusCode, error) {
+	if err := h.drive.Purge(ctx, body.Value.IDs); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
@@ -312,8 +313,8 @@ func parseIDList(s string) []int64 {
 
 // ---------- uploads ----------
 
-func (h *DriveHandler) UploadInit(r *http.Request, body m.JSON[models.DriveUploadInitRequest]) (*models.DriveUploadInitResponse, error) {
-	u, err := h.upload.Init(r.Context(), body.Value)
+func (h *DriveHandler) UploadInit(ctx context.Context, body m.JSON[models.DriveUploadInitRequest]) (*models.DriveUploadInitResponse, error) {
+	u, err := h.upload.Init(ctx, body.Value)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
@@ -423,8 +424,8 @@ func (h *DriveHandler) CreateShare(r *http.Request, body m.JSON[models.DriveShar
 	return dto, nil
 }
 
-func (h *DriveHandler) ListShares(r *http.Request, q m.Query[idQuery]) ([]shareDTO, error) {
-	rows, err := h.share.ListByNode(r.Context(), q.Value.ID)
+func (h *DriveHandler) ListShares(ctx context.Context, q m.Query[idQuery]) ([]shareDTO, error) {
+	rows, err := h.share.ListByNode(ctx, q.Value.ID)
 	if err != nil {
 		return nil, mapDriveErr(err)
 	}
@@ -435,8 +436,8 @@ func (h *DriveHandler) ListShares(r *http.Request, q m.Query[idQuery]) ([]shareD
 	return out, nil
 }
 
-func (h *DriveHandler) RevokeShare(r *http.Request, body m.JSON[models.DriveShareRevokeRequest]) (m.StatusCode, error) {
-	if err := h.share.Revoke(r.Context(), body.Value.ShareID); err != nil {
+func (h *DriveHandler) RevokeShare(ctx context.Context, body m.JSON[models.DriveShareRevokeRequest]) (m.StatusCode, error) {
+	if err := h.share.Revoke(ctx, body.Value.ShareID); err != nil {
 		return 0, mapDriveErr(err)
 	}
 	return http.StatusNoContent, nil
