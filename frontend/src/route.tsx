@@ -13,6 +13,7 @@ import { Login } from '@/views/auth'
 import { PrivacyCoverOverlay, PrivacyCoverShortcut } from '@/views/auth/lock.tsx'
 import { ContentContainer, PrimaryLayout } from '@/views/layout/layout.tsx'
 import { DrawerOutlet } from '@/views/main/drawer-outlet.tsx'
+import { SearchOutlet } from '@/views/main/search-outlet.tsx'
 import { ErrorPage } from '@/views/main/error-page.tsx'
 import { Main } from '@/views/main/main.tsx'
 import { SearchPage } from '@/views/main/search-page.tsx'
@@ -157,6 +158,8 @@ export const App = () => {
         <Routes>
           <Route element={<DrawerOutlet />}>
             <Route path="/p/:id" element={<PostPage />} />
+          </Route>
+          <Route element={<SearchOutlet />}>
             <Route path="/search" element={<SearchPage />} />
           </Route>
         </Routes>
