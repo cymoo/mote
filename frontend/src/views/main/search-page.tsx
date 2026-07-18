@@ -103,6 +103,8 @@ export function SearchPage() {
   ).current
 
   const setParamNow = (value: string) => {
+    // Drop any pending debounced update so a stale keystroke can't overwrite this.
+    pushParam.cancel()
     const next = latestParams.current
     if (value) next.set('query', value)
     else next.delete('query')
@@ -231,7 +233,7 @@ export function SearchPage() {
         searchTerm ? (
           <PostList
             className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
-            queryString={`query=${searchTerm}`}
+            queryString={new URLSearchParams({ query: searchTerm }).toString()}
             orderBy={orderBy}
             ascending={asc}
           />
