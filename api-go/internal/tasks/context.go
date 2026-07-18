@@ -16,7 +16,7 @@ const (
 )
 
 func dbFromContext(ctx context.Context) (*sqlx.DB, error) {
-	db, ok := ctx.Value(mita.CtxtKey(ContextDB)).(*sqlx.DB)
+	db, ok := mita.ContextValue(ctx, ContextDB).(*sqlx.DB)
 	if !ok || db == nil {
 		return nil, fmt.Errorf("task context missing %q database", ContextDB)
 	}
@@ -24,7 +24,7 @@ func dbFromContext(ctx context.Context) (*sqlx.DB, error) {
 }
 
 func ftsFromContext(ctx context.Context) (*fulltext.FullTextSearch, error) {
-	fts, ok := ctx.Value(mita.CtxtKey(ContextFTS)).(*fulltext.FullTextSearch)
+	fts, ok := mita.ContextValue(ctx, ContextFTS).(*fulltext.FullTextSearch)
 	if !ok || fts == nil {
 		return nil, fmt.Errorf("task context missing %q full-text search", ContextFTS)
 	}
@@ -32,7 +32,7 @@ func ftsFromContext(ctx context.Context) (*fulltext.FullTextSearch, error) {
 }
 
 func uploadPathFromContext(ctx context.Context) (string, error) {
-	uploadPath, ok := ctx.Value(mita.CtxtKey(ContextUploadPath)).(string)
+	uploadPath, ok := mita.ContextValue(ctx, ContextUploadPath).(string)
 	if !ok || uploadPath == "" {
 		return "", fmt.Errorf("task context missing %q upload path", ContextUploadPath)
 	}
