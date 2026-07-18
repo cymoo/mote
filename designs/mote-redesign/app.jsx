@@ -118,6 +118,7 @@ function AppShell({ theme, mode, setMode, page, setPage, forceCompact, phoneInse
       <div className="page" style={{ display: page === "notes" ? undefined : "none" }}>
         <NotesApp
           compact={compact}
+          active={page === "notes"}
           mode={mode}
           setMode={setMode}
           gotoDrive={() => setPage("drive")}

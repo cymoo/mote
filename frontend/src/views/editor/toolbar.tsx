@@ -83,12 +83,15 @@ export function ToolBar({ className, children, ...props }: ComponentProps<'div'>
 
 export function ToolButton({ className, children, ...props }: ComponentProps<typeof Button>) {
   const focused = useFocused()
+  const sm = useIsSmallDevice()
 
   return (
     <Button
       className={cx(
-        '*:size-[1.2em] hover:scale-130 hover:bg-transparent transition-all',
-        { 'opacity-50': !focused },
+        sm
+          ? 'hover:bg-muted size-11! rounded-lg px-0! *:size-5'
+          : '*:size-[1.2em] hover:scale-130 hover:bg-transparent transition-all',
+        { 'opacity-50': !focused && !sm },
         className,
       )}
       size="sm"

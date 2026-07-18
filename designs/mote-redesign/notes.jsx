@@ -313,10 +313,13 @@ function SidebarContent({ tags, onTagAction, filter, setFilter, onNavigate, goto
 
 // ---------- 编辑器 ----------
 
-function Composer({ onPublish, autoFocus, toast }) {
+function Composer({ tags, onPublish, autoFocus, toast }) {
   const [text, setText] = useState("");
   const [color, setColor] = useState(null);
+  const [caret, setCaret] = useState(0);
   const taRef = useRef(null);
+  const allTags = useMemo(() => flattenTags(tags || []), [tags]);
+  const { hashM, suggestions, showSug, sugCur, setSugCur, setDismissed } = useHashSuggest(text, caret, allTags);
 
   const resize = () => {
     const ta = taRef.current;
@@ -328,15 +331,59 @@ function Composer({ onPublish, autoFocus, toast }) {
     if (autoFocus && taRef.current) taRef.current.focus();
   }, [autoFocus]);
 
+  const change = (e) => {
+    setText(e.target.value);
+    setCaret(e.target.selectionStart);
+    resize();
+  };
+  const syncCaret = (e) => setCaret(e.target.selectionStart);
+
+  const applySuggestion = (s) => {
+    if (!hashM) return;
+    const start = hashM.index;
+    const insert = "#" + s.name + " ";
+    const next = text.slice(0, start) + insert + text.slice(caret);
+    setText(next);
+    const pos = start + insert.length;
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (ta) { ta.focus(); ta.setSelectionRange(pos, pos); setCaret(pos); resize(); }
+    });
+  };
+
+  const insertHash = () => {
+    const ta = taRef.current;
+    const pos = ta ? ta.selectionStart : text.length;
+    const ins = pos > 0 && !/\s$/.test(text.slice(0, pos)) ? " #" : "#";
+    const next = text.slice(0, pos) + ins + text.slice(pos);
+    setText(next);
+    const np = pos + ins.length;
+    requestAnimationFrame(() => {
+      const t2 = taRef.current;
+      if (t2) { t2.focus(); t2.setSelectionRange(np, np); setCaret(np); }
+    });
+  };
+
   const publish = () => {
     if (!text.trim()) return;
     onPublish(text.trim(), color);
     setText("");
     setColor(null);
+    setCaret(0);
     if (taRef.current) {
       taRef.current.style.height = "auto";
       taRef.current.focus();
     }
+  };
+
+  const onKeyDown = (e) => {
+    if (showSug) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setSugCur((c) => (c + 1) % suggestions.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setSugCur((c) => (c <= 0 ? suggestions.length - 1 : c - 1)); return; }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") { e.preventDefault(); applySuggestion(suggestions[sugCur]); return; }
+      if (e.key === "Escape") { e.preventDefault(); setDismissed(true); return; }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); publish(); }
   };
 
   return (
@@ -346,16 +393,15 @@ function Composer({ onPublish, autoFocus, toast }) {
         value={text}
         placeholder="记录此刻的想法… 输入 # 添加标签"
         rows={2}
-        onChange={(e) => {
-          setText(e.target.value);
-          resize();
-        }}
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") publish();
-        }}
+        onChange={change}
+        onSelect={syncCaret}
+        onKeyDown={onKeyDown}
       ></textarea>
+      {showSug && (
+        <TagSuggestStrip suggestions={suggestions} sugCur={sugCur} onPick={applySuggestion}></TagSuggestStrip>
+      )}
       <div className="composer-bar">
-        <button type="button" className="icon-btn sm" title="标签" onClick={() => setText((t) => t + (t.endsWith(" ") || t === "" ? "#" : " #"))}>
+        <button type="button" className="icon-btn sm" title="标签" onClick={insertHash}>
           <Ic.hash size={15}></Ic.hash>
         </button>
         <button type="button" className="icon-btn sm" title="插入图片" onClick={() => toast("原型演示：插入图片")}>
@@ -511,6 +557,462 @@ function MemoCard({ memo, inTrash, onTagClick, onAction, style }) {
   );
 }
 
+// ---------- 搜索 / 标签 工具 ----------
+
+// 把标签树拍平成一维列表（含子标签全路径）
+function flattenTags(list, out = []) {
+  for (const t of list) {
+    out.push({ name: t.name, count: t.count, pinned: !!t.pinned });
+    if (t.children) flattenTags(t.children, out);
+  }
+  return out;
+}
+
+function tokenizeQuery(q) {
+  return q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function escapeReg(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// 命中评分：union 匹配（任一 term 命中即算），累计出现次数近似 TF
+function scoreMemo(plain, terms) {
+  let score = 0;
+  for (const t of terms) {
+    let i = 0;
+    while ((i = plain.indexOf(t, i)) !== -1) {
+      score += 1;
+      i += t.length;
+    }
+  }
+  return score;
+}
+
+// 在受限 HTML 的「文本节点」里给命中词包 <mark>，保留标签结构不被破坏；
+// 跳过 #标签 chip（与真实产品一致：标签不参与正文全文命中）
+function highlightHtml(html, terms) {
+  if (!terms.length) return html;
+  const pat = new RegExp("(" + terms.map(escapeReg).join("|") + ")", "gi");
+  return html.replace(
+    /(<button class="tagchip"[^>]*>[^<]*<\/button>)|(<[^>]+>)|([^<]+)/g,
+    (m, chip, tagPart, textPart) => {
+      if (chip) return chip;
+      if (tagPart) return tagPart;
+      return textPart.replace(pat, "<mark>$1</mark>");
+    }
+  );
+}
+
+const SEARCH_SEED = ["良质", "roadmap", "轻"]; // 空态示例（可清除）
+function loadRecents() {
+  try {
+    const raw = localStorage.getItem("mote:recent-search");
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return SEARCH_SEED.slice();
+}
+function pushRecent(list, q) {
+  const next = [q, ...list.filter((x) => x !== q)].slice(0, 6);
+  try { localStorage.setItem("mote:recent-search", JSON.stringify(next)); } catch (e) { /* ignore */ }
+  return next;
+}
+
+const SEARCH_ORDERS = [
+  { id: "rel", label: "相关", icon: "sparkle" },
+  { id: "new", label: "最新", icon: "arrowDown" },
+  { id: "old", label: "最早", icon: "arrowUp" },
+];
+
+// ---------- 搜索结果卡片（复用 memo 视觉，去掉菜单，可点击定位） ----------
+function SearchResult({ memo, terms, cur, onOpen, onTagClick }) {
+  const html = useMemo(() => highlightHtml(memo.content, terms), [memo.content, terms]);
+  return (
+    <div className={"srch-hit" + (cur ? " cur" : "")} onClick={() => onOpen(memo)}>
+      <article className="memo">
+        <header className="memo-head">
+          <time className="memo-time">{memo.dayLabel} · {memo.time}</time>
+          {memo.color && <i className={"memo-mark " + memo.color}></i>}
+          {memo.comments > 0 && (
+            <span className="memo-badge"><Ic.comment size={12}></Ic.comment>{memo.comments}</span>
+          )}
+          {memo.shared && (
+            <span className="memo-badge"><Ic.share size={12}></Ic.share></span>
+          )}
+        </header>
+        <div
+          className="memo-prose"
+          onClick={(e) => {
+            const chip = e.target.closest(".tagchip");
+            if (chip) { e.stopPropagation(); onTagClick(chip.dataset.tag); }
+          }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        ></div>
+      </article>
+    </div>
+  );
+}
+
+// ---------- 搜索浮层（独立搜索面：桌面居中面板 / 移动全屏抽屉） ----------
+function SearchOverlay({ memos, tags, compact, onClose, onPickTag, onOpenResult, toast }) {
+  const [query, setQuery] = useState("");
+  const [order, setOrder] = useState("rel");
+  const [cur, setCur] = useState(-1);
+  const [recents, setRecents] = useState(loadRecents);
+  const inRef = useRef(null);
+  const bodyRef = useRef(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => inRef.current && inRef.current.focus(), 40);
+    return () => clearTimeout(t);
+  }, []);
+
+  const terms = tokenizeQuery(query);
+  const results = useMemo(() => {
+    const ts = tokenizeQuery(query);
+    if (!ts.length) return [];
+    const idxOf = new Map(memos.map((m, i) => [m.id, i]));
+    const scored = [];
+    memos.forEach((m) => {
+      const s = scoreMemo(stripHtml(m.content).toLowerCase(), ts);
+      if (s > 0) scored.push({ memo: m, score: s });
+    });
+    if (order === "rel") scored.sort((a, b) => b.score - a.score || idxOf.get(a.memo.id) - idxOf.get(b.memo.id));
+    else if (order === "new") scored.sort((a, b) => idxOf.get(a.memo.id) - idxOf.get(b.memo.id));
+    else scored.sort((a, b) => idxOf.get(b.memo.id) - idxOf.get(a.memo.id));
+    return scored;
+  }, [query, order, memos]);
+
+  useEffect(() => { setCur(-1); }, [query, order]);
+  useEffect(() => {
+    if (cur < 0 || !bodyRef.current) return;
+    const el = bodyRef.current.querySelector(".srch-hit.cur");
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [cur]);
+
+  const suggestTags = useMemo(() => {
+    const flat = flattenTags(tags);
+    flat.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.count - a.count);
+    return flat.slice(0, 8);
+  }, [tags]);
+
+  const commit = (q) => {
+    const v = (q == null ? query : q).trim();
+    if (v) setRecents((r) => pushRecent(r, v));
+  };
+  const openResult = (m) => { commit(); onOpenResult(m); };
+  const runRecent = (q) => { setQuery(q); if (inRef.current) inRef.current.focus(); };
+
+  const onKeyDown = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); return; }
+    if (!results.length) {
+      if (e.key === "Enter") commit();
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setCur((c) => (c + 1) % results.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setCur((c) => (c <= 0 ? results.length - 1 : c - 1)); }
+    else if (e.key === "Enter") { e.preventDefault(); if (cur >= 0) openResult(results[cur].memo); else commit(); }
+  };
+
+  const hasQuery = query.trim().length > 0;
+
+  return (
+    <div className="srch-scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="srch" role="dialog" aria-label="搜索笔记">
+        <div className="srch-head">
+          <span className="lead"><Ic.search size={19}></Ic.search></span>
+          <input
+            ref={inRef}
+            className="srch-input"
+            value={query}
+            placeholder="搜索笔记全文…"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          {hasQuery && (
+            <button type="button" className="icon-btn sm" aria-label="清空" onClick={() => { setQuery(""); inRef.current && inRef.current.focus(); }}>
+              <Ic.x size={15}></Ic.x>
+            </button>
+          )}
+          {compact ? (
+            <button type="button" className="srch-cancel" onClick={onClose}>取消</button>
+          ) : (
+            <kbd className="srch-esc">ESC</kbd>
+          )}
+        </div>
+
+        {hasQuery && (
+          <div className="srch-tools">
+            <span className="srch-count"><b>{results.length}</b> 条结果</span>
+            <span className="sp"></span>
+            <div className="seg" role="tablist" aria-label="排序">
+              {SEARCH_ORDERS.map((o) => (
+                <button
+                  type="button"
+                  key={o.id}
+                  className={"seg-btn" + (order === o.id ? " active" : "")}
+                  onClick={() => setOrder(o.id)}
+                >
+                  {React.createElement(Ic[o.icon], { size: 13 })}
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="srch-body" ref={bodyRef}>
+          {!hasQuery && (
+            <React.Fragment>
+              {recents.length > 0 && (
+                <div className="srch-sec">
+                  <div className="srch-sec-h">
+                    <span className="ic"><Ic.clock size={13}></Ic.clock></span>
+                    最近搜索
+                    <span className="sp"></span>
+                    <button type="button" className="txt-btn" onClick={() => { setRecents([]); try { localStorage.setItem("mote:recent-search", "[]"); } catch (e) {} }}>清除</button>
+                  </div>
+                  <div className="srch-chips">
+                    {recents.map((q) => (
+                      <button type="button" key={q} className="srch-chip" onClick={() => runRecent(q)}>
+                        <span className="lead-ic"><Ic.search size={13}></Ic.search></span>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="srch-sec">
+                <div className="srch-sec-h">
+                  <span className="ic"><Ic.hash size={13}></Ic.hash></span>
+                  常用标签
+                </div>
+                <div className="srch-chips">
+                  {suggestTags.map((t) => (
+                    <button type="button" key={t.name} className="srch-chip" onClick={() => onPickTag(t.name)}>
+                      <span className="hash">#</span>
+                      {t.name.split("/").pop()}
+                      <span className="cnt">{t.count}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="srch-tip">
+                  <span>搜索覆盖笔记正文全文</span>
+                  <span>·</span>
+                  <span>点标签可直接跳转</span>
+                  {!compact && (<React.Fragment><span>·</span><span><code>⌘K</code> 打开 <code>Esc</code> 关闭</span></React.Fragment>)}
+                </p>
+              </div>
+            </React.Fragment>
+          )}
+
+          {hasQuery && results.length === 0 && (
+            <div className="srch-empty-hits">
+              <Ic.inbox size={40} strokeWidth={1.3}></Ic.inbox>
+              <span>没有找到与 <span className="q">「{query.trim()}」</span> 匹配的笔记</span>
+            </div>
+          )}
+
+          {hasQuery && results.map((r, i) => (
+            <SearchResult
+              key={r.memo.id}
+              memo={r.memo}
+              terms={terms}
+              cur={i === cur}
+              onOpen={openResult}
+              onTagClick={(t) => onPickTag(t)}
+            ></SearchResult>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- 移动端编辑器（浮层 sheet → 全屏，含 # 标签联想 + 草稿保存） ----------
+function useDraft(key) {
+  const [text, setText] = useState(() => {
+    try { return localStorage.getItem(key) || ""; } catch (e) { return ""; }
+  });
+  const update = (v) => {
+    setText(v);
+    try { v.trim() ? localStorage.setItem(key, v) : localStorage.removeItem(key); } catch (e) { /* ignore */ }
+  };
+  const clear = () => { try { localStorage.removeItem(key); } catch (e) { /* ignore */ } setText(""); };
+  return [text, update, clear];
+}
+
+// #标签联想：从光标前的 #token 算出候选（含「新建」项），桌面/移动共用
+function useHashSuggest(text, caret, allTags) {
+  const [sugCur, setSugCur] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const hashM = /#([^\s#]*)$/.exec(text.slice(0, caret));
+  const partial = hashM ? hashM[1] : null;
+  useEffect(() => { setSugCur(0); setDismissed(false); }, [partial]);
+  const suggestions = useMemo(() => {
+    if (partial == null) return [];
+    const p = partial.toLowerCase();
+    const short = (n) => n.split("/").pop();
+    const list = allTags
+      .filter((t) => t.name.toLowerCase().includes(p) || short(t.name).toLowerCase().includes(p))
+      .sort((a, b) => {
+        const as = short(a.name).toLowerCase().startsWith(p) ? 0 : 1;
+        const bs = short(b.name).toLowerCase().startsWith(p) ? 0 : 1;
+        return as - bs || (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.count - a.count;
+      })
+      .slice(0, 8)
+      .map((t) => ({ type: "tag", name: t.name, short: short(t.name), count: t.count }));
+    const exact = allTags.some((t) => short(t.name).toLowerCase() === p);
+    if (p && !exact) list.unshift({ type: "new", name: partial, short: partial });
+    return list;
+  }, [partial, allTags]);
+  return { hashM, suggestions, showSug: suggestions.length > 0 && !dismissed, sugCur, setSugCur, setDismissed };
+}
+
+// 标签联想条（桌面/移动共用）
+function TagSuggestStrip({ suggestions, sugCur, onPick }) {
+  return (
+    <div className="tag-suggest">
+      <span className="lbl">#</span>
+      {suggestions.map((s, i) => (
+        <button
+          type="button"
+          key={s.type + s.name}
+          className={"tsug" + (i === sugCur ? " cur" : "") + (s.type === "new" ? " new" : "")}
+          onMouseDown={(e) => { e.preventDefault(); onPick(s); }}
+        >
+          <span className="hash">#</span>
+          {s.short}
+          <span className="cnt">{s.type === "new" ? "新建" : s.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MobileComposer({ tags, inheritedColor, onPublish, onClose, toast }) {
+  const [text, setText, clearDraft] = useDraft("mote:draft:mobile");
+  const [full, setFull] = useState(false);
+  const [caret, setCaret] = useState(text.length);
+  const taRef = useRef(null);
+  const allTags = useMemo(() => flattenTags(tags), [tags]);
+  const { hashM, suggestions, showSug, sugCur, setSugCur, setDismissed } = useHashSuggest(text, caret, allTags);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const ta = taRef.current;
+      if (ta) { ta.focus(); const n = ta.value.length; ta.setSelectionRange(n, n); }
+    }, 80);
+    return () => clearTimeout(t);
+  }, [full]);
+
+  const syncCaret = (e) => setCaret(e.target.selectionStart);
+  const change = (e) => { setText(e.target.value); setCaret(e.target.selectionStart); };
+
+  const applySuggestion = (s) => {
+    if (!hashM) return;
+    const start = hashM.index;
+    const insert = "#" + s.name + " ";
+    const next = text.slice(0, start) + insert + text.slice(caret);
+    setText(next);
+    const pos = start + insert.length;
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (ta) { ta.focus(); ta.setSelectionRange(pos, pos); setCaret(pos); }
+    });
+  };
+
+  const insertHash = () => {
+    const ta = taRef.current;
+    const pos = ta ? ta.selectionStart : text.length;
+    const ins = pos > 0 && !/\s$/.test(text.slice(0, pos)) ? " #" : "#";
+    const next = text.slice(0, pos) + ins + text.slice(pos);
+    setText(next);
+    const np = pos + ins.length;
+    requestAnimationFrame(() => {
+      const t2 = taRef.current;
+      if (t2) { t2.focus(); t2.setSelectionRange(np, np); setCaret(np); }
+    });
+  };
+
+  const publish = () => {
+    if (!text.trim()) return;
+    onPublish(text.trim(), inheritedColor || null);
+    clearDraft();
+    onClose();
+  };
+
+  const onKeyDown = (e) => {
+    if (showSug) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setSugCur((c) => (c + 1) % suggestions.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setSugCur((c) => (c <= 0 ? suggestions.length - 1 : c - 1)); return; }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") { e.preventDefault(); applySuggestion(suggestions[sugCur]); return; }
+      if (e.key === "Escape") { e.preventDefault(); setDismissed(true); return; }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); publish(); }
+  };
+
+  const words = text.replace(/\s+/g, "").length;
+
+  const toolbar = (
+    <div className="mc-bar">
+      <button type="button" className="mc-tool" aria-label="标签" onClick={insertHash}><Ic.hash size={18}></Ic.hash></button>
+      <button type="button" className="mc-tool" aria-label="插入图片" onClick={() => toast("原型演示：插入图片")}><Ic.image size={18}></Ic.image></button>
+      <button type="button" className="mc-tool" aria-label="待办列表" onClick={() => toast("原型演示：待办列表")}><Ic.checksq size={18}></Ic.checksq></button>
+      <button type="button" className="mc-tool" aria-label="代码块" onClick={() => toast("原型演示：代码块")}><Ic.code size={18}></Ic.code></button>
+      <span className="sp"></span>
+      {words > 0 && <span className="mc-count">{words} 字</span>}
+      <button type="button" className="btn btn-primary mc-publish" disabled={!text.trim()} style={{ opacity: text.trim() ? 1 : 0.45 }} onClick={publish}>发布</button>
+    </div>
+  );
+
+  const tagStrip = showSug && (
+    <TagSuggestStrip suggestions={suggestions} sugCur={sugCur} onPick={applySuggestion}></TagSuggestStrip>
+  );
+
+  const editor = (
+    <React.Fragment>
+      <textarea
+        ref={taRef}
+        className="mc-ta"
+        value={text}
+        placeholder="记录此刻的想法… 输入 # 添加标签"
+        onChange={change}
+        onSelect={syncCaret}
+        onKeyDown={onKeyDown}
+      ></textarea>
+      {tagStrip}
+      {toolbar}
+    </React.Fragment>
+  );
+
+  if (full) {
+    return (
+      <div className="mc-full">
+        <div className="mc-head">
+          <button type="button" className="icon-btn" aria-label="收起为浮层" onClick={() => setFull(false)}><Ic.minimize size={18}></Ic.minimize></button>
+          <span className="mc-title">新笔记</span>
+          <button type="button" className="icon-btn" aria-label="关闭" onClick={onClose}><Ic.x size={19}></Ic.x></button>
+        </div>
+        {editor}
+      </div>
+    );
+  }
+  return (
+    <div className="mc-sheet">
+      <div className="mc-grip"></div>
+      <div className="mc-head">
+        <span className="mc-title">新笔记</span>
+        {inheritedColor && <i className={"mark-dot " + inheritedColor} title="将沿用当前视图的颜色标记"></i>}
+        <span className="sp"></span>
+        <button type="button" className="icon-btn sm" aria-label="全屏" onClick={() => setFull(true)}><Ic.maximize size={16}></Ic.maximize></button>
+        <button type="button" className="icon-btn sm" aria-label="收起" onClick={onClose}><Ic.chevD size={18}></Ic.chevD></button>
+      </div>
+      {editor}
+    </div>
+  );
+}
+
 // ---------- 笔记页主组件 ----------
 
 const FILTER_TITLES = {
@@ -553,15 +1055,41 @@ function mapTagTree(list, name, fn) {
   return out;
 }
 
-function NotesApp({ compact, mode, setMode, gotoDrive, toast }) {
+function NotesApp({ compact, active, mode, setMode, gotoDrive, toast }) {
   const [memos, setMemos] = useState(MOTE.MEMOS);
   const [trashed, setTrashed] = useState(MOTE.TRASHED_MEMOS);
   const [tags, setTags] = useState(MOTE.TAGS);
   const [renamingTag, setRenamingTag] = useState(null);
   const [filter, setFilter] = useState({ kind: "all" });
-  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [sheet, setSheet] = useState(false);
+
+  // 全局快捷键（仅笔记页在前台时生效）：⌘K / 「/」开搜索、Esc 关闭
+  useEffect(() => {
+    if (!active) return undefined;
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (e.key === "Escape" && searchOpen) {
+        setSearchOpen(false);
+        return;
+      }
+      if (e.key === "/" && !searchOpen) {
+        const el = document.activeElement;
+        const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+        if (!typing) {
+          e.preventDefault();
+          setSearchOpen(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, searchOpen]);
 
   const onTagAction = (action, tag) => {
     if (action === "pin") {
@@ -597,10 +1125,8 @@ function NotesApp({ compact, mode, setMode, gotoDrive, toast }) {
     if (filter.kind === "color") r = r.filter((m) => m.color === filter.color);
     if (filter.kind === "tag")
       r = r.filter((m) => m.tags && m.tags.some((t) => t === filter.tag || t.startsWith(filter.tag + "/")));
-    const q = query.trim();
-    if (q) r = r.filter((m) => stripHtml(m.content).toLowerCase().includes(q.toLowerCase()));
     return r;
-  }, [list, filter, query]);
+  }, [list, filter]);
 
   // 按天分组（保持原顺序）
   const groups = useMemo(() => {
@@ -702,6 +1228,9 @@ function NotesApp({ compact, mode, setMode, gotoDrive, toast }) {
             </button>
             <Brand></Brand>
             <span style={{ flex: 1 }}></span>
+            <button type="button" className="icon-btn" aria-label="搜索" onClick={() => setSearchOpen(true)}>
+              <Ic.search size={17}></Ic.search>
+            </button>
             <button
               type="button"
               className="icon-btn"
@@ -718,19 +1247,11 @@ function NotesApp({ compact, mode, setMode, gotoDrive, toast }) {
             <span className="count">{filtered.length} 条</span>
           </div>
           <span className="sp"></span>
-          <label className="field nb-search">
+          <button type="button" className="nb-search-trigger" onClick={() => setSearchOpen(true)}>
             <Ic.search size={14}></Ic.search>
-            <input
-              value={query}
-              placeholder="搜索笔记…"
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            {query && (
-              <button type="button" className="icon-btn sm" style={{ margin: "-4px -6px" }} onClick={() => setQuery("")}>
-                <Ic.x size={13}></Ic.x>
-              </button>
-            )}
-          </label>
+            <span className="t-label">搜索笔记</span>
+            <kbd>⌘K</kbd>
+          </button>
         </div>
         {filter.kind === "trash" ? (
           <div className="alert">
@@ -750,13 +1271,13 @@ function NotesApp({ compact, mode, setMode, gotoDrive, toast }) {
             </button>
           </div>
         ) : (
-          !compact && <Composer onPublish={publish} toast={toast}></Composer>
+          !compact && <Composer tags={tags} onPublish={publish} toast={toast}></Composer>
         )}
         <div className="feed">
           {groups.length === 0 && (
             <div className="empty">
               <Ic.inbox size={44} strokeWidth={1.3}></Ic.inbox>
-              <span>{query ? `没有找到与「${query}」相关的笔记` : "这里空空如也"}</span>
+              <span>这里空空如也</span>
             </div>
           )}
           {groups.map((g) => (
@@ -801,11 +1322,25 @@ function NotesApp({ compact, mode, setMode, gotoDrive, toast }) {
       {compact && sheet && (
         <React.Fragment>
           <div className="sheet-overlay" onClick={() => setSheet(false)}></div>
-          <div className="sheet">
-            <div className="sheet-grip"></div>
-            <Composer onPublish={publish} autoFocus toast={toast}></Composer>
-          </div>
+          <MobileComposer
+            tags={tags}
+            inheritedColor={filter.kind === "color" ? filter.color : null}
+            onPublish={publish}
+            onClose={() => setSheet(false)}
+            toast={toast}
+          ></MobileComposer>
         </React.Fragment>
+      )}
+      {searchOpen && (
+        <SearchOverlay
+          memos={memos}
+          tags={tags}
+          compact={compact}
+          onClose={() => setSearchOpen(false)}
+          onPickTag={(name) => { setFilter({ kind: "tag", tag: name }); setSearchOpen(false); }}
+          onOpenResult={(m) => { setSearchOpen(false); toast("已定位到笔记 · " + m.time); }}
+          toast={toast}
+        ></SearchOverlay>
       )}
       {renamingTag && (
         <RenameTagDialog
