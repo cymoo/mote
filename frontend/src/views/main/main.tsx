@@ -46,7 +46,7 @@ export function Main() {
       key={keyForResetEditor}
       className={
         sm
-          ? 'min-h-[150px]'
+          ? 'min-h-[38vh] flex-1'
           : 'relative mt-3 mb-5 max-h-[93vh]! flex-none rounded-[calc(var(--radius)+6px)] border border-border bg-card/80 p-4 shadow-xs transition-[border-color,box-shadow] duration-200 focus-within:border-primary/45 focus-within:bg-card focus-within:shadow-[0_0_0_3.5px_hsl(var(--primary)/0.10),0_10px_24px_-8px_hsl(var(--foreground)/0.10)]'
       }
       post={{ shared, color }}
@@ -67,12 +67,14 @@ export function Main() {
       ) : untagged ? null : sm ? (
         <Button
           id="main-editor-trigger"
-          className="fixed left-0 right-0 mx-auto bottom-6 z-50 size-13 rounded-full! p-0! shadow-[0_6px_20px_-4px_hsl(var(--primary)/0.55),0_2px_8px_hsl(var(--foreground)/0.15)]"
+          className="fixed left-0 right-0 mx-auto bottom-6 z-50 size-14! rounded-full! p-0! shadow-[0_6px_20px_-4px_hsl(var(--primary)/0.55),0_2px_8px_hsl(var(--foreground)/0.15)]"
           variant="primary"
           aria-label="open editor"
           onClick={() => {
             modal.open({
               content: editor,
+              expandable: true,
+              title: <T name="newMemo" />,
             })
           }}
         >

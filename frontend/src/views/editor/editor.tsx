@@ -1,6 +1,6 @@
 import { ImageIcon } from 'lucide-react'
 import { ComponentProps, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Element as SlateElement, Text as SlateText } from 'slate'
+import { Element as SlateElement, Node as SlateNode, Text as SlateText } from 'slate'
 import useSWR from 'swr'
 
 import { cx } from '@/utils/css.ts'
@@ -14,6 +14,7 @@ import { HASH_TAG, PARAGRAPH } from '@/components/editor/types.ts'
 import { Image, ImageGrid, ImageGridHandle } from '@/components/image-grid.tsx'
 import { T } from '@/components/translation.tsx'
 
+import { useIsSmallDevice } from '@/views/layout/hooks.tsx'
 import { useQuote } from '@/views/post/hooks/use-quote.ts'
 
 import { GET_TAGS, UPLOAD_FILE, fetcher } from '@/api.ts'
@@ -56,7 +57,14 @@ export function PostEditor({
   const [value, setValue] = useState(initialValue)
   const [images, setImages] = useState(initialImages)
 
+  const sm = useIsSmallDevice()
+
   const empty = isEditorEmpty(value) && images.length === 0
+
+  const charCount = useMemo(
+    () => value.reduce((sum, node) => sum + SlateNode.string(node).replace(/\s/g, '').length, 0),
+    [value],
+  )
 
   const { data: tags } = useSWR<Tag[]>(GET_TAGS, { fallbackData: [] })
   const tagNames = useMemo(
@@ -105,7 +113,7 @@ export function PostEditor({
           onChange={setImages}
           uploadImage={uploadImage}
         />
-        <ToolBar className="flex-none mt-2 -ml-3">
+        <ToolBar className={cx('mt-2 flex-none', { '-ml-3': !sm })}>
           <ToolButton
             title="insert image"
             onClick={() => {
@@ -115,6 +123,11 @@ export function PostEditor({
             <ImageIcon />
           </ToolButton>
           <span className="ml-auto size-0"></span>
+          {charCount > 0 && (
+            <span className="text-muted-foreground/60 mr-2 text-xs tabular-nums select-none">
+              {charCount}
+            </span>
+          )}
           {post.id && (
             <Button
               className="mr-2"
@@ -129,7 +142,9 @@ export function PostEditor({
             </Button>
           )}
           <Button
-            className="rounded-md px-5! py-1!"
+            className={cx('rounded-md px-5! py-1!', {
+              'h-10! rounded-xl! px-6! text-[15px]! font-semibold': sm,
+            })}
             size="sm"
             variant="primary"
             type="submit"

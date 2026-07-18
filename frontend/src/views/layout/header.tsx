@@ -3,9 +3,11 @@ import { ComponentProps } from 'react'
 import { useLocation } from 'react-router'
 
 import { cx } from '@/utils/css.ts'
+import { useShortcuts } from '@/utils/hooks/use-shortcuts.ts'
 
 import { Button } from '@/components/button.tsx'
 import { useStableNavigate } from '@/components/router.tsx'
+import { T } from '@/components/translation.tsx'
 
 import { postActions } from '@/views/actions.ts'
 
@@ -16,6 +18,18 @@ export function MainHeader({ className }: ComponentProps<'header'>) {
   const title = useMemoTitle()
   const navigate = useStableNavigate()
   const location = useLocation()
+
+  const openSearch = () => {
+    void navigate('/search', {
+      state: { backgroundLocation: location, isFirstLayer: true },
+    })
+  }
+
+  // ⌘K / Ctrl+K, or "/", opens search (auto-skips while typing or a dialog is open)
+  useShortcuts({
+    'mod+k': { run: openSearch, when: () => location.pathname !== '/search' },
+    '/': { run: openSearch, when: () => location.pathname !== '/search' },
+  })
 
   return (
     <header
@@ -48,18 +62,31 @@ export function MainHeader({ className }: ComponentProps<'header'>) {
       >
         {title}
       </span>
-      <Button
-        className="-mr-4 ml-auto"
-        variant="ghost"
-        aria-label="search"
-        onClick={() => {
-          void navigate('/search', {
-            state: { backgroundLocation: location, isFirstLayer: true },
-          })
-        }}
-      >
-        <SearchIcon className="size-5" />
-      </Button>
+      {sm ? (
+        <Button
+          className="-mr-4 ml-auto"
+          variant="ghost"
+          aria-label="search"
+          onClick={openSearch}
+        >
+          <SearchIcon className="size-5" />
+        </Button>
+      ) : (
+        <button
+          type="button"
+          aria-label="search"
+          className="text-muted-foreground hover:bg-card hover:shadow-[inset_0_0_0_1px_hsl(var(--border))] ml-auto flex h-9 w-[15rem] items-center gap-2 rounded-lg bg-muted px-3 text-sm transition-colors"
+          onClick={openSearch}
+        >
+          <SearchIcon className="size-4 flex-none opacity-80" />
+          <span className="flex-1 truncate text-left">
+            <T name="search" />
+          </span>
+          <kbd className="border-border bg-background/70 text-muted-foreground/70 flex-none rounded border px-1.5 py-0.5 font-mono text-[10px] leading-none">
+            ⌘K
+          </kbd>
+        </button>
+      )}
     </header>
   )
 }

@@ -408,6 +408,17 @@
     font-style: normal;
   }
 
+  /* search hit highlight (server injects <mark> around matched tokens) */
+  mark {
+    background-color: hsl(var(--primary) / 0.16);
+    color: hsl(var(--primary));
+    padding: 0.02em 0.2em;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+
   ul {
     list-style-type: disc;
   }
