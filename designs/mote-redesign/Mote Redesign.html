@@ -8,7 +8,7 @@
 <style>
 /* ============================================================
    Mote Redesign — 设计令牌
-   4 套主题（曦 dawn / 墨 ink / 青 celadon / 夜 nocturne）× 明暗
+   4 套主题（曦 dawn / 墨 ink / 青 celadon / 紫 wisteria）× 明暗
    令牌命名与 frontend/src/index.css 对齐，便于落地。
    ============================================================ */
 :root {
@@ -158,47 +158,47 @@
   --shadow-3: 0 4px 12px hsl(0 0% 0% / 0.38), 0 28px 60px -14px hsl(0 0% 0% / 0.6);
 }
 
-/* ---------- 夜 nocturne · 东京夜 靛蓝 + 玫瑰 ---------- */
-[data-color-theme="nocturne"][data-theme="light"] {
-  --background: hsl(228 32% 97%);
-  --foreground: hsl(231 38% 11%);
-  --card: hsl(228 45% 99.5%);
-  --card-2: hsl(228 26% 93%);
-  --muted-foreground: hsl(230 13% 44%);
-  --faint: hsl(230 10% 63%);
-  --border: hsl(228 18% 87%);
-  --border-strong: hsl(228 16% 78%);
-  --primary: hsl(231 62% 53%);
+/* ---------- 紫 wisteria · 紫藤薄暮 + 玫瑰 ---------- */
+[data-color-theme="wisteria"][data-theme="light"] {
+  --background: hsl(282 30% 97.5%);
+  --foreground: hsl(279 30% 12%);
+  --card: hsl(288 42% 99.5%);
+  --card-2: hsl(278 22% 93%);
+  --muted-foreground: hsl(278 12% 44%);
+  --faint: hsl(278 10% 63%);
+  --border: hsl(278 18% 88%);
+  --border-strong: hsl(278 16% 78%);
+  --primary: hsl(278 56% 52%);
   --primary-foreground: hsl(0 0% 100%);
-  --primary-tint: hsl(231 62% 53% / 0.08);
-  --primary-tint-2: hsl(231 62% 53% / 0.15);
-  --accent: hsl(340 62% 54%);
+  --primary-tint: hsl(278 56% 52% / 0.08);
+  --primary-tint-2: hsl(278 56% 52% / 0.15);
+  --accent: hsl(328 60% 55%);
   --destructive: hsl(4 72% 50%);
-  --glow-a: hsl(231 62% 70% / 0.15);
-  --glow-b: hsl(340 62% 70% / 0.11);
-  --radius: 9px;
-  --shadow-1: 0 1px 2px hsl(231 40% 10% / 0.04), 0 1px 1px hsl(231 40% 10% / 0.03);
-  --shadow-2: 0 1px 2px hsl(231 40% 10% / 0.05), 0 10px 24px -8px hsl(231 40% 10% / 0.11);
-  --shadow-3: 0 2px 6px hsl(231 40% 10% / 0.06), 0 24px 48px -12px hsl(231 40% 10% / 0.2);
+  --glow-a: hsl(278 66% 72% / 0.15);
+  --glow-b: hsl(328 66% 72% / 0.11);
+  --radius: 14px;
+  --shadow-1: 0 1px 2px hsl(279 40% 10% / 0.04), 0 1px 1px hsl(279 40% 10% / 0.03);
+  --shadow-2: 0 1px 2px hsl(279 40% 10% / 0.05), 0 10px 24px -8px hsl(279 40% 10% / 0.11);
+  --shadow-3: 0 2px 6px hsl(279 40% 10% / 0.06), 0 24px 48px -12px hsl(279 40% 10% / 0.2);
 }
-[data-color-theme="nocturne"][data-theme="dark"] {
-  --background: hsl(233 30% 10.5%);
-  --foreground: hsl(226 30% 80%);
-  --card: hsl(232 26% 14%);
-  --card-2: hsl(231 23% 18%);
-  --muted-foreground: hsl(226 16% 60%);
-  --faint: hsl(226 12% 44%);
-  --border: hsl(231 20% 21.5%);
-  --border-strong: hsl(231 18% 29%);
-  --primary: hsl(219 90% 71%);
-  --primary-foreground: hsl(233 42% 8%);
-  --primary-tint: hsl(219 90% 71% / 0.11);
-  --primary-tint-2: hsl(219 90% 71% / 0.19);
-  --accent: hsl(340 68% 68%);
+[data-color-theme="wisteria"][data-theme="dark"] {
+  --background: hsl(276 28% 11%);
+  --foreground: hsl(276 24% 84%);
+  --card: hsl(275 24% 14.5%);
+  --card-2: hsl(274 22% 18.5%);
+  --muted-foreground: hsl(276 14% 62%);
+  --faint: hsl(276 12% 44%);
+  --border: hsl(274 18% 22%);
+  --border-strong: hsl(274 16% 30%);
+  --primary: hsl(277 80% 74%);
+  --primary-foreground: hsl(276 45% 10%);
+  --primary-tint: hsl(277 80% 74% / 0.11);
+  --primary-tint-2: hsl(277 80% 74% / 0.19);
+  --accent: hsl(328 68% 70%);
   --destructive: hsl(4 78% 64%);
-  --glow-a: hsl(219 90% 42% / 0.2);
-  --glow-b: hsl(340 68% 42% / 0.12);
-  --radius: 9px;
+  --glow-a: hsl(278 78% 48% / 0.2);
+  --glow-b: hsl(328 60% 44% / 0.12);
+  --radius: 14px;
   --shadow-1: 0 1px 2px hsl(0 0% 0% / 0.28);
   --shadow-2: 0 2px 4px hsl(0 0% 0% / 0.32), 0 12px 28px -10px hsl(0 0% 0% / 0.52);
   --shadow-3: 0 4px 12px hsl(0 0% 0% / 0.4), 0 28px 60px -14px hsl(0 0% 0% / 0.62);
