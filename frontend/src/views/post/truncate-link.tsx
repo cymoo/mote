@@ -1,4 +1,4 @@
-import { QuoteIcon } from 'lucide-react'
+import { TextQuoteIcon } from 'lucide-react'
 import { ComponentProps } from 'react'
 import { Location, useLocation } from 'react-router'
 
@@ -24,9 +24,10 @@ export function TruncateLink({ post, maxLength, className, ...props }: TruncateL
 
   return (
     <button
+      {...props}
       type="button"
       className={cx(
-        'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary flex min-w-0 items-center gap-2 overflow-hidden rounded-md px-3 py-1.5 text-[12.5px] transition-colors',
+        'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary focus-visible:ring-ring flex min-w-0 items-center gap-2 overflow-hidden rounded-md px-3 py-1.5 text-[12.5px] transition-colors focus-visible:ring-1 focus-visible:ring-offset-0 focus-visible:outline-none',
         className,
       )}
       onClick={() => {
@@ -39,10 +40,9 @@ export function TruncateLink({ post, maxLength, className, ...props }: TruncateL
           },
         })
       }}
-      {...props}
     >
-      <QuoteIcon className="size-3.5 flex-none opacity-70" aria-hidden="true" />
-      <span className="truncate">
+      <TextQuoteIcon className="size-3.5 flex-none opacity-70" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate text-left">
         {post.content.replace(/(<([^>]+)>)/gi, ' ').substring(0, maxLength)}
       </span>
     </button>
