@@ -28,7 +28,7 @@ export const COLOR_THEMES = [
   {
     id: 'wisteria',
     labelKey: 'themeWisteria',
-    swatches: ['278 24% 90%', '278 64% 58%', '276 28% 11%'],
+    swatches: ['278 24% 90%', '278 56% 52%', '276 28% 11%'],
   },
 ] as const satisfies readonly {
   id: string
