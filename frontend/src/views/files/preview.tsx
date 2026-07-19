@@ -26,7 +26,52 @@ const isMarkdown = (n: DriveNode | undefined) =>
     /\.(md|markdown)$/i.test(n.name ?? ''))
 
 const isHtml = (n: DriveNode | undefined) =>
-  !!n && (n.mime_type ?? '').startsWith('text/html')
+  !!n && ((n.mime_type ?? '').startsWith('text/html') || /\.(html?|xhtml)$/i.test(n.name ?? ''))
+
+// Extensions rendered as source text (syntax-highlighted by ./highlight when
+// the language is known, plain <pre> otherwise). Preview keys off the
+// extension rather than the MIME type because the backend's guess is
+// unreliable for source files: Go's mime.TypeByExtension has no entry for
+// .ts/.py/.go/.rs/.kt/…, Alpine images ship no system MIME database (so those
+// files arrive as application/octet-stream), and .ts can even resolve to
+// video/mp2t. Matching by extension makes source preview deterministic across
+// deployments. Extension-less well-known names (Makefile, Dockerfile, LICENSE)
+// and dotfiles (.gitignore, .env) are matched by their lowercased basename.
+const TEXT_EXTS = new Set<string>([
+  // JavaScript / TypeScript
+  'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts',
+  // Python / Ruby / PHP / Perl / other scripting
+  'py', 'pyi', 'pyw', 'rb', 'php', 'pl', 'pm', 'lua', 'r', 'jl', 'dart', 'groovy', 'gradle',
+  // Systems
+  'go', 'rs', 'c', 'h', 'cc', 'cpp', 'cxx', 'hpp', 'hh', 'hxx', 'cs', 'zig', 'nim', 'v',
+  // JVM / functional / others
+  'java', 'kt', 'kts', 'scala', 'sc', 'clj', 'cljs', 'cljc', 'ex', 'exs', 'erl', 'hrl',
+  'hs', 'ml', 'mli', 'fs', 'fsx', 'swift',
+  // Web / markup (html & htm use the iframe renderer above; svg is an image)
+  'css', 'scss', 'sass', 'less', 'styl', 'vue', 'svelte', 'astro', 'xml', 'xsl', 'xslt',
+  // Data / config
+  'json', 'json5', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg', 'env',
+  'properties', 'csv', 'tsv', 'tf', 'hcl', 'graphql', 'gql', 'proto',
+  // Shell
+  'sh', 'bash', 'zsh', 'fish', 'ksh', 'ps1', 'bat', 'cmd',
+  // Build / SQL / diffs / plain text
+  'dockerfile', 'makefile', 'mk', 'cmake', 'sbt', 'sql', 'diff', 'patch', 'txt', 'text', 'log',
+  // Extension-less names & dotfiles (matched by lowercased basename)
+  'gitignore', 'gitattributes', 'dockerignore', 'editorconfig', 'npmrc', 'nvmrc',
+  'babelrc', 'eslintrc', 'prettierrc', 'license', 'licence', 'readme', 'changelog',
+  'authors', 'gemfile', 'rakefile', 'procfile', 'vagrantfile', 'jenkinsfile',
+])
+
+const fileExt = (n: DriveNode): string => (n.name.split('.').pop() ?? '').toLowerCase()
+
+// True for files rendered as source text — either a text-ish MIME or a known
+// source/config extension (see TEXT_EXTS).
+const isTextLike = (n: DriveNode | undefined): boolean => {
+  if (!n) return false
+  const mt = n.mime_type ?? ''
+  if (mt.startsWith('text/') || mt === 'application/json' || mt === 'application/xml') return true
+  return TEXT_EXTS.has(fileExt(n))
+}
 
 interface PreviewModalProps {
   items: DriveNode[]
@@ -164,6 +209,12 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
   let body: ReactNode
   if (isMarkdown(node)) {
     body = <MarkdownPreview url={url} lang={lang} />
+  } else if (isHtml(node)) {
+    body = <HtmlPreview url={url} node={node} />
+  } else if (isTextLike(node)) {
+    // Source / text files. Checked before video/audio so a TypeScript `.ts`
+    // isn't mis-routed to the video player by a `video/mp2t` MIME guess.
+    body = <TextPreview url={url} node={node} />
   } else if (mt.startsWith('video/')) {
     body = <VideoPreview url={url} node={node} onDownload={onDownload} lang={lang} />
   } else if (mt.startsWith('audio/')) {
@@ -192,10 +243,6 @@ function FilePreview({ items, index, onClose, onDownload }: PreviewModalProps) {
         />
       )
     }
-  } else if (isHtml(node)) {
-    body = <HtmlPreview url={url} node={node} />
-  } else if (mt.startsWith('text/') || mt === 'application/json' || mt === 'application/xml') {
-    body = <TextPreview url={url} node={node} />
   } else {
     body = <NoPreview node={node} onDownload={onDownload} lang={lang} />
   }
