@@ -231,12 +231,17 @@ export function SearchPage() {
       {/* Body: results or empty-state */}
       {hasQuery ? (
         searchTerm ? (
-          <PostList
-            className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
-            queryString={new URLSearchParams({ query: searchTerm }).toString()}
-            orderBy={orderBy}
-            ascending={asc}
-          />
+          // Padding lives on this wrapper, not on the virtuoso scroller: horizontal
+          // padding on the scroller makes its content overflow (spurious x-scrollbar),
+          // and the scroller doesn't honor top padding for its first item.
+          <div className="min-h-0 flex-1 overflow-hidden px-4 py-3">
+            <PostList
+              className="h-full overflow-x-hidden"
+              queryString={new URLSearchParams({ query: searchTerm }).toString()}
+              orderBy={orderBy}
+              ascending={asc}
+            />
+          </div>
         ) : (
           <div className="flex-1" />
         )
