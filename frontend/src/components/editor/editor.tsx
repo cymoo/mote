@@ -43,9 +43,12 @@ import {
   toggleMark,
 } from './utils'
 
-export interface EditorProps extends Omit<TextareaHTMLAttributes<HTMLDivElement>, 'onChange'> {
+export interface EditorProps
+  extends Omit<TextareaHTMLAttributes<HTMLDivElement>, 'onChange' | 'onSubmit'> {
   initialValue: SlateElement[]
   onChange: (value: SlateElement[]) => void
+  // Invoked when the user submits with Cmd/Ctrl+Enter.
+  onSubmit?: () => void
   autoFocus?: boolean
   autoFocusEnd?: boolean
   tags?: string[]
@@ -84,6 +87,7 @@ declare module 'slate-react' {
 export function MbEditor({
   initialValue,
   onChange,
+  onSubmit,
   autoFocus = true,
   autoFocusEnd = false,
   tags = [],
@@ -254,13 +258,25 @@ export function MbEditor({
             return
           }
 
+          // Enter: submit on Cmd/Ctrl+Enter, soft line break on Shift+Enter.
+          // A bare Enter falls through to Slate's default (splits the block).
+          // Skip if another handler already consumed it (e.g. the hashtag
+          // autocomplete confirming a tag) so we don't submit mid-selection.
+          if (event.key === 'Enter' && !event.defaultPrevented) {
+            if (isCtrlKey(event)) {
+              event.preventDefault()
+              onSubmit?.()
+              return
+            }
+            if (event.shiftKey) {
+              event.preventDefault()
+              editor.insertText('\n')
+              return
+            }
+          }
+
           if (isCtrlKey(event)) {
             switch (event.key) {
-              case `Enter`: {
-                event.preventDefault()
-                editor.insertText('\n')
-                break
-              }
               case '.':
               case '`': {
                 event.preventDefault()
