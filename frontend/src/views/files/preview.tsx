@@ -318,7 +318,7 @@ function TextPreview({ url, node }: { url: string; node: DriveNode }) {
     }
   }, [url, node.name])
   return (
-    <pre className="bg-card text-foreground border-border max-h-[80vh] max-w-[80vw] overflow-auto rounded-lg border p-4 font-mono text-sm whitespace-pre-wrap shadow-xl">
+    <pre className="bg-card text-foreground border-border w-[94vw] max-h-[86vh] overflow-auto rounded-lg border p-3 font-mono text-xs whitespace-pre shadow-xl md:w-[min(1000px,88vw)] md:max-h-[82vh] md:p-4">
       {highlighted != null ? (
         <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted }} />
       ) : (
@@ -398,7 +398,7 @@ function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
   }
 
   return (
-    <div className="bg-card text-foreground border-border relative flex max-h-[85vh] w-[min(780px,90vw)] flex-col rounded-lg border shadow-xl">
+    <div className="bg-card text-foreground border-border relative flex max-h-[88vh] w-[min(780px,94vw)] flex-col rounded-lg border shadow-xl md:max-h-[85vh]">
       <div className="border-border flex shrink-0 items-center justify-end border-b px-4 py-2">
         <button
           type="button"
@@ -416,7 +416,7 @@ function MarkdownPreview({ url, lang }: { url: string; lang: 'en' | 'zh' }) {
       </div>
       <div
         ref={bodyRef}
-        className="prose overflow-auto px-8 py-6 text-sm"
+        className="prose overflow-auto px-5 py-5 text-sm md:px-8 md:py-6"
         // marked output is sanitised; XSS surface here is user's own files
         dangerouslySetInnerHTML={{ __html: html || '<p class="text-muted-foreground">Loading…</p>' }}
       />
