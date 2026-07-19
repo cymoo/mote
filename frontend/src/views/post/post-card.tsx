@@ -113,7 +113,7 @@ export const PostCard = memo(function PostItem({
               aria-label="see full post"
             />
             <Button
-              className="text-muted-foreground hover:text-foreground size-8 flex-none px-0! opacity-100 transition-opacity duration-150 md:opacity-0 md:group-hover/memo:opacity-100"
+              className="text-muted-foreground hover:text-foreground size-8 flex-none px-0! opacity-100 transition-opacity duration-150 focus-visible:opacity-100 md:opacity-0 md:group-hover/memo:opacity-100 md:group-focus-within/memo:opacity-100"
               size="sm"
               variant="ghost"
               title="detach from parent post"
