@@ -47,17 +47,22 @@ export function CollapsibleContent({
   useCodeBlockEnhancer(ref)
 
   const toggleCollapsed = () => {
-    const nextCollapsed = !collapsed
-    setCollapsed(nextCollapsed)
+    if (!collapsable) return
 
-    requestIdleCallback(() => {
-      if (nextCollapsed) {
-        scrollIntoView()
-        expandedItems.delete(post.id)
-      } else {
-        expandedItems.add(post.id)
-      }
-    })
+    const nextCollapsed = !collapsed
+
+    if (nextCollapsed) {
+      // Fold: pull the memo up to the top of the list so it stays in view. Do
+      // this BEFORE collapsing, while the virtual list's size cache still
+      // matches the DOM — scrolling after the height changes lands at the wrong
+      // spot, because the cache is only updated (async) once the item resizes.
+      scrollIntoView()
+      expandedItems.delete(post.id)
+    } else {
+      expandedItems.add(post.id)
+    }
+
+    setCollapsed(nextCollapsed)
   }
 
   return (
