@@ -88,7 +88,17 @@ export const PostList = memo(function PostList({
   }, [queryString, orderBy, ascending])
 
   const scrollItemIntoView = useCallback((index: number) => {
-    listHandle.current.scrollIntoView({ index })
+    // Align the item's top to the viewport top. Used when folding a memo:
+    // Virtuoso already re-anchors a large collapsing item to the top, but its
+    // native compensation lands a little too high (clipping the card). Forcing a
+    // clean top-align keeps the folded memo fully visible. We override
+    // `calculateViewLocation` because the default also aligns the item's
+    // *bottom*, which — with the stale (still-expanded) height mid-collapse —
+    // scrolled to a jarring, wrong position.
+    listHandle.current.scrollIntoView({
+      index,
+      calculateViewLocation: ({ locationParams }) => ({ ...locationParams, align: 'start' }),
+    })
   }, [])
 
   const isMainList = !queryString?.includes('parent_id')
