@@ -68,7 +68,7 @@
   }
 
   /* ------------------------------------------------------------------
-     主题：青 celadon（默认） / 曦 dawn / 墨 ink / 夜 nocturne，各配明暗。
+     主题：青 celadon（默认） / 曦 dawn / 墨 ink / 紫 wisteria，各配明暗。
      命名与旧版一致；青瓷做基础块（无 data-color-theme 时生效）。
      ------------------------------------------------------------------ */
 
@@ -239,59 +239,59 @@
     --theme-glow-b: 30 20% 30%;
   }
 
-  /* 夜 Nocturne — 东京夜靛蓝 + 玫瑰 */
-  [data-color-theme='nocturne'][data-theme='light'] {
-    --neutral: 228 22% 92%;
-    --neutral-foreground: 231 24% 22%;
-    --background: 228 32% 97%;
-    --foreground: 231 38% 11%;
-    --muted: 228 26% 93%;
-    --muted-foreground: 230 13% 44%;
-    --popover: 228 45% 99.5%;
-    --popover-foreground: 231 38% 11%;
-    --card: 228 45% 99.5%;
-    --card-foreground: 231 38% 11%;
-    --border: 228 18% 87%;
-    --input: 228 18% 83%;
-    --primary: 231 62% 53%;
+  /* 紫 Wisteria — 紫藤薄暮 + 玫瑰 */
+  [data-color-theme='wisteria'][data-theme='light'] {
+    --neutral: 276 20% 92%;
+    --neutral-foreground: 278 22% 22%;
+    --background: 282 30% 97.5%;
+    --foreground: 279 30% 12%;
+    --muted: 278 22% 93%;
+    --muted-foreground: 278 12% 44%;
+    --popover: 288 42% 99.5%;
+    --popover-foreground: 279 30% 12%;
+    --card: 288 42% 99.5%;
+    --card-foreground: 279 30% 12%;
+    --border: 278 18% 88%;
+    --input: 278 18% 84%;
+    --primary: 278 56% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 228 26% 92%;
-    --secondary-foreground: 231 38% 14%;
-    --accent: 228 24% 91%;
-    --accent-foreground: 231 38% 12%;
+    --secondary: 278 22% 92.5%;
+    --secondary-foreground: 279 30% 15%;
+    --accent: 278 22% 91%;
+    --accent-foreground: 279 30% 12%;
     --destructive: 4 72% 50%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 231 62% 53%;
-    --radius: 0.55rem;
-    --theme-glow-a: 231 62% 70%;
-    --theme-glow-b: 340 62% 70%;
+    --ring: 278 56% 52%;
+    --radius: 0.9rem;
+    --theme-glow-a: 278 66% 72%;
+    --theme-glow-b: 328 66% 72%;
   }
 
-  [data-color-theme='nocturne'][data-theme='dark'] {
-    --neutral: 232 26% 15%;
-    --neutral-foreground: 226 24% 76%;
-    --background: 233 30% 10.5%;
-    --foreground: 226 30% 80%;
-    --muted: 231 23% 18%;
-    --muted-foreground: 226 16% 60%;
-    --popover: 233 32% 9%;
-    --popover-foreground: 226 30% 86%;
-    --card: 232 26% 14%;
-    --card-foreground: 226 30% 80%;
-    --border: 231 20% 21.5%;
-    --input: 231 20% 26%;
-    --primary: 219 90% 71%;
-    --primary-foreground: 233 42% 8%;
-    --secondary: 231 23% 19%;
-    --secondary-foreground: 226 30% 80%;
-    --accent: 231 22% 22%;
-    --accent-foreground: 226 30% 88%;
+  [data-color-theme='wisteria'][data-theme='dark'] {
+    --neutral: 274 24% 16%;
+    --neutral-foreground: 276 20% 78%;
+    --background: 276 28% 11%;
+    --foreground: 276 24% 84%;
+    --muted: 274 22% 18.5%;
+    --muted-foreground: 276 14% 62%;
+    --popover: 276 30% 9.5%;
+    --popover-foreground: 276 24% 88%;
+    --card: 275 24% 14.5%;
+    --card-foreground: 276 24% 84%;
+    --border: 274 18% 22%;
+    --input: 274 18% 26%;
+    --primary: 277 80% 74%;
+    --primary-foreground: 276 45% 10%;
+    --secondary: 274 20% 19.5%;
+    --secondary-foreground: 276 24% 84%;
+    --accent: 274 20% 22.5%;
+    --accent-foreground: 276 24% 90%;
     --destructive: 4 78% 64%;
     --destructive-foreground: 0 0% 100%;
-    --ring: 219 90% 71%;
-    --radius: 0.55rem;
-    --theme-glow-a: 219 90% 42%;
-    --theme-glow-b: 340 68% 42%;
+    --ring: 277 80% 74%;
+    --radius: 0.9rem;
+    --theme-glow-a: 278 78% 48%;
+    --theme-glow-b: 328 60% 44%;
   }
 
   * {
