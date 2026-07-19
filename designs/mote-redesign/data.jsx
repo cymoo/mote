@@ -6,7 +6,7 @@ const THEMES = [
   { id: "celadon", name: "青", ball: "linear-gradient(135deg, hsl(170 58% 34%) 50%, hsl(158 30% 93%) 50%)" },
   { id: "dawn", name: "曦", ball: "linear-gradient(135deg, hsl(216 78% 55%) 50%, hsl(40 30% 94%) 50%)" },
   { id: "ink", name: "墨", ball: "linear-gradient(135deg, hsl(9 68% 48%) 50%, hsl(30 12% 96%) 50%)" },
-  { id: "nocturne", name: "夜", ball: "linear-gradient(135deg, hsl(222 90% 68%) 50%, hsl(233 30% 14%) 50%)" },
+  { id: "wisteria", name: "紫", ball: "linear-gradient(135deg, hsl(278 70% 64%) 50%, hsl(276 28% 14%) 50%)" },
 ];
 
 // ---------- 笔记 ----------

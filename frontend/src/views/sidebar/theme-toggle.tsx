@@ -26,9 +26,9 @@ export const COLOR_THEMES = [
     swatches: ['28 10% 90%', '9 68% 46%', '24 6% 8%'],
   },
   {
-    id: 'nocturne',
-    labelKey: 'themeNocturne',
-    swatches: ['228 26% 90%', '219 90% 71%', '233 30% 10.5%'],
+    id: 'wisteria',
+    labelKey: 'themeWisteria',
+    swatches: ['278 24% 90%', '278 64% 58%', '276 28% 11%'],
   },
 ] as const satisfies readonly {
   id: string
@@ -43,10 +43,11 @@ const LEGACY_COLOR_THEME_MAP: Record<string, ColorTheme> = {
   moss: 'celadon',
   candy: 'celadon',
   voltage: 'celadon',
-  sakura: 'nocturne',
-  aurora: 'nocturne',
-  fjord: 'nocturne',
-  dune: 'nocturne',
+  nocturne: 'wisteria',
+  sakura: 'wisteria',
+  aurora: 'wisteria',
+  fjord: 'wisteria',
+  dune: 'wisteria',
   blueprint: 'ink',
   rouge: 'ink',
 }
