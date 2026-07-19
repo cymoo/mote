@@ -105,15 +105,15 @@ export const PostCard = memo(function PostItem({
           />
         )}
         {post.parent && showParentLink && (
-          <footer className="mt-2 -ml-4 flex items-center">
+          <footer className="mt-3 flex items-center gap-1">
             <TruncateLink
-              className="max-w-full overflow-hidden"
+              className="flex-1"
               post={post.parent}
               maxLength={100}
               aria-label="see full post"
             />
             <Button
-              className="text-foreground/75! relative top-[1px] -mr-2 px-1!"
+              className="text-muted-foreground hover:text-foreground size-8 flex-none px-0! opacity-100 transition-opacity duration-150 focus-visible:opacity-100 md:opacity-0 md:group-hover/memo:opacity-100 md:group-focus-within/memo:opacity-100"
               size="sm"
               variant="ghost"
               title="detach from parent post"
@@ -130,7 +130,7 @@ export const PostCard = memo(function PostItem({
                 })
               }}
             >
-              <Unlink2Icon className="size-5 pr-1" aria-hidden="true" />
+              <Unlink2Icon className="size-4" aria-hidden="true" />
             </Button>
           </footer>
         )}
