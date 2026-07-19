@@ -3,6 +3,7 @@ import { ComponentProps, ReactNode, useCallback, useEffect, useMemo, useRef, use
 import { Element as SlateElement, Node as SlateNode, Text as SlateText } from 'slate'
 import useSWR from 'swr'
 
+import { IS_APPLE } from '@/utils/browser.ts'
 import { cx } from '@/utils/css.ts'
 import { useEvent } from '@/utils/hooks/use-event.ts'
 import { textToHtml } from '@/utils/text.ts'
@@ -23,6 +24,8 @@ import { ListMutator, PostMutator, postActions as actions } from '../actions.ts'
 import { Post } from '../post/post-list.tsx'
 import { Tag } from '../tag/tag-list.tsx'
 import { ToolBar, ToolButton } from './toolbar.tsx'
+
+const submitShortcutHint = IS_APPLE ? '⌘ + Enter' : 'Ctrl + Enter'
 
 interface PostEditorProps extends ComponentProps<'div'> {
   post: Partial<Post>
@@ -86,6 +89,12 @@ export function PostEditor({
     }),
   )
 
+  // Shared submit action for both the button and the Cmd/Ctrl+Enter shortcut.
+  const submit = useEvent(() => {
+    if (submitting || empty) return
+    void handleSubmit(toHtml({ children: trimTrailingEmptyParagraphs(value), type: '' }), images)
+  })
+
   const handleCancel = () => {
     afterCancel?.()
     localStorage.removeItem(draftKey)
@@ -105,6 +114,7 @@ export function PostEditor({
         uploadImage={uploadImage}
         onChange={setValue}
         onBlur={saveDraft}
+        onSubmit={submit}
       >
         <ImageGrid
           ref={imageGridRef}
@@ -149,14 +159,10 @@ export function PostEditor({
             variant="primary"
             type="submit"
             aria-label="submit"
+            title={submitShortcutHint}
             disabled={submitting || empty}
             style={{ opacity: submitting || empty ? 0.65 : 1 }}
-            onClick={() => {
-              void handleSubmit(
-                toHtml({ children: trimTrailingEmptyParagraphs(value), type: '' }),
-                images,
-              )
-            }}
+            onClick={submit}
           >
             <T name="submit" />
           </Button>
