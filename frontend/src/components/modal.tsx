@@ -137,6 +137,10 @@ export function Modal({ ref, ...props }: ModalProps) {
       {expandable ? (
         <DrawerContent
           side="bottom"
+          // Unmount the panel once it has slid away, like `DialogContent` does.
+          // Otherwise the composer keeps its editor state and a reopened panel
+          // still shows the text of an already submitted memo.
+          destroyOnClose
           overlayClassName="bg-black/45! backdrop-blur-sm"
           className={cx(
             'flex flex-col',
