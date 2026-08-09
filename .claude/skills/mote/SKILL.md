@@ -60,7 +60,9 @@ replaces the whole body). Add `--json` to any command for structured output.
   To untag one memo, `update` its content without the `#name`. For bulk removal use
   `tag untag <name>` (keeps the memos, strips the tag text).
 - Inline `#word` is a tag; a line starting with `# word` (hash + space) is a heading.
-  Write `\#word` for a literal hash. Tag names allow letters, digits, CJK, `_`, `-`, `/`.
+  A `#` glued to a word character is not a tag (`C#`, `page#anchor`), and `#fragment`
+  inside a bare URL is left alone. Write `\#word` for a literal hash.
+  Tag names allow letters, digits, CJK, `_`, `-`, `/`.
 - Tag counts from `tags` include trashed memos.
 
 ## Destructive & public actions — confirm with the user first

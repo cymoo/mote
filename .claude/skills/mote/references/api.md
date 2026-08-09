@@ -71,3 +71,11 @@ Source of truth: `api-go/internal/app/routes.go`, `handlers/post_api.go`, `handl
 12. Nightly job (02:00) purges trash older than 30 days; monthly search reindex.
 13. Login endpoint `/api/login` is only a password probe (204, no cookie);
     clients just send the bearer header everywhere.
+14. **`/api/auth` is unusable from outside**: `deploy/nginx.conf:37` marks it
+    `internal;` (it exists for `auth_request` on `/uploads/`), so it 404s in
+    production. Probe credentials with any normal endpoint, e.g.
+    `get-overall-counts` (401 on a bad token) — that's what `check` does.
+15. The tag-start rule in the editor (`frontend/src/components/editor/extensions/
+    hashtag-select.tsx:236`): `#` begins a tag when preceded by start-of-line, a
+    space, or one of `, ， ; ； . 。 ! ！ ? ？ " " ' ' %`. The CLI generalizes this
+    to "not preceded by a word character", so `》#tag`, `」#tag`, `—#tag` also work.

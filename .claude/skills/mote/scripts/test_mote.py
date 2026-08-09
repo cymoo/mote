@@ -41,6 +41,22 @@ class MdToHtml(unittest.TestCase):
             md_to_html("[doc](https://ex.com/page#anchor)"),
             '<p><a href="https://ex.com/page#anchor" target="_blank" rel="noreferrer nofollow">doc</a></p>',
         )
+        # bare URL fragments are not tags
+        self.assertEqual(
+            md_to_html("see https://ex.com/#top now"), "<p>see https://ex.com/#top now</p>"
+        )
+
+    def test_hashtag_after_punctuation(self):
+        # regression: a tag right after CJK/quote punctuation used to be skipped,
+        # so only the later space-preceded tag became a tag
+        for prefix in ("。", "”", "》", "」", "—", ")", "%", ".", '"'):
+            with self.subTest(prefix=prefix):
+                html = md_to_html(f"words{prefix}#quote #literature")
+                self.assertEqual(html.count('class="hash-tag"'), 2)
+
+    def test_hashtag_after_cjk_word_char_blocked(self):
+        # matches the editor: a '#' glued to a word character starts no tag
+        self.assertEqual(md_to_html("文学#quote"), "<p>文学#quote</p>")
 
     def test_hashtag_escaped(self):
         self.assertEqual(md_to_html(r"\#literal"), "<p>#literal</p>")

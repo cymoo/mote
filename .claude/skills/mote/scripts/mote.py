@@ -137,7 +137,12 @@ class _Stash:
         return text
 
 
-_HASHTAG_MD = re.compile(r"(^|[\s(（])#([\w/-]+)")
+# A '#' starts a tag unless it directly follows a word character (blocks "C#",
+# "page#anchor"). Mirrors the editor's rule (start / space / punctuation), but
+# also accepts CJK and bracket punctuation such as 。 ” 》 — which the editor's
+# fixed specialChars list misses.
+_HASHTAG_MD = re.compile(r"(?<!\w)#([\w/-]+)")
+_BARE_URL = re.compile(r"https?://[^\s<>()\[\]]+")
 
 
 def _inline(text):
@@ -150,9 +155,11 @@ def _inline(text):
     text = re.sub(
         r"`([^`]+)`", lambda m: stash.put(f"<code>{_esc(m.group(1))}</code>"), text
     )
-    # 3. escape < >
+    # 3. bare URLs (protects '#fragment' from becoming a tag)
+    text = _BARE_URL.sub(lambda m: stash.put(m.group(0)), text)
+    # 4. escape < >
     text = _esc(text)
-    # 4. links (URL protected from emphasis/hashtag passes)
+    # 5. links (URL protected from emphasis/hashtag passes)
     def _link(m):
         inner = _emphasis(m.group(1), stash)
         href = _esc_attr(m.group(2))
@@ -161,13 +168,11 @@ def _inline(text):
         )
 
     text = re.sub(r"\[([^\]]*)\]\(([^)\s]+)\)", _link, text)
-    # 5. emphasis
+    # 6. emphasis
     text = _emphasis(text, stash)
-    # 6. hash tags: #name or #a/b/c preceded by start-of-line, whitespace or (
+    # 7. hash tags: #name, #a/b/c
     text = _HASHTAG_MD.sub(
-        lambda m: m.group(1)
-        + stash.put(f'<span class="hash-tag">#{m.group(2)}</span>'),
-        text,
+        lambda m: stash.put(f'<span class="hash-tag">#{m.group(1)}</span>'), text
     )
     return stash.restore(text)
 
@@ -806,7 +811,9 @@ def confirm_or_exit(args, description):
 
 def cmd_check(args):
     base, _ = load_config()
-    api("GET", "auth")
+    # NOTE: don't probe /api/auth — nginx marks it `internal;` (it exists only for
+    # auth_request on /uploads/), so it 404s from outside. Any authed endpoint
+    # validates the token just as well: a bad token gives 401 here.
     counts = api("GET", "get-overall-counts")
     print(f"ok: {base} — {counts['post_count']} memos, {counts['tag_count']} tags, "
           f"{counts['day_count']} active days")
