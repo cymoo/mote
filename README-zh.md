@@ -40,7 +40,7 @@ Mote 刻意做成多语言实现：共享同一套 React 前端和完全相同�
 
 ## 部署
 
-生产环境部署参见 [deploy/](./deploy)，提供 nginx + Docker Compose 方案，含 HTTPS 证书自动申请和数据备份。
+生产环境部署参见 [deploy/](./deploy)：`make deploy` 在本地构建，将静态二进制和前端产物推送到服务器，由 nginx 与 `systemd --user` 承载；含 HTTPS 证书自动申请、发布后健康检查、一条命令回滚和数据库自动备份。
 
 ## License
 

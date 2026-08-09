@@ -13,7 +13,7 @@ API to the Go backend in `api-go`.
 .
 ├── frontend/        React 18 + Vite + TypeScript + Tailwind. Single SPA.
 ├── api-go/          Go (chi, sqlx, SQLite). The backend.
-├── deploy/          nginx + Docker Compose for production.
+├── deploy/          Local-driven production deploys (nginx + systemd --user).
 └── samples/         Sample database / screenshots.
 ```
 

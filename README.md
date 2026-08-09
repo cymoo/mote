@@ -42,7 +42,7 @@ Mote is intentionally polyglot: one shared React frontend and the same HTTP API,
 
 ## Deployment
 
-For production, see [deploy/](./deploy) — nginx + Docker Compose with HTTPS via certbot, automated backup included.
+For production, see [deploy/](./deploy) — `make deploy` builds locally and ships a static binary plus the built SPA to a server running nginx and `systemd --user`, with HTTPS via certbot, health-checked releases, one-command rollback, and automated database backups.
 
 ## License
 
