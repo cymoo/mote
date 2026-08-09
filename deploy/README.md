@@ -1,91 +1,140 @@
 # Mote — Deployment
 
-Host nginx + Docker deployment. nginx handles HTTPS, serves static files and uploads; the Go app and Redis run in Docker containers.
+Everything runs from **your machine**. You never SSH in to deploy.
+
+The server holds no source code, no Git checkout, no Docker, and no Go or Node
+toolchain — only a static binary, the built SPA, SQLite, Redis and nginx.
+
+```
+your machine                             server
+────────────                             ──────
+yarn build        ──┐
+go build (linux)  ──┴─→ rsync ─────────→ /opt/mote/releases/<id>/{mote,web/}
+                                         current -> releases/<id>   (atomic flip)
+                                         systemctl --user restart mote
+                                         wait for /health, else roll back
+```
+
+`make deploy` needs **no sudo** and touches nothing outside `/opt/mote` and the
+deploy user's own systemd units.
 
 ## Prerequisites
 
-On the server:
-- Docker with Compose plugin v2.21+
-- nginx
-- certbot
-- git
+On your machine: `go`, `yarn`, `rsync`, `ssh`, `git`.
 
-## First-time Setup
+The local scripts stay within what macOS ships — bash 3.2 and rsync 2.6.9 — so
+avoid `mapfile`, bare `"${arr[@]}"` on a possibly-empty array, `--chmod=F644`
+and `--info=progress2` when editing them.
 
-SSH into the server and run everything from `deploy/`:
+On the server: Ubuntu/Debian with `nginx`, `certbot`, and key-based SSH login
+for a non-root user. Everything else is installed by `make bootstrap`.
 
-```bash
-# Clone to any path you prefer; /opt/mote is the conventional choice.
-# Non-root users typically lack write access to /opt, so either use sudo
-# or choose a user-writable location such as ~/mote.
-sudo git clone https://github.com/cymoo/mote.git /opt/mote
-# — or —
-git clone https://github.com/cymoo/mote.git ~/mote
-
-cd /opt/mote/deploy       # adjust if you chose a different path
-cp .env.example .env      # edit: MOTE_PASSWORD, DOMAIN
-make setup
-```
-
-`make setup` will:
-1. Build and start the Go app + Redis containers
-2. Configure nginx with a temporary HTTP-only config
-3. Obtain a TLS certificate via certbot (webroot mode)
-4. Switch nginx to the full HTTPS config
-
-Before running `make setup`, ensure:
-- Your domain's DNS A record points to this server
-- Ports 80 and 443 are open in your firewall
-- nginx and certbot are installed (`apt install nginx certbot` or equivalent)
-
-> **Note:** `make setup` automatically removes `/etc/nginx/sites-enabled/default` to avoid port 80 conflicts on Ubuntu/Debian.
-
-## Daily Workflow
-
-SSH into the server, `cd /opt/mote/deploy`, then:
+## First-time setup
 
 ```bash
-make deploy    # git pull -> rebuild -> restart
-make backup    # manual backup
-make logs      # tail app logs
-make ps        # container status
-make restart   # restart all containers
+cd deploy
+cp deploy.env.example deploy.env    # SSH_HOST, SSH_USER, DOMAIN, REMOTE_DIR
+make bootstrap                      # asks once for the remote sudo password
+make deploy
 ```
 
-## Backup & Restore
+`make bootstrap` is the only step that needs sudo. It installs `sqlite3` and
+`redis-server`, disables the distro's system-wide Redis (Mote runs its own user
+instance), enables lingering so user services start at boot, creates
+`/opt/mote/config/mote.env`, installs the systemd units, and configures nginx —
+obtaining a TLS certificate via certbot if there isn't one yet.
 
-Backups are stored in `/opt/mote/backups/`. Each backup set contains:
-- `app.db` — SQLite database (hot backup via VACUUM INTO)
-- `uploads.tar.gz` — uploaded files
+Before running it, make sure the domain's A record points at the server and
+ports 80/443 are open.
 
-The last 5 backup sets are kept automatically.
+Set `MOTE_PASSWORD` in `/opt/mote/config/mote.env` on the server. It is
+deliberately never stored in this repo and never transferred from your machine.
 
-**Restore database:**
+## Day to day
+
 ```bash
-# From /opt/mote/deploy on the server:
-docker compose stop app
-cp /opt/mote/backups/backup-YYYYMMDD-HHMMSS/app.db /opt/mote/data/app.db
-docker compose start app
+make deploy        # build, ship, activate, health-check
+make status        # service state, current release, disk, release list
+make logs          # follow the app log
+make rollback      # back to the previous release (RELEASE=<id> to pick one)
+make restart       # restart without deploying
+make backup        # hot-backup the database
+make pull-uploads  # mirror the server's uploads/ to this machine
+make nginx         # push nginx.conf and reload (asks for remote sudo)
+make shell         # ssh in, in the app directory
 ```
 
-**Restore uploads:**
-```bash
-tar -xzf /opt/mote/backups/backup-YYYYMMDD-HHMMSS/uploads.tar.gz -C /opt/mote
-```
+`make deploy` refuses to run with an uncommitted working tree so a release
+always maps to a commit. Use `make deploy-dirty` when you deliberately want to
+ship work in progress; those releases are tagged `<sha>-dirty`.
 
-## Data Layout
+## Layout on the server
 
 | Path | Contents |
 |------|----------|
-| `/opt/mote/data/app.db` | SQLite database (bind-mounted into container) |
-| `/opt/mote/uploads/` | User-uploaded files; Drive blobs under `uploads/drive/` are served by nginx through an internal accelerated location after app auth checks |
-| `/opt/mote/web/` | Built React SPA (served by nginx) |
-| `/opt/mote/backups/` | Backup sets |
+| `/opt/mote/releases/<ts>-<sha>/` | One release: the `mote` binary and `web/` (the built SPA) |
+| `/opt/mote/current` | Symlink to the active release. nginx and systemd both read through it |
+| `/opt/mote/data/app.db` | SQLite database |
+| `/opt/mote/uploads/` | User uploads. Drive blobs under `uploads/drive/` are served by nginx via `X-Accel-Redirect` after the app authorises the request |
+| `/opt/mote/redis/dump.rdb` | Redis persistence |
+| `/opt/mote/backups/` | Database backups (last 10) |
+| `/opt/mote/config/mote.env` | `MOTE_PASSWORD` and optional tunables. Server-owned, never in Git |
+| `/opt/mote/config/{redis,nginx}.conf` | Rendered from this directory on every deploy |
+| `/opt/mote/bin/` | The scripts in `remote/`, uploaded on every deploy |
+| `~/.config/systemd/user/mote{,-redis}.service` | The two services |
 
-Redis data is stored in a Docker named volume (`mote_redis_data`).
+Releases are uploaded with `rsync --link-dest --checksum --no-times`, so files
+that are byte-identical to the previous release are hardlinked rather than
+re-uploaded and re-stored. `--checksum --no-times` is load-bearing: each build
+writes fresh mtimes, and `--link-dest` only hardlinks on an exact match
+*including* times, so plain `-a` would silently link nothing.
 
-## TLS / HTTPS
+## Rollback
 
-Certbot obtains and auto-renews the certificate. Renewal is triggered automatically by certbot's systemd timer (installed with certbot). On each renewal, the deploy hook `nginx -s reload` runs automatically. Certificates are stored in `/etc/letsencrypt/live/<DOMAIN>/`.
+`make rollback` repoints `current` at the previous release and restarts. It is
+a symlink flip — a couple of seconds, no rebuild.
 
-To verify renewal works: `certbot renew --dry-run`
+Deploys roll back on their own too: if the new release does not report healthy
+within 45s, `current` goes back to the previous release, the service restarts,
+and the deploy exits non-zero.
+
+## Backup & restore
+
+`make backup` runs `VACUUM INTO` against the live database — a consistent hot
+copy, safe while the app is serving. It runs automatically before every deploy.
+The last 10 copies are kept in `/opt/mote/backups/`.
+
+Uploads are **not** part of that backup: they are much larger than the server's
+free disk, so copying them there would fill the disk they are meant to protect.
+Use `make pull-uploads` to mirror them onto your own machine instead.
+
+Restore the database:
+
+```bash
+make shell
+systemctl --user stop mote
+cp backups/app-YYYYMMDD-HHMMSS.db data/app.db
+rm -f data/app.db-wal data/app.db-shm
+systemctl --user start mote
+```
+
+## Redis
+
+Redis holds only derived state: the full-text inverted index and share-link
+rate-limit counters. If it is ever lost or started empty, search returns nothing
+until the index is rebuilt — run the `rebuild-fulltext-index` task from
+`https://<domain>/tasks/`, which reindexes every post from SQLite.
+
+That is also why `maxmemory-policy` is `noeviction`: silently evicting index
+keys would corrupt search results without surfacing an error.
+
+## TLS
+
+certbot's systemd timer renews the certificate and reloads nginx via the deploy
+hook installed during bootstrap. Verify with `certbot renew --dry-run`.
+
+## nginx
+
+nginx config is not applied by `make deploy`, because that would require sudo.
+Deploys compare the rendered config against what the server is serving and warn
+if they differ; `make nginx` then installs it and reloads.

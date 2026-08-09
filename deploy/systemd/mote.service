@@ -1,0 +1,28 @@
+[Unit]
+Description=Mote — personal notebook and mini cloud drive
+Documentation=https://github.com/cymoo/mote
+Requires=mote-redis.service
+After=mote-redis.service
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__/current
+
+# Server-side secrets (MOTE_PASSWORD) and optional tunables such as
+# POSTS_PER_PAGE or LOG_REQUESTS. Listed first so the paths below always win.
+EnvironmentFile=__APP_DIR__/config/mote.env
+Environment=APP_ENV=prod
+Environment=HTTP_IP=127.0.0.1
+Environment=HTTP_PORT=8000
+Environment=DATABASE_URL=__APP_DIR__/data/app.db
+Environment=UPLOAD_PATH=__APP_DIR__/uploads
+Environment=REDIS_URL=127.0.0.1:6379
+Environment=DRIVE_ACCEL_REDIRECT_PREFIX=/__mote_drive_blobs__
+
+ExecStart=__APP_DIR__/current/mote
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

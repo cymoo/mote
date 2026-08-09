@@ -1,109 +1,60 @@
-# Mote deployment Makefile — run directly on the server from deploy/
+# Mote deployment — every target runs on your own machine and drives the
+# server over SSH. Nothing here has to be run on the server by hand.
 #
-# First-time setup:
-#   1. git clone https://github.com/cymoo/mote.git /opt/mote
-#   2. cd /opt/mote/deploy
-#   3. cp .env.example .env  # edit: MOTE_PASSWORD, DOMAIN
-#   4. sudo make setup
+# First time:
+#   cp deploy.env.example deploy.env   # fill in SSH_HOST / SSH_USER / DOMAIN
+#   make bootstrap                     # one-time server prep (asks for sudo once)
+#   make deploy
 #
-# Usage:
-#   sudo make deploy    -- backup, pull, rebuild, restart
-#   make backup    -- backup database and uploads
-#   make logs      -- tail app logs
-#   make ps        -- container status
+# Day to day:
+#   make deploy      build locally, ship, restart, verify
+#   make status      what is running, which releases exist
+#   make logs        follow the app log
+#   make rollback    back to the previous release
+#
+# `deploy` needs no sudo and touches no Docker: it uploads a static binary plus
+# the built SPA, flips a symlink, and restarts a systemd --user service.
 
-GREEN  := \033[0;32m
-YELLOW := \033[0;33m
-RED    := \033[0;31m
-NC     := \033[0m
+SHELL   := /usr/bin/env bash
+SCRIPTS := ./scripts
 
-APP_DIR         := $(abspath ..)
-WEB_DIR         := $(APP_DIR)/web
-NGINX_CONF      := /etc/nginx/conf.d/mote.conf
-CERTBOT_WEBROOT := /var/www/certbot
-DOMAIN          := $(shell grep '^DOMAIN=' .env 2>/dev/null | cut -d= -f2)
-MOTE_PASSWORD   := $(shell sed -n 's/^MOTE_PASSWORD=//p' .env 2>/dev/null)
-# When invoked via sudo, SUDO_UID/SUDO_GID/SUDO_USER are set automatically.
-# When running directly as root (no sudo), they are empty and id -u/g = 0.
-REAL_UID        := $(or $(SUDO_UID),$(shell id -u))
-REAL_GID        := $(or $(SUDO_GID),$(shell id -g))
-GIT_EXEC        := $(if $(SUDO_USER),sudo -u "$(SUDO_USER)" -H,)
-export PUID     := $(REAL_UID)
-export PGID     := $(REAL_GID)
-
-.PHONY: help setup deploy _deploy backup logs ps restart
+.PHONY: help bootstrap deploy deploy-dirty rollback status logs restart backup pull-uploads nginx shell
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[0;33m%-12s\033[0m %s\n", $$1, $$2}'
+	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[0;33m%-14s\033[0m %s\n", $$1, $$2}'
 
-setup: ## First-time: build, start containers, configure nginx + TLS
-	@[ "$$(id -u)" = "0" ] || { printf '$(RED)ERROR: run as: sudo make $@$(NC)\n' >&2; exit 1; }
-	@test -f .env || { echo "$(RED)ERROR: create .env from .env.example first$(NC)" >&2; exit 1; }
-	@test -n "$(DOMAIN)"        || { echo "$(RED)ERROR: DOMAIN not set in .env$(NC)" >&2; exit 1; }
-	@test -n "$(MOTE_PASSWORD)" || { echo "$(RED)ERROR: MOTE_PASSWORD not set in .env$(NC)" >&2; exit 1; }
-	@[ "$(MOTE_PASSWORD)" != "change-me" ] || { echo "$(RED)ERROR: change MOTE_PASSWORD from the default$(NC)" >&2; exit 1; }
-	@command -v nginx   > /dev/null 2>&1 || { echo "$(RED)ERROR: nginx not installed$(NC)" >&2; exit 1; }
-	@command -v certbot > /dev/null 2>&1 || { echo "$(RED)ERROR: certbot not installed$(NC)" >&2; exit 1; }
-	@echo "$(YELLOW)-> Creating directories...$(NC)"
-	@mkdir -p $(APP_DIR)/data $(APP_DIR)/uploads $(WEB_DIR) $(CERTBOT_WEBROOT)
-	@chown "$(REAL_UID):$(REAL_GID)" $(APP_DIR)/data $(APP_DIR)/uploads
-	@echo "$(YELLOW)-> Building frontend...$(NC)"
-	@docker build -t mote-frontend -f Dockerfile.frontend ..
-	@docker run --rm -v $(WEB_DIR):/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
-	@echo "$(YELLOW)-> Building and starting containers...$(NC)"
-	@mkdir -p /etc/sysctl.d
-	@echo 'vm.overcommit_memory = 1' | tee /etc/sysctl.d/99-redis.conf > /dev/null
-	@sysctl -p /etc/sysctl.d/99-redis.conf
-	@docker compose build app
-	@docker compose up -d --wait
-	@echo "$(YELLOW)-> Configuring nginx (HTTP only for ACME challenge)...$(NC)"
-	@rm -f /etc/nginx/sites-enabled/default
-	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' nginx-init.conf | tee $(NGINX_CONF) > /dev/null
-	@nginx -t && systemctl reload-or-restart nginx
-	@echo "$(YELLOW)-> Obtaining TLS certificate...$(NC)"
-	@certbot certonly --webroot -w $(CERTBOT_WEBROOT) -d $(DOMAIN) \
-	    --agree-tos --non-interactive --register-unsafely-without-email \
-	    --keep-until-expiring \
-	    --deploy-hook "systemctl reload nginx"
-	@echo "$(YELLOW)-> Enabling HTTPS nginx config...$(NC)"
-	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
-	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
-	     nginx.conf | tee $(NGINX_CONF) > /dev/null
-	@nginx -t && systemctl reload-or-restart nginx
-	@echo "$(GREEN)Setup complete — visit https://$(DOMAIN)$(NC)"
+bootstrap: ## One-time server prep: packages, systemd units, nginx, TLS (asks for remote sudo)
+	@$(SCRIPTS)/bootstrap.sh
 
-deploy: ## git pull, rebuild images, restart, refresh nginx config
-	@[ "$$(id -u)" = "0" ] || { printf '$(RED)ERROR: run as: sudo make $@$(NC)\n' >&2; exit 1; }
-	@echo "$(YELLOW)-> Pulling latest code...$(NC)"
-	@$(GIT_EXEC) git -C $(APP_DIR) pull origin main
-	@$(MAKE) -s _deploy
+deploy: ## Build locally, ship the artifacts, activate and health-check
+	@$(SCRIPTS)/deploy.sh
 
-# Internal: runs after git pull so make re-reads the latest Makefile
-_deploy:
-	@echo "$(YELLOW)-> Building frontend...$(NC)"
-	@docker build -t mote-frontend -f Dockerfile.frontend ..
-	@docker run --rm -v $(WEB_DIR):/dist mote-frontend sh -c 'rm -rf /dist/* && cp -r /app/dist/. /dist/'
-	@echo "$(YELLOW)-> Rebuilding and restarting containers...$(NC)"
-	@docker compose build app
-	@docker compose up -d --remove-orphans --wait
-	@echo "$(YELLOW)-> Refreshing nginx config...$(NC)"
-	@sed -e 's|__DOMAIN__|$(DOMAIN)|g' \
-	     -e 's|__APP_DIR__|$(APP_DIR)|g' \
-	     nginx.conf | tee $(NGINX_CONF) > /dev/null
-	@nginx -t && systemctl reload-or-restart nginx
-	@echo "$(GREEN)Deploy complete$(NC)"
+deploy-dirty: ## Same as deploy, but allows an uncommitted working tree
+	@$(SCRIPTS)/deploy.sh --dirty
 
-backup: ## Backup database and uploads
-	@bash backup.sh
+rollback: ## Back to the previous release (RELEASE=<id> to pick a specific one)
+	@$(SCRIPTS)/ops.sh rollback "$(RELEASE)"
 
-logs: ## Tail app container logs
-	@docker compose logs -f app
+status: ## Service state, current release, disk and release list
+	@$(SCRIPTS)/ops.sh status
 
-ps: ## Show container status
-	@docker compose ps
+logs: ## Follow the app log (journalctl)
+	@$(SCRIPTS)/ops.sh logs
 
-restart: ## Restart all containers
-	@docker compose restart
+restart: ## Restart the app without deploying
+	@$(SCRIPTS)/ops.sh restart
+
+backup: ## Hot-backup the SQLite database on the server
+	@$(SCRIPTS)/ops.sh backup
+
+pull-uploads: ## Mirror the server's uploads/ to this machine (incremental)
+	@$(SCRIPTS)/pull-uploads.sh
+
+nginx: ## Push nginx.conf and reload (asks for remote sudo)
+	@$(SCRIPTS)/nginx.sh
+
+shell: ## Open a shell on the server in the app directory
+	@$(SCRIPTS)/ops.sh shell
 
 .DEFAULT_GOAL := help
