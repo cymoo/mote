@@ -74,6 +74,10 @@ app-test.db
 
 # Deployment secrets (never commit these)
 .env
+deploy/deploy.env
+
+# Local build staging for deploys
+deploy/.build/
 
 # Runtime data created by deployment
 backups/

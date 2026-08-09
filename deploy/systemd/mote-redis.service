@@ -1,0 +1,15 @@
+[Unit]
+Description=Redis for Mote
+Documentation=https://github.com/cymoo/mote
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/redis-server __APP_DIR__/config/redis.conf
+Restart=on-failure
+RestartSec=2
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
