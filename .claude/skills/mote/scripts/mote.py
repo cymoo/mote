@@ -503,33 +503,55 @@ _MD_INLINE_WRAP = {"strong": "**", "b": "**", "em": "*", "i": "*", "del": "~~", 
 
 def _inline_md(children):
     out = []
+    after_tag = False  # previous piece was a hash tag
+
+    def push(text, is_tag=False):
+        """Append a rendered piece, keeping hash tags whitespace-separated.
+
+        Adjacent hash-tag spans and tag-then-text carry no separator in the
+        stored HTML (`<span>#a</span><span>#b</span>`). Emitting that verbatim
+        would produce `#a#b`, which on write-back parses as a single tag and
+        silently drops the rest — so a space is inserted on either side.
+        """
+        nonlocal after_tag
+        if not text:
+            return
+        prev = out[-1] if out else ""
+        if is_tag:
+            if prev and not prev[-1].isspace():
+                out.append(" ")
+        elif after_tag and not text[0].isspace():
+            out.append(" ")
+        out.append(text)
+        after_tag = is_tag
+
     for node in children:
         if node.tag is None:
-            out.append(_clean_text(node.text))
+            push(_clean_text(node.text))
         elif node.tag == "br":
-            out.append("\n")
+            push("\n")
         elif node.tag in _MD_INLINE_WRAP:
             inner = _inline_md(node.children).strip()
             mark = _MD_INLINE_WRAP[node.tag]
-            out.append(f"{mark}{inner}{mark}" if inner else "")
+            push(f"{mark}{inner}{mark}" if inner else "")
         elif node.tag == "code":
             code = _raw_text(node)
             fence = "``" if "`" in code else "`"
-            out.append(f"{fence}{code}{fence}")
+            push(f"{fence}{code}{fence}")
         elif node.tag in ("u", "mark", "label", "span", "font"):
             if node.tag == "span" and "hash-tag" in node.classes():
-                out.append(_clean_text(_raw_text(node)).strip())
+                push(_clean_text(_raw_text(node)).strip(), is_tag=True)
             else:
-                out.append(_inline_md(node.children))
+                push(_inline_md(node.children))
         elif node.tag == "a":
             text = _inline_md(node.children).strip()
-            out.append(f"[{text}]({node.attrs.get('href', '')})")
+            push(f"[{text}]({node.attrs.get('href', '')})")
         elif node.tag == "img":
-            out.append(f"![{node.attrs.get('alt', '')}]({node.attrs.get('src', '')})")
+            push(f"![{node.attrs.get('alt', '')}]({node.attrs.get('src', '')})")
         elif node.tag == "input":
             pass  # checkbox handled by parents
         else:
-            out.append(_serialize(node))
+            push(_serialize(node))
     return "".join(out)
 
 
@@ -749,12 +771,17 @@ def memo_meta_line(post):
     return " ".join(parts)
 
 
+_TAG_ONLY_LINE = re.compile(r"^(?:#[\w/-]+[\s,、，]*)+$")
+
+
 def snippet(md, width=100):
-    for line in md.split("\n"):
-        line = line.strip()
-        if line:
-            return line if len(line) <= width else line[: width - 1] + "…"
-    return "(empty)"
+    """First line with real content. Tags already show on the meta line, so a
+    leading tag-only line (a very common memo shape) is skipped."""
+    lines = [l.strip() for l in md.split("\n") if l.strip()]
+    if not lines:
+        return "(empty)"
+    body = next((l for l in lines if not _TAG_ONLY_LINE.match(l)), lines[0])
+    return body if len(body) <= width else body[: width - 1] + "…"
 
 
 def post_to_json(post, include_html=False):

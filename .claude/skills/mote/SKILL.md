@@ -88,8 +88,12 @@ Trash auto-purges after 30 days.
 - `search` is Redis-backed and indexed asynchronously — a just-created memo may not be
   findable for a moment; fall back to `list` if a fresh memo is missing. Chinese is tokenized.
 - Search returns one ranked batch (no pagination); scores shown per hit.
+- `list` previews skip a leading tag-only line (a very common memo shape) and show
+  the first real line of content instead; tags are on the meta line already.
 - Roundtrip is Markdown-faithful except: empty paragraphs are dropped, image
-  width/height attributes are lost on content rewrite (`update`/`append`/`untag`).
+  width/height attributes are lost on content rewrite (`update`/`append`/`untag`),
+  and tags stored flush against neighbouring text (`<span>#a</span><span>#b</span>`)
+  gain a separating space — without it a rewrite would merge them into one tag.
 - `get <id>` shows neither the tags array nor the parent memo (server limitation —
   only `list`/`search` attach them); tags are still visible as `#name` in the content.
 - `--parent ID` on create makes a reply/quote of another memo; `list --parent ID` lists replies.

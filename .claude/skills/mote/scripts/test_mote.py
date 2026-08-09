@@ -236,11 +236,47 @@ class TagSpanPattern(unittest.TestCase):
         self.assertEqual(pat.sub("", html), html)
 
 
+class AdjacentHashTags(unittest.TestCase):
+    """Stored HTML often has tags with no separating text; naive conversion
+    glued them into one token and lost every tag but the first on write-back."""
+
+    def test_adjacent_spans_separated(self):
+        html = '<p><span class="hash-tag">#TODO</span><span class="hash-tag">#兴趣培养</span></p>'
+        self.assertEqual(html_to_md(html), "#TODO #兴趣培养")
+
+    def test_tag_followed_by_text_separated(self):
+        html = '<p><span class="hash-tag">#TODO</span>几乎所有的TODO都烂尾了</p>'
+        self.assertEqual(html_to_md(html), "#TODO 几乎所有的TODO都烂尾了")
+
+    def test_text_before_tag_separated(self):
+        html = '<p>规划<span class="hash-tag">#TODO</span></p>'
+        self.assertEqual(html_to_md(html), "规划 #TODO")
+
+    def test_existing_spacing_untouched(self):
+        html = '<p>a <span class="hash-tag">#x</span> b</p>'
+        self.assertEqual(html_to_md(html), "a #x b")
+
+    def test_writeback_keeps_every_tag(self):
+        html = '<p><span class="hash-tag">#TODO</span><span class="hash-tag">#兴趣培养</span></p>'
+        self.assertEqual(md_to_html(html_to_md(html)).count('class="hash-tag"'), 2)
+
+
 class Helpers(unittest.TestCase):
     def test_snippet(self):
         self.assertEqual(snippet("\n\n  hello world  \nmore"), "hello world")
         self.assertEqual(snippet(""), "(empty)")
         self.assertTrue(snippet("x" * 200).endswith("…"))
+
+    def test_snippet_skips_tag_only_lines(self):
+        self.assertEqual(snippet("#TODO\n\n买房计划要提上日程"), "买房计划要提上日程")
+        self.assertEqual(snippet("#TODO #买房\n\n看房清单"), "看房清单")
+        self.assertEqual(snippet("#TODO，#英语\n\n背单词"), "背单词")
+
+    def test_snippet_tag_only_memo_falls_back(self):
+        self.assertEqual(snippet("#TODO"), "#TODO")
+
+    def test_snippet_keeps_inline_tags(self):
+        self.assertEqual(snippet("不要再拖了 #TODO"), "不要再拖了 #TODO")
 
 
 if __name__ == "__main__":
