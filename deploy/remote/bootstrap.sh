@@ -13,6 +13,10 @@ DOMAIN="${2:?domain required}"
 DEPLOY_USER="$(id -un)"
 ACME_CONF=/etc/nginx/conf.d/mote-acme.conf
 
+# systemctl --user needs this to reach the user bus. A login session normally
+# sets it, but don't depend on how this script was invoked.
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
 step() { printf '\033[0;33m==>\033[0m %s\n' "$*"; }
 log()  { printf '    %s\n' "$*"; }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
